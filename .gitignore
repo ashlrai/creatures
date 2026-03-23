@@ -1,0 +1,42 @@
+# Data files (large, downloaded separately)
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+creatures-web/node_modules/
+creatures-web/dist/
+
+# Simulation recordings
+*.hdf5
+*.h5
+
+# Environment
+.env
+.env.local
