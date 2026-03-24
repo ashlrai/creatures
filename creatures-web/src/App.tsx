@@ -4,6 +4,7 @@ import { NeuralActivityDisplay } from './components/ui/NeuralActivityDisplay';
 import { Waveform } from './components/ui/Waveform';
 import { EvolutionDashboard } from './components/ui/EvolutionDashboard';
 import { FitnessGraph } from './components/ui/FitnessGraph';
+import { GodAgentPanel } from './components/ui/GodAgentPanel';
 import { useSimulation } from './hooks/useSimulation';
 import { useDemoMode } from './hooks/useDemoMode';
 import { useSimulationStore } from './stores/simulationStore';
@@ -143,7 +144,10 @@ export default function App() {
         {/* Left sidebar */}
         <div className="sidebar">
           {isEvolutionMode ? (
-            <EvolutionDashboard />
+            <>
+              <EvolutionDashboard />
+              <GodAgentPanel />
+            </>
           ) : experiment ? (
             <>
               <div className="glass">

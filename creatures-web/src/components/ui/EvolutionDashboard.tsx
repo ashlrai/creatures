@@ -1,12 +1,53 @@
+import { useMemo } from 'react';
 import { useEvolutionStore } from '../../stores/evolutionStore';
 import { useEvolution } from '../../hooks/useEvolution';
 import { FitnessGraph } from './FitnessGraph';
+import type { GodReport } from '../../types/evolution';
 
 export function EvolutionDashboard() {
   const currentRun = useEvolutionStore((s) => s.currentRun);
   const fitnessHistory = useEvolutionStore((s) => s.fitnessHistory);
   const latestStats = useEvolutionStore((s) => s.latestStats);
+  const godReports = useEvolutionStore((s) => s.godReports);
   const { start, pause, resume, backendAvailable } = useEvolution();
+
+  // Derive God Agent display state from store reports + run data
+  const godState = useMemo(() => {
+    // Combine reports from the store and from the run object
+    const runReports: GodReport[] = currentRun?.god_reports ?? [];
+    const allReports = godReports.length > 0 ? godReports : runReports;
+
+    if (allReports.length === 0) {
+      return { active: false, mode: 'fallback', interventionCount: 0, latestAnalysis: '', interventions: [] as GodReport['interventions'] };
+    }
+
+    const totalInterventions = allReports.reduce(
+      (sum, r) => sum + (r.interventions?.length ?? 0), 0
+    );
+
+    // Latest report with an analysis
+    const latestWithAnalysis = [...allReports].reverse().find((r) => r.analysis);
+    const latestAnalysis = latestWithAnalysis?.analysis ?? '';
+
+    // Collect last 5 interventions across all reports
+    const allInterventions: GodReport['interventions'] = [];
+    for (const r of allReports) {
+      if (r.interventions) {
+        allInterventions.push(...r.interventions);
+      }
+    }
+
+    // Get mode from the latest report that has it
+    const mode = [...allReports].reverse().find((r) => r.mode)?.mode ?? 'fallback';
+
+    return {
+      active: true,
+      mode,
+      interventionCount: totalInterventions,
+      latestAnalysis,
+      interventions: allInterventions.slice(-5),
+    };
+  }, [godReports, currentRun]);
 
   const status = currentRun?.status ?? 'idle';
   const generation = currentRun?.generation ?? 0;
@@ -119,6 +160,75 @@ export function EvolutionDashboard() {
         <div className="glass-label">Fitness Curve</div>
         <FitnessGraph history={fitnessHistory} width={196} height={120} />
       </div>
+
+      {/* God Agent section */}
+      {godState.active && (
+        <div className="glass" style={{ position: 'relative' }}>
+          <div className="glass-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span
+              style={{
+                display: 'inline-block',
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: status === 'running' ? 'var(--accent-magenta)' : 'var(--text-label)',
+                boxShadow: status === 'running' ? '0 0 6px var(--accent-magenta)' : 'none',
+                animation: status === 'running' ? 'god-pulse 2s ease-in-out infinite' : 'none',
+              }}
+            />
+            God Agent
+            <span style={{ fontSize: 9, color: 'var(--text-label)', marginLeft: 'auto' }}>
+              {godState.mode.toUpperCase()}
+            </span>
+          </div>
+          <div className="stat-row">
+            <span className="stat-label">Interventions</span>
+            <span className="stat-value stat-magenta">{godState.interventionCount}</span>
+          </div>
+          {godState.latestAnalysis && (
+            <div style={{
+              marginTop: 6,
+              padding: '4px 6px',
+              fontSize: 9,
+              lineHeight: 1.4,
+              color: 'var(--text-secondary)',
+              background: 'rgba(255,255,255,0.02)',
+              borderRadius: 4,
+              fontFamily: 'monospace',
+              wordBreak: 'break-word',
+            }}>
+              {godState.latestAnalysis}
+            </div>
+          )}
+          {godState.interventions.length > 0 && (
+            <div style={{ marginTop: 6 }}>
+              {godState.interventions.map((iv, i) => (
+                <div
+                  key={i}
+                  style={{
+                    padding: '3px 6px',
+                    marginTop: 3,
+                    fontSize: 9,
+                    lineHeight: 1.3,
+                    color: 'var(--accent-amber)',
+                    background: 'rgba(255,180,50,0.06)',
+                    borderRadius: 3,
+                    borderLeft: '2px solid var(--accent-amber)',
+                  }}
+                >
+                  <strong>{iv.action}</strong>: {iv.description}
+                </div>
+              ))}
+            </div>
+          )}
+          <style>{`
+            @keyframes god-pulse {
+              0%, 100% { opacity: 0.4; transform: scale(1); }
+              50% { opacity: 1; transform: scale(1.3); }
+            }
+          `}</style>
+        </div>
+      )}
     </>
   );
 }

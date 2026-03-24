@@ -1,3 +1,14 @@
+export interface GodReport {
+  analysis: string;
+  fitness_trend?: string;
+  interventions: Array<{ type?: string; action: string; parameters?: Record<string, any>; reasoning: string; description?: string }>;
+  hypothesis?: string;
+  report?: string;
+  generation?: number;
+  n_observations?: number;
+  mode?: string;
+}
+
 export interface EvolutionRun {
   id: string;
   status: 'idle' | 'running' | 'paused' | 'completed';
@@ -7,6 +18,7 @@ export interface EvolutionRun {
   mean_fitness: number;
   population_size: number;
   organism: string;
+  god_reports?: GodReport[];
 }
 
 export interface GenerationStats {
@@ -19,9 +31,8 @@ export interface GenerationStats {
   elapsed_seconds?: number;
 }
 
-/** Shape of a WebSocket message from the evolution server. */
 export interface EvolutionWsMessage {
-  type: 'generation_complete' | 'run_complete' | 'error';
+  type: 'generation_complete' | 'run_complete' | 'error' | 'god_intervention' | 'god_final_report';
   generation: number;
   best_fitness: number;
   mean_fitness: number;
@@ -30,6 +41,7 @@ export interface EvolutionWsMessage {
   elapsed_seconds?: number;
   best_genome_id?: string;
   message?: string;
+  god_report?: GodReport;
 }
 
 export interface FitnessHistory {

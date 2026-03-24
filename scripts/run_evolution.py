@@ -100,6 +100,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Enable debug logging",
     )
+    # God Agent flags
+    parser.add_argument(
+        "--god",
+        action="store_true",
+        help="Enable the God Agent to observe and intervene during evolution",
+    )
+    parser.add_argument(
+        "--xai-api-key",
+        type=str,
+        default=None,
+        help="xAI API key for God Agent AI mode (or set XAI_API_KEY env var). Falls back to heuristics if not provided.",
+    )
+    parser.add_argument(
+        "--god-interval",
+        type=int,
+        default=10,
+        help="God Agent intervention interval in generations (default: 10)",
+    )
     return parser.parse_args(argv)
 
 
@@ -134,6 +152,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Fitness mode: {mode}")
     print(f"  Seed:         {args.seed}")
     print(f"  Output:       {output_dir}")
+    if args.god:
+        print(f"  God Agent:    ENABLED (interval={args.god_interval})")
     print(f"{'=' * 60}\n")
 
     # --- Load connectome ---
@@ -183,6 +203,19 @@ def main(argv: list[str] | None = None) -> int:
     }
     store.create_run(run_id, args.organism, config_dict)
 
+    # --- God Agent setup ---
+    god_agent = None
+    god_config = None
+    if args.god:
+        from creatures.god.agent import GodAgent, GodConfig
+        god_config = GodConfig(
+            api_key=args.xai_api_key,
+            intervention_interval=args.god_interval,
+        )
+        god_agent = GodAgent(god_config)
+        god_mode_str = "AI (xAI Grok)" if god_config.api_key else "Heuristic fallback"
+        print(f"God Agent active: {god_mode_str} mode\n")
+
     # --- Initialize population ---
     logger.info("Initializing population of %d...", args.population)
     population.initialize()
@@ -211,6 +244,38 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Gen {gen + 1}/{args.generations} | "
               f"best={best_fitness:.1f} mean={mean_fitness:.1f} std={std_fitness:.1f} | "
               f"{gen_elapsed:.1f}s")
+
+        # God Agent: observe every generation, intervene at interval
+        if god_agent is not None:
+            god_agent.observe(
+                generation_stats={
+                    "generation": gen,
+                    "best_fitness": best_fitness,
+                    "mean_fitness": mean_fitness,
+                    "std_fitness": std_fitness,
+                    "n_species": len(population.species),
+                },
+                population_summary={
+                    "size": args.population,
+                    "n_neurons_mean": float(np.mean([g.n_neurons for g in population.genomes])),
+                    "n_synapses_mean": float(np.mean([g.n_synapses for g in population.genomes])),
+                },
+                environment_state={},
+            )
+            if (gen + 1) % god_config.intervention_interval == 0:
+                import asyncio
+                intervention = asyncio.run(god_agent.analyze_and_intervene())
+                applied = god_agent.apply_interventions(
+                    intervention,
+                    mutation_config=mutation_config,
+                    population=population,
+                )
+                if applied:
+                    for desc in applied:
+                        print(f"  [GOD] {desc}")
+                else:
+                    analysis = intervention.get("analysis", "No analysis")
+                    print(f"  [GOD] {analysis}")
 
         # Record
         gen_record = GenerationRecord(
@@ -287,6 +352,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Evolved neurons:        {final_best.n_neurons}")
     print(f"  Template synapses:      {template_genome.n_synapses}")
     print(f"  Evolved synapses:       {final_best.n_synapses}")
+    if god_agent is not None:
+        god_mode_label = "AI" if god_config.api_key else "Heuristic"
+        print(f"  God Agent mode:         {god_mode_label}")
+        print(f"  God observations:       {len(god_agent.observations)}")
+        print(f"  God interventions:      {len(god_agent.history)}")
+        if god_agent.history:
+            last = god_agent.history[-1]
+            print(f"  Last analysis:          {last.get('analysis', 'N/A')[:60]}")
     print(f"{'=' * 40}\n")
 
     # Save fitness history as JSON
@@ -319,6 +392,13 @@ def main(argv: list[str] | None = None) -> int:
             "n_synapses": final_best.n_synapses,
             "hdf5_path": str(best_h5_path),
         },
+        "god_report": {
+            "mode": "ai" if (god_config and god_config.api_key) else "fallback",
+            "n_observations": len(god_agent.observations) if god_agent else 0,
+            "n_interventions": len(god_agent.history) if god_agent else 0,
+            "history": god_agent.history if god_agent else [],
+            "report": god_agent.get_report() if god_agent else None,
+        } if god_agent is not None else None,
     }
     results_path = output_dir / "results.json"
     with open(results_path, "w") as f:

@@ -335,6 +335,198 @@ body {
   letter-spacing: -2px;
 }
 
+/* God Agent panel */
+.god-panel {
+  border-color: rgba(140, 80, 220, 0.15);
+  background: rgba(12, 8, 24, 0.7);
+}
+.god-panel:hover {
+  border-color: rgba(160, 100, 255, 0.3);
+}
+
+.god-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.god-eye {
+  color: rgba(160, 120, 220, 0.4);
+  display: flex;
+  align-items: center;
+  transition: color 0.3s;
+}
+.god-eye--active {
+  color: #b366ff;
+  animation: godPulse 2s ease-in-out infinite;
+}
+@keyframes godPulse {
+  0%, 100% { opacity: 1; filter: drop-shadow(0 0 2px rgba(180, 100, 255, 0.3)); }
+  50% { opacity: 0.6; filter: drop-shadow(0 0 8px rgba(180, 100, 255, 0.6)); }
+}
+
+.god-section-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(180, 140, 255, 0.5);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.god-hypothesis {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(140, 80, 220, 0.06);
+  border-left: 2px solid rgba(160, 100, 255, 0.25);
+}
+.god-hypothesis-text {
+  font-size: 11px;
+  color: rgba(200, 170, 255, 0.75);
+  line-height: 1.45;
+  font-style: italic;
+}
+
+.god-analysis {
+  margin-bottom: 8px;
+}
+.god-analysis-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.god-trend {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: lowercase;
+}
+.god-trend--plateauing {
+  background: rgba(255, 170, 40, 0.12);
+  color: var(--accent-amber);
+}
+.god-trend--improving {
+  background: rgba(0, 255, 136, 0.1);
+  color: var(--accent-green);
+}
+.god-trend--declining {
+  background: rgba(255, 34, 136, 0.1);
+  color: var(--accent-magenta);
+}
+
+.god-history {
+  margin-bottom: 8px;
+}
+.god-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+.god-history-item {
+  border-radius: 4px;
+}
+.god-history-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-align: left;
+  transition: background 0.15s;
+  border-radius: 4px;
+}
+.god-history-toggle:hover {
+  background: rgba(160, 100, 255, 0.06);
+}
+.god-history-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(160, 100, 255, 0.5);
+  flex-shrink: 0;
+}
+.god-history-summary {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.god-history-chevron {
+  font-size: 8px;
+  color: var(--text-label);
+  flex-shrink: 0;
+}
+.god-history-detail {
+  padding: 4px 6px 6px 17px;
+  font-size: 10px;
+  color: var(--text-label);
+  line-height: 1.4;
+}
+.god-intervention-entry {
+  margin-bottom: 4px;
+}
+.god-intervention-action {
+  font-weight: 600;
+  color: rgba(180, 140, 255, 0.7);
+}
+.god-intervention-reasoning {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+.god-intervention-params {
+  display: flex;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-label);
+  margin-top: 2px;
+}
+.god-intervention-report {
+  margin-top: 4px;
+  font-size: 9px;
+  color: var(--text-label);
+  font-style: italic;
+}
+
+.god-ask-btn {
+  width: 100%;
+  margin-top: 4px;
+  background: linear-gradient(135deg, rgba(100, 50, 180, 0.5), rgba(140, 60, 220, 0.4));
+  color: #d4b3ff;
+  border-color: rgba(160, 100, 255, 0.2);
+  box-shadow: 0 2px 12px rgba(140, 60, 220, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.god-ask-btn:hover {
+  background: linear-gradient(135deg, rgba(120, 60, 200, 0.6), rgba(160, 80, 240, 0.5));
+  box-shadow: 0 4px 20px rgba(140, 60, 220, 0.2);
+  transform: translateY(-1px);
+}
+.god-ask-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Event notification */
 @keyframes notifySlide {
   from { transform: translateY(-20px); opacity: 0; }

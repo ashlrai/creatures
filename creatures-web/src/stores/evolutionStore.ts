@@ -1,14 +1,16 @@
 import { create } from 'zustand';
-import type { EvolutionRun, FitnessHistory, GenerationStats } from '../types/evolution';
+import type { EvolutionRun, FitnessHistory, GenerationStats, GodReport } from '../types/evolution';
 
 interface EvolutionState {
   currentRun: EvolutionRun | null;
   fitnessHistory: FitnessHistory;
   isEvolutionMode: boolean;
   latestStats: GenerationStats | null;
+  godReports: GodReport[];
 
   setRun: (run: EvolutionRun) => void;
   addGeneration: (stats: GenerationStats) => void;
+  addGodReport: (report: GodReport) => void;
   toggleEvolutionMode: () => void;
   reset: () => void;
 }
@@ -20,6 +22,7 @@ export const useEvolutionStore = create<EvolutionState>((set, get) => ({
   fitnessHistory: emptyHistory,
   isEvolutionMode: false,
   latestStats: null,
+  godReports: [],
 
   setRun: (run) => set({ currentRun: run }),
 
@@ -44,6 +47,8 @@ export const useEvolutionStore = create<EvolutionState>((set, get) => ({
     });
   },
 
+  addGodReport: (report) => set((s) => ({ godReports: [...s.godReports, report] })),
+
   toggleEvolutionMode: () => set((s) => ({ isEvolutionMode: !s.isEvolutionMode })),
 
   reset: () => set({
@@ -51,5 +56,6 @@ export const useEvolutionStore = create<EvolutionState>((set, get) => ({
     fitnessHistory: emptyHistory,
     isEvolutionMode: false,
     latestStats: null,
+    godReports: [],
   }),
 }));

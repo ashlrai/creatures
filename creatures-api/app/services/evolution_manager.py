@@ -34,6 +34,7 @@ class EvolutionRun:
         self.history: list[dict] = []
         self.population: Population | None = None
         self.error: str | None = None
+        self.god_reports: list[dict] = []
 
     def to_info(self) -> dict:
         return {
@@ -46,6 +47,7 @@ class EvolutionRun:
             "best_fitness": self.best_fitness,
             "mean_fitness": self.mean_fitness,
             "elapsed_seconds": self.elapsed_seconds,
+            "god_reports": self.god_reports,
         }
 
 
@@ -106,6 +108,23 @@ class EvolutionManager:
         self._runs[run_id] = run
         self._queues[run_id] = []
         self._stop_events[run_id] = threading.Event()
+        self._god_agents: dict[str, Any] = getattr(self, "_god_agents", {})
+
+        # Initialize God Agent if requested
+        if config.get("god_agent_enabled", False):
+            try:
+                from creatures.god.agent import GodAgent, GodConfig
+                god_config = GodConfig(
+                    api_key=config.get("xai_api_key"),
+                    intervention_interval=config.get("god_interval", 10),
+                )
+                god = GodAgent(god_config)
+                self._god_agents[run_id] = god
+                god_mode = "AI" if god_config.api_key else "fallback"
+                logger.info(f"God Agent enabled for run {run_id} in {god_mode} mode")
+            except Exception as e:
+                logger.warning(f"Failed to initialize God Agent for run {run_id}: {e}")
+
         return run
 
     def start_run(self, run_id: str) -> EvolutionRun:
@@ -195,7 +214,7 @@ class EvolutionManager:
                 run.mean_fitness = stats.mean_fitness
                 run.elapsed_seconds = time.time() - t_start
 
-                stats_dict = {
+                stats_dict: dict[str, Any] = {
                     "generation": stats.generation,
                     "best_fitness": stats.best_fitness,
                     "mean_fitness": stats.mean_fitness,
@@ -204,12 +223,67 @@ class EvolutionManager:
                     "best_genome_id": stats.best_genome_id,
                     "elapsed_seconds": run.elapsed_seconds,
                 }
+
+                # God Agent: observe and potentially intervene
+                god_agents = getattr(self, "_god_agents", {})
+                god = god_agents.get(run_id)
+                if god is not None:
+                    god.observe(
+                        generation_stats={
+                            "generation": stats.generation,
+                            "best_fitness": stats.best_fitness,
+                            "mean_fitness": stats.mean_fitness,
+                            "std_fitness": stats.std_fitness,
+                            "n_species": stats.n_species,
+                        },
+                        population_summary={"size": run.population_size},
+                        environment_state={},
+                    )
+                    if stats.generation > 0 and stats.generation % god.config.intervention_interval == 0:
+                        import asyncio as _asyncio
+                        # Run async analyze in a new event loop (we're in a thread)
+                        loop = _asyncio.new_event_loop()
+                        try:
+                            intervention = loop.run_until_complete(god.analyze_and_intervene())
+                        finally:
+                            loop.close()
+                        applied = god.apply_interventions(
+                            intervention,
+                            mutation_config=getattr(population, "mutation_config", None),
+                            population=population,
+                        )
+                        god_event: dict[str, Any] = {
+                            "type": "god_intervention",
+                            "generation": stats.generation,
+                            "analysis": intervention.get("analysis", ""),
+                            "interventions": intervention.get("interventions", []),
+                            "applied": applied,
+                        }
+                        run.god_reports.append(god_event)
+                        stats_dict["god_intervention"] = god_event
+                        self._notify_subscribers(run_id, god_event)
+
                 run.history.append(stats_dict)
 
                 # Push to subscriber queues (thread-safe via call_soon_threadsafe)
                 self._notify_subscribers(run_id, stats_dict)
 
             run.status = "completed"
+
+            # Attach final God Agent report
+            god_agents = getattr(self, "_god_agents", {})
+            god = god_agents.get(run_id)
+            if god is not None:
+                final_report = {
+                    "type": "god_final_report",
+                    "n_observations": len(god.observations),
+                    "n_interventions": len(god.history),
+                    "report": god.get_report(),
+                    "mode": "ai" if god.config.api_key else "fallback",
+                }
+                run.god_reports.append(final_report)
+                self._notify_subscribers(run_id, final_report)
+
             logger.info(
                 f"Evolution run {run_id} completed: {run.generation} generations, "
                 f"best_fitness={run.best_fitness:.3f}"
