@@ -25,7 +25,7 @@ from brian2 import (
 )
 
 from creatures.connectome.types import Connectome
-from creatures.neural.base import MonitorConfig, NeuralConfig, NeuralEngine, SimulationState
+from creatures.neural.base import MonitorConfig, NeuralConfig, NeuralEngine, PlasticityConfig, SimulationState
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,8 @@ class Brian2Engine(NeuralEngine):
         self._id_to_idx: dict[str, int] = {}
         self._firing_rates: np.ndarray | None = None
         self._input_currents: np.ndarray | None = None
+        self._plasticity: PlasticityConfig | None = None
+        self._original_build_weights: np.ndarray | None = None
 
     @property
     def neuron_ids(self) -> list[str]:
@@ -76,12 +78,15 @@ class Brian2Engine(NeuralEngine):
         return self._id_to_idx.get(neuron_id)
 
     def build(self, connectome: Connectome, config: NeuralConfig | None = None,
-              monitor: MonitorConfig | None = None) -> None:
+              monitor: MonitorConfig | None = None,
+              plasticity: PlasticityConfig | None = None) -> None:
         """Build the Brian2 network from a connectome.
 
         Args:
             connectome: The biological connectome to simulate.
             config: Neural simulation parameters. Uses defaults if None.
+            monitor: Monitor configuration. Uses defaults if None.
+            plasticity: STDP plasticity configuration. None or disabled = static synapses.
         """
         self._connectome = connectome
         self._config = config or NeuralConfig()
@@ -124,14 +129,69 @@ class Brian2Engine(NeuralEngine):
 
         # Build synapses from connectome
         b2_params = connectome.to_brian2_params()
-        self._synapses = Synapses(
-            self._neurons,
-            self._neurons,
-            "w : volt",
-            on_pre="I_syn_post += w",
-        )
+        self._plasticity = plasticity
+
+        if plasticity is not None and plasticity.enabled:
+            # STDP synapse model: traces track recent pre/post spike activity.
+            # When pre fires before post, the synapse strengthens (potentiation).
+            # When post fires before pre, the synapse weakens (depression).
+            stdp_model = """
+            w : volt
+            dapre/dt = -apre / tau_pre : 1 (event-driven)
+            dapost/dt = -apost / tau_post : 1 (event-driven)
+            """
+            stdp_on_pre = """
+            I_syn_post += w
+            apre += A_plus
+            w = clip(w + apost * mV, w_min * mV, w_max * mV)
+            """
+            stdp_on_post = """
+            apost -= A_minus
+            w = clip(w + apre * mV, w_min * mV, w_max * mV)
+            """
+            self._synapses = Synapses(
+                self._neurons,
+                self._neurons,
+                stdp_model,
+                on_pre=stdp_on_pre,
+                on_post=stdp_on_post,
+                namespace={
+                    "tau_pre": plasticity.tau_pre * ms,
+                    "tau_post": plasticity.tau_post * ms,
+                    "A_plus": plasticity.a_plus,
+                    "A_minus": plasticity.a_minus,
+                    "w_max": plasticity.w_max,
+                    "w_min": plasticity.w_min,
+                },
+            )
+            logger.info(
+                "STDP enabled: tau_pre=%.1fms, tau_post=%.1fms, "
+                "A+=%.4f, A-=%.4f, w_range=[%.1f, %.1f] mV",
+                plasticity.tau_pre, plasticity.tau_post,
+                plasticity.a_plus, plasticity.a_minus,
+                plasticity.w_min, plasticity.w_max,
+            )
+        else:
+            # Static synapses (default, backward compatible)
+            self._synapses = Synapses(
+                self._neurons,
+                self._neurons,
+                "w : volt",
+                on_pre="I_syn_post += w",
+            )
+
         self._synapses.connect(i=b2_params["i"], j=b2_params["j"])
-        self._synapses.w = b2_params["w"] * cfg.weight_scale * mV
+        raw_weights = b2_params["w"] * cfg.weight_scale
+
+        # When plasticity is enabled, clip initial weights to the STDP bounds
+        # so that all weights start within the learnable range.
+        if self._plasticity is not None and self._plasticity.enabled:
+            raw_weights = np.clip(raw_weights, self._plasticity.w_min, self._plasticity.w_max)
+
+        self._synapses.w = raw_weights * mV
+
+        # Store original weights for learning rate tracking
+        self._original_build_weights = np.array(self._synapses.w / mV).copy()
 
         # Monitors — configurable to save memory on large networks
         mon_cfg = self._monitor_config
@@ -322,6 +382,29 @@ class Brian2Engine(NeuralEngine):
         if self._synapses is None:
             return np.array([])
         return np.array(self._synapses.w / mV)
+
+    def get_weight_changes(self) -> dict:
+        """Return statistics about synaptic weight changes since build.
+
+        Compares current weights to the weights at build time to measure
+        how much the network has learned via STDP or other plasticity.
+        """
+        if self._original_build_weights is None:
+            return {}
+        current = self.get_synapse_weights()
+        original = self._original_build_weights
+        if len(current) == 0 or len(original) == 0:
+            return {}
+        delta = current - original
+        return {
+            "mean_change": float(np.mean(delta)),
+            "std_change": float(np.std(delta)),
+            "max_potentiation": float(np.max(delta)),
+            "max_depression": float(np.min(delta)),
+            "n_potentiated": int(np.sum(delta > 0.01)),
+            "n_depressed": int(np.sum(delta < -0.01)),
+            "n_unchanged": int(np.sum(np.abs(delta) <= 0.01)),
+        }
 
     def set_synapse_weights(self, weights: np.ndarray) -> None:
         """Set all synapse weights from a numpy array (in mV)."""

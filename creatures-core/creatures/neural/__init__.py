@@ -1,10 +1,11 @@
-from creatures.neural.base import NeuralConfig, NeuralEngine, SimulationState
+from creatures.neural.base import NeuralConfig, NeuralEngine, PlasticityConfig, SimulationState
 from creatures.neural.brian2_engine import Brian2Engine
 
 __all__ = [
     "Brian2Engine",
     "NeuralConfig",
     "NeuralEngine",
+    "PlasticityConfig",
     "SimulationState",
     "create_engine",
 ]

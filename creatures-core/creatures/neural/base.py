@@ -25,6 +25,25 @@ class MonitorConfig:
 
 
 @dataclass
+class PlasticityConfig:
+    """Configuration for spike-timing-dependent plasticity (STDP).
+
+    STDP is the biological mechanism for learning: synapses strengthen when
+    the presynaptic neuron fires just BEFORE the postsynaptic neuron (Hebbian
+    potentiation), and weaken when the order is reversed (anti-Hebbian
+    depression). This lets organisms learn from experience within a lifetime.
+    """
+
+    enabled: bool = False
+    tau_pre: float = 20.0    # ms - pre-before-post trace decay window
+    tau_post: float = 20.0   # ms - post-before-pre trace decay window
+    a_plus: float = 0.01     # potentiation amplitude (pre-before-post)
+    a_minus: float = 0.012   # depression amplitude (slightly larger for stability)
+    w_max: float = 10.0      # maximum weight (mV)
+    w_min: float = 0.0       # minimum weight (mV)
+
+
+@dataclass
 class NeuralConfig:
     """Configuration for a spiking neural network simulation."""
 

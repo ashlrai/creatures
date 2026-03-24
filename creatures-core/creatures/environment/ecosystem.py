@@ -25,6 +25,7 @@ from creatures.environment.interactions import (
     check_reproduction,
     compute_food_gradient,
 )
+from creatures.environment.sensory_world import SensoryWorld
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ class Ecosystem:
         self.config = config or EcosystemConfig()
         self.organisms: dict[str, OrganismInstance] = {}
         self.food_sources: dict[str, FoodSource] = {}
+        self.world: SensoryWorld | None = None  # optional rich sensory env
         self.time_ms: float = 0.0
         self.events: list[dict] = []  # log of ecosystem events
         self._rng = np.random.default_rng(42)
@@ -105,10 +107,34 @@ class Ecosystem:
 
         alive_organisms = [o for o in self.organisms.values() if o.alive]
 
-        # 1. Move organisms (simple: food-seeking + random walk)
+        # 0. Advance sensory world time
+        if self.world is not None:
+            self.world.step(dt_ms)
+
+        # 1. Move organisms (food-seeking + sensory world + random walk)
         food_list = list(self.food_sources.values())
         for org in alive_organisms:
             self._move_organism(org, food_list, dt_ms)
+
+        # 1b. Apply toxin damage from sensory world
+        if self.world is not None:
+            for org in alive_organisms:
+                toxin = self.world.sense_at(org.position)["toxin_exposure"]
+                if toxin > 0:
+                    org.energy -= toxin * dt_ms
+                    if org.energy <= 0.0:
+                        org.energy = 0.0
+                        org.alive = False
+                        events.append(
+                            {
+                                "type": "death",
+                                "time_ms": self.time_ms,
+                                "organism_id": org.id,
+                                "species": org.species,
+                                "cause": "toxin",
+                                "age_ms": org.age_ms,
+                            }
+                        )
 
         # 2. Age and decay energy for all organisms
         for org in alive_organisms:
@@ -215,13 +241,63 @@ class Ecosystem:
         food_list: list[FoodSource],
         dt_ms: float,
     ) -> None:
-        """Move an organism using food-seeking + random walk."""
+        """Move an organism using food-seeking + sensory world + random walk.
+
+        When a SensoryWorld is attached, chemical gradients from the world
+        are blended with the basic food gradient. Organisms also steer away
+        from toxins and toward their preferred temperature.
+        """
         speed = self.config.move_speed.get(org.species, 0.003)
 
-        # Compute food gradient (chemotaxis)
+        # Compute food gradient (chemotaxis from simple food dots)
         grad_x, grad_y = compute_food_gradient(
             org, food_list, self.config.food_detection_radius
         )
+
+        # Layer on sensory world signals if available
+        if self.world is not None:
+            sensory = self.world.sense_at(org.position)
+
+            # Chemical gradients: attractants pull toward source,
+            # repellents push away
+            for grad in self.world.chemical_gradients:
+                gdir = sensory["gradient_direction"].get(grad.name, (0.0, 0.0))
+                conc = sensory["chemicals"].get(grad.name, 0.0)
+                if conc > 1e-6:
+                    sign = 1.0 if grad.chemical_type == "attractant" else -1.0
+                    # Weight by concentration so organisms respond more
+                    # strongly when near the source
+                    grad_x += sign * gdir[0] * conc * 2.0
+                    grad_y += sign * gdir[1] * conc * 2.0
+
+            # Toxin avoidance: steer away from toxin centers
+            for zone in self.world.toxic_zones:
+                dx = org.position[0] - zone.position[0]
+                dy = org.position[1] - zone.position[1]
+                dist = math.sqrt(dx * dx + dy * dy)
+                if dist < zone.radius * 2.0 and dist > 1e-8:
+                    # Repulsive force, stronger when closer
+                    repulsion = 3.0 / (dist + 0.01)
+                    grad_x += (dx / dist) * repulsion
+                    grad_y += (dy / dist) * repulsion
+
+            # Thermotaxis: steer toward preferred temperature
+            temp = sensory["temperature"]
+            if temp is not None and self.world.temperature_field is not None:
+                tf = self.world.temperature_field
+                # Direction from cold to hot
+                axis_x = tf.hot_position[0] - tf.cold_position[0]
+                axis_y = tf.hot_position[1] - tf.cold_position[1]
+                axis_len = math.sqrt(axis_x * axis_x + axis_y * axis_y)
+                if axis_len > 1e-8:
+                    axis_x /= axis_len
+                    axis_y /= axis_len
+                    # If too hot, move toward cold (negative axis);
+                    # if too cold, move toward hot (positive axis)
+                    temp_error = temp - tf.preferred_temp
+                    thermotaxis_strength = -temp_error * 0.1
+                    grad_x += axis_x * thermotaxis_strength
+                    grad_y += axis_y * thermotaxis_strength
 
         # Blend food-seeking with random walk
         has_gradient = abs(grad_x) > 1e-8 or abs(grad_y) > 1e-8
@@ -261,13 +337,16 @@ class Ecosystem:
 
     def get_state(self) -> dict:
         """Return full ecosystem state for visualization."""
-        return {
+        state = {
             "time_ms": self.time_ms,
             "organisms": [asdict(o) for o in self.organisms.values()],
             "food_sources": [asdict(f) for f in self.food_sources.values()],
             "stats": self.get_stats(),
             "events": self.events[-10:],  # last 10 events
         }
+        if self.world is not None:
+            state["sensory_world"] = self.world.get_state()
+        return state
 
     def get_stats(self) -> dict:
         """Population statistics by species."""

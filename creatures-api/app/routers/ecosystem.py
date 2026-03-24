@@ -11,6 +11,12 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from creatures.environment.ecosystem import Ecosystem, EcosystemConfig
+from creatures.environment.sensory_world import (
+    ChemicalGradient,
+    SensoryWorld,
+    TemperatureField,
+    ToxicZone,
+)
 
 router = APIRouter(prefix="/api/ecosystem", tags=["ecosystem"])
 logger = logging.getLogger(__name__)
@@ -47,6 +53,29 @@ class DrugRequest(BaseModel):
 
 class EnvironmentalEventRequest(BaseModel):
     type: Literal["food_scarcity", "predator_surge", "mutation_burst", "climate_shift"]
+
+
+class GradientRequest(BaseModel):
+    name: str = "NaCl"
+    source_position: list[float] = [1.0, 0.5]  # [x, y]
+    peak_concentration: float = 1.0
+    diffusion_radius: float = 1.5
+    chemical_type: str = "attractant"  # or "repellent"
+
+
+class ToxinRequest(BaseModel):
+    position: list[float] = [-0.5, -0.5]  # [x, y]
+    radius: float = 0.3
+    damage_rate: float = 5.0
+    name: str = "toxin"
+
+
+class TemperatureRequest(BaseModel):
+    cold_position: list[float] = [-1.5, 0.0]
+    hot_position: list[float] = [1.5, 0.0]
+    cold_temp: float = 15.0
+    hot_temp: float = 25.0
+    preferred_temp: float = 20.0
 
 
 class StepResponse(BaseModel):
@@ -299,6 +328,107 @@ async def trigger_event(eco_id: str, req: EnvironmentalEventRequest):
     eco.events.append(result)
     logger.info(f"Environmental event '{event_type}' triggered in {eco_id}")
     return result
+
+
+# --- Sensory world endpoints ---
+
+
+def _ensure_world(eco: Ecosystem) -> SensoryWorld:
+    """Lazily create a SensoryWorld if the ecosystem doesn't have one."""
+    if eco.world is None:
+        eco.world = SensoryWorld(arena_radius=eco.config.arena_radius)
+    return eco.world
+
+
+@router.post("/{eco_id}/gradient")
+async def add_gradient(eco_id: str, req: GradientRequest):
+    """Add a chemical gradient to the ecosystem's sensory world."""
+    eco = ecosystems.get(eco_id)
+    if eco is None:
+        raise HTTPException(404, f"Ecosystem {eco_id} not found")
+
+    world = _ensure_world(eco)
+    gradient = ChemicalGradient(
+        name=req.name,
+        source_position=tuple(req.source_position),
+        peak_concentration=req.peak_concentration,
+        diffusion_radius=req.diffusion_radius,
+        chemical_type=req.chemical_type,
+    )
+    world.add_gradient(gradient)
+    logger.info(f"Added gradient '{req.name}' to {eco_id}")
+    return {
+        "name": gradient.name,
+        "source_position": list(gradient.source_position),
+        "peak_concentration": gradient.peak_concentration,
+        "diffusion_radius": gradient.diffusion_radius,
+        "chemical_type": gradient.chemical_type,
+        "total_gradients": len(world.chemical_gradients),
+    }
+
+
+@router.post("/{eco_id}/toxin")
+async def add_toxin(eco_id: str, req: ToxinRequest):
+    """Add a toxic zone to the ecosystem's sensory world."""
+    eco = ecosystems.get(eco_id)
+    if eco is None:
+        raise HTTPException(404, f"Ecosystem {eco_id} not found")
+
+    world = _ensure_world(eco)
+    zone = ToxicZone(
+        position=tuple(req.position),
+        radius=req.radius,
+        damage_rate=req.damage_rate,
+        name=req.name,
+    )
+    world.add_toxic_zone(zone)
+    logger.info(f"Added toxic zone '{req.name}' to {eco_id}")
+    return {
+        "name": zone.name,
+        "position": list(zone.position),
+        "radius": zone.radius,
+        "damage_rate": zone.damage_rate,
+        "total_toxic_zones": len(world.toxic_zones),
+    }
+
+
+@router.post("/{eco_id}/temperature")
+async def set_temperature(eco_id: str, req: TemperatureRequest):
+    """Set the temperature field for the ecosystem's sensory world."""
+    eco = ecosystems.get(eco_id)
+    if eco is None:
+        raise HTTPException(404, f"Ecosystem {eco_id} not found")
+
+    world = _ensure_world(eco)
+    field = TemperatureField(
+        cold_position=tuple(req.cold_position),
+        hot_position=tuple(req.hot_position),
+        cold_temp=req.cold_temp,
+        hot_temp=req.hot_temp,
+        preferred_temp=req.preferred_temp,
+    )
+    world.set_temperature(field)
+    logger.info(f"Set temperature field in {eco_id}: {req.cold_temp}C - {req.hot_temp}C")
+    return {
+        "cold_position": list(field.cold_position),
+        "hot_position": list(field.hot_position),
+        "cold_temp": field.cold_temp,
+        "hot_temp": field.hot_temp,
+        "preferred_temp": field.preferred_temp,
+    }
+
+
+@router.get("/{eco_id}/world")
+async def get_world(eco_id: str):
+    """Get the full sensory world state for visualization."""
+    eco = ecosystems.get(eco_id)
+    if eco is None:
+        raise HTTPException(404, f"Ecosystem {eco_id} not found")
+
+    if eco.world is None:
+        return {"eco_id": eco_id, "world": None, "message": "No sensory world configured"}
+
+    return {"eco_id": eco_id, "world": eco.world.get_state()}
 
 
 # --- Timeline endpoint for dashboard ---
