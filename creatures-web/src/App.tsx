@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { Scene } from './components/Scene';
 import { NeuralActivityDisplay } from './components/ui/NeuralActivityDisplay';
 import { Waveform } from './components/ui/Waveform';
@@ -17,6 +17,12 @@ export default function App() {
 
   const [lesionInput, setLesionInput] = useState('');
   const [stimInput, setStimInput] = useState('');
+  const [notification, setNotification] = useState<string | null>(null);
+
+  const notify = (msg: string) => {
+    setNotification(msg);
+    setTimeout(() => setNotification(null), 2000);
+  };
 
   const handleStart = useCallback(async (organism: string) => {
     const exp = await createExperiment(organism);
@@ -25,23 +31,38 @@ export default function App() {
 
   const handleLesion = useCallback((id: string) => {
     sendCommand({ type: 'lesion_neuron', neuron_id: id });
+    notify(`Lesioned ${id} — all synapses removed`);
   }, [sendCommand]);
+
+  const handlePoke = useCallback((segment: string) => {
+    poke(segment);
+    notify(`Poke ${segment === 'seg_8' ? 'tail' : 'head'} — touch neurons activated`);
+  }, [poke]);
+
+  const handleStim = useCallback((ids: string[]) => {
+    stimulate(ids, 30);
+    notify(`Stimulating ${ids.join(', ')} — 30mV current`);
+  }, [stimulate]);
 
   return (
     <div className="app-root">
+      {/* Notification */}
+      {notification && <div className="notify">{notification}</div>}
+
       {/* Header */}
       <header className="app-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.3px' }}>Creatures</div>
-            <div style={{ fontSize: 10, color: 'var(--text-label)' }}>
-              Virtual organisms powered by real brain wiring
+            <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.3px',
+              background: 'linear-gradient(135deg, #e0eaf0, #88ccff)',
+              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              Creatures
             </div>
           </div>
           {experiment && (
-            <div style={{ display: 'flex', gap: 16, marginLeft: 24, fontSize: 12, fontFamily: 'var(--font-mono)' }}>
+            <div style={{ display: 'flex', gap: 16, marginLeft: 16, fontSize: 12, fontFamily: 'var(--font-mono)' }}>
               <span style={{ color: 'var(--text-label)' }}>
-                {experiment.organism === 'drosophila' ? 'Drosophila' : 'C. elegans'}
+                {experiment.organism === 'drosophila' ? 'Drosophila melanogaster' : 'Caenorhabditis elegans'}
               </span>
               <span style={{ color: 'var(--accent-cyan)' }}>{experiment.n_neurons.toLocaleString()} neurons</span>
               <span style={{ color: 'var(--text-label)' }}>{experiment.n_synapses.toLocaleString()} synapses</span>
@@ -49,14 +70,16 @@ export default function App() {
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
-          <div style={{
-            width: 7, height: 7, borderRadius: '50%',
-            background: connected ? 'var(--accent-green)' : 'var(--accent-magenta)',
-            boxShadow: connected ? '0 0 8px var(--accent-green)' : 'none',
-          }} />
-          <span style={{ color: 'var(--text-secondary)' }}>
-            {connected ? 'Live' : 'Disconnected'}
-          </span>
+          {connected && (
+            <>
+              <div style={{
+                width: 6, height: 6, borderRadius: '50%',
+                background: 'var(--accent-green)',
+                boxShadow: '0 0 8px var(--accent-green)',
+              }} />
+              <span style={{ color: 'var(--text-secondary)' }}>Live</span>
+            </>
+          )}
           {frame && (
             <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-label)' }}>
               {frame.t_ms.toFixed(0)}ms
@@ -69,30 +92,7 @@ export default function App() {
       <div className="app-content">
         {/* Left sidebar */}
         <div className="sidebar">
-          {/* Organism selector or controls */}
-          {!experiment ? (
-            <div className="glass">
-              <div className="glass-label">Select Organism</div>
-              {loading ? (
-                <div style={{ padding: '20px 0', textAlign: 'center' }}>
-                  <div className="spinner" />
-                  <div style={{ fontSize: 11, color: 'var(--text-label)', marginTop: 8 }}>
-                    Building neural network...
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {error && <div style={{ fontSize: 10, color: 'var(--accent-magenta)' }}>{error}</div>}
-                  <button className="btn btn-primary" onClick={() => handleStart('c_elegans')}>
-                    C. elegans — 299 neurons
-                  </button>
-                  <button className="btn btn-amber" onClick={() => handleStart('drosophila')}>
-                    Fruit Fly — 1,000 neurons
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
+          {experiment && (
             <>
               {/* Stats */}
               <div className="glass">
@@ -110,11 +110,9 @@ export default function App() {
                 <div className="stat-row">
                   <span className="stat-label">Displacement</span>
                   <span className="stat-value stat-green">
-                    {history.length > 0 ? history[history.length - 1].displacement.toFixed(4) : '0.0000'}
+                    {history.length > 0 ? history[history.length - 1].displacement.toFixed(4) : '—'}
                   </span>
                 </div>
-
-                {/* Mini sparkline */}
                 <div style={{ height: 36, display: 'flex', alignItems: 'flex-end', gap: 1, marginTop: 8 }}>
                   {history.slice(-60).map((h, i) => (
                     <div key={i} style={{
@@ -122,7 +120,7 @@ export default function App() {
                       height: `${Math.min(100, h.n_active * 2)}%`,
                       background: h.n_active > 10
                         ? `hsl(${190 - Math.min(h.n_active, 50)}, 85%, 55%)`
-                        : h.n_active > 0 ? '#1a4466' : 'rgba(255,255,255,0.02)',
+                        : h.n_active > 0 ? '#1a4466' : 'rgba(255,255,255,0.015)',
                       borderRadius: '1px 1px 0 0',
                       minHeight: 1,
                     }} />
@@ -132,12 +130,12 @@ export default function App() {
 
               {/* Controls */}
               <div className="glass">
-                <div className="glass-label">Controls</div>
+                <div className="glass-label">Interaction</div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => poke('seg_8')}>
+                  <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => handlePoke('seg_8')}>
                     Poke Tail
                   </button>
-                  <button className="btn btn-amber" style={{ flex: 1 }} onClick={() => poke('seg_2')}>
+                  <button className="btn btn-amber" style={{ flex: 1 }} onClick={() => handlePoke('seg_2')}>
                     Poke Head
                   </button>
                 </div>
@@ -149,8 +147,8 @@ export default function App() {
 
               {/* Neuron tools */}
               <div className="glass">
-                <div className="glass-label">Neuron Tools</div>
-                <div style={{ fontSize: 10, color: 'var(--text-label)', marginBottom: 4 }}>Lesion (remove synapses)</div>
+                <div className="glass-label">Neuron Surgery</div>
+                <div style={{ fontSize: 10, color: 'var(--text-label)', marginBottom: 4 }}>Lesion neuron</div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <input className="input" placeholder="AVAL" value={lesionInput}
                     onChange={(e) => setLesionInput(e.target.value.toUpperCase())}
@@ -159,12 +157,12 @@ export default function App() {
                     Cut
                   </button>
                 </div>
-                <div style={{ fontSize: 10, color: 'var(--text-label)', marginTop: 8, marginBottom: 4 }}>Stimulate (inject current)</div>
+                <div style={{ fontSize: 10, color: 'var(--text-label)', marginTop: 8, marginBottom: 4 }}>Stimulate neuron</div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <input className="input" placeholder="PLML" value={stimInput}
                     onChange={(e) => setStimInput(e.target.value.toUpperCase())}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && stimInput) { stimulate([stimInput], 30); setStimInput(''); }}} />
-                  <button className="btn btn-primary" onClick={() => { if (stimInput) { stimulate([stimInput], 30); setStimInput(''); }}}>
+                    onKeyDown={(e) => { if (e.key === 'Enter' && stimInput) { handleStim([stimInput]); setStimInput(''); }}} />
+                  <button className="btn btn-primary" onClick={() => { if (stimInput) { handleStim([stimInput]); setStimInput(''); }}}>
                     Zap
                   </button>
                 </div>
@@ -176,17 +174,63 @@ export default function App() {
         {/* 3D Viewport */}
         <div className="viewport">
           <Scene />
+
+          {/* Welcome overlay (before experiment starts) */}
+          {!experiment && (
+            <div className="welcome-overlay">
+              <div className="welcome-card">
+                {loading ? (
+                  <>
+                    <div className="spinner" style={{ width: 32, height: 32, borderWidth: 3, margin: '0 auto 16px' }} />
+                    <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>Building neural network...</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-label)', marginTop: 4 }}>
+                      Compiling spiking neurons from real connectome data
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="welcome-title">Creatures</div>
+                    <div className="welcome-sub">
+                      Virtual organisms powered by real brain wiring.<br />
+                      Select an organism to bring it to life.
+                    </div>
+                    {error && <div style={{ fontSize: 11, color: 'var(--accent-magenta)', marginBottom: 12 }}>{error}</div>}
+                    <div className="welcome-buttons">
+                      <button className="welcome-btn welcome-btn-worm" onClick={() => handleStart('c_elegans')}>
+                        <div>
+                          <div className="welcome-btn-label">C. elegans</div>
+                          <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>Nematode worm — the first fully mapped brain</div>
+                        </div>
+                        <div className="welcome-btn-detail">299 neurons<br/>3,363 synapses</div>
+                      </button>
+                      <button className="welcome-btn welcome-btn-fly" onClick={() => handleStart('drosophila')}>
+                        <div>
+                          <div className="welcome-btn-label">Drosophila</div>
+                          <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>Fruit fly central complex — navigation circuit</div>
+                        </div>
+                        <div className="welcome-btn-detail">1,000 neurons<br/>15K+ synapses</div>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right sidebar */}
         <div className="sidebar sidebar-right">
-          <NeuralActivityDisplay />
+          {experiment && <NeuralActivityDisplay />}
         </div>
       </div>
 
       {/* Bottom waveform */}
       <div className="bottom-bar">
-        <Waveform />
+        {experiment ? <Waveform /> : (
+          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-label)' }}>Neural oscilloscope — select an organism to begin</span>
+          </div>
+        )}
       </div>
     </div>
   );
