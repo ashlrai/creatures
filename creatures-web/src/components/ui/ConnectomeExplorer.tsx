@@ -47,7 +47,6 @@ export function ConnectomeExplorer() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const frame = useSimulationStore((s) => s.frame);
-  const sendCommand = useSimulationStore((s) => s.experiment); // just for presence check
 
   const [graph, setGraph] = useState<ConnectomeGraph | null>(null);
   const [neuronTypes, setNeuronTypes] = useState<Record<string, NeuronTypeInfo>>({});
@@ -413,45 +412,33 @@ export function ConnectomeExplorer() {
     return () => observer.disconnect();
   }, [graph, computeLayout]);
 
-  // ── Derive selected neuron info ──────────────────────────────────────────
+  // ── Neuron info lookup ───────────────────────────────────────────────────
 
-  const selectedInfo = selectedNeuron ? (() => {
-    const node = graph?.nodes.find((n) => n.id === selectedNeuron);
-    const typeInfo = neuronTypes[selectedNeuron];
-    const rate = (() => {
-      if (!frame?.firing_rates || !graph) return 0;
-      const idx = graph.nodes.findIndex((n) => n.id === selectedNeuron);
-      return idx >= 0 ? frame.firing_rates[idx] ?? 0 : 0;
-    })();
-    const inDeg = adjRef.current.inDeg.get(selectedNeuron) ?? 0;
-    const outDeg = adjRef.current.outDeg.get(selectedNeuron) ?? 0;
+  function getNeuronInfo(neuronId: string) {
+    const node = graph?.nodes.find((n) => n.id === neuronId);
+    const typeInfo = neuronTypes[neuronId];
+    let rate = 0;
+    if (frame?.firing_rates && graph) {
+      const idx = graph.nodes.findIndex((n) => n.id === neuronId);
+      if (idx >= 0) rate = frame.firing_rates[idx] ?? 0;
+    }
     return {
-      name: selectedNeuron,
-      type: node?.type ?? typeInfo?.type ?? 'unknown',
-      nt: node?.nt ?? typeInfo?.nt ?? 'unknown',
-      rate,
-      inDeg,
-      outDeg,
-    };
-  })() : null;
-
-  // ── Tooltip info ─────────────────────────────────────────────────────────
-
-  const tooltipInfo = hoveredNeuron && hoveredNeuron !== selectedNeuron ? (() => {
-    const node = graph?.nodes.find((n) => n.id === hoveredNeuron);
-    const typeInfo = neuronTypes[hoveredNeuron];
-    const rate = (() => {
-      if (!frame?.firing_rates || !graph) return 0;
-      const idx = graph.nodes.findIndex((n) => n.id === hoveredNeuron);
-      return idx >= 0 ? frame.firing_rates[idx] ?? 0 : 0;
-    })();
-    return {
-      name: hoveredNeuron,
+      name: neuronId,
       type: node?.type ?? typeInfo?.type ?? 'unknown',
       nt: node?.nt ?? typeInfo?.nt ?? 'unknown',
       rate,
     };
-  })() : null;
+  }
+
+  const selectedInfo = selectedNeuron ? {
+    ...getNeuronInfo(selectedNeuron),
+    inDeg: adjRef.current.inDeg.get(selectedNeuron) ?? 0,
+    outDeg: adjRef.current.outDeg.get(selectedNeuron) ?? 0,
+  } : null;
+
+  const tooltipInfo = hoveredNeuron && hoveredNeuron !== selectedNeuron
+    ? getNeuronInfo(hoveredNeuron)
+    : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>

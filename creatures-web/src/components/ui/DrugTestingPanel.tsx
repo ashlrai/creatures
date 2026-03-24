@@ -58,9 +58,6 @@ const GABA_NEURONS = [
   'AVL', 'DVA', 'DVB', 'DVC', 'RIAL', 'RIAR', 'RIS', 'RIVL', 'RIVR', 'RMED', 'RMEL', 'RMER', 'RMEV', 'RID', 'BDUL', 'BDUR',
 ];
 
-const MOTOR_NEURONS: string[] = [];
-const ACH_NEURONS: string[] = [];
-
 // ── Component ────────────────────────────────────────────────────────────────
 
 interface DrugTestingPanelProps {
@@ -73,6 +70,8 @@ export function DrugTestingPanel({ isDemo }: DrugTestingPanelProps) {
   const [appliedDrug, setAppliedDrug] = useState<string | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
   const [neuronTypes, setNeuronTypes] = useState<Record<string, { type: string; nt: string | null }>>({});
+  const [motorNeurons, setMotorNeurons] = useState<string[]>([]);
+  const [achNeurons, setAchNeurons] = useState<string[]>([]);
 
   // Load neuron types to resolve which neurons to target
   useEffect(() => {
@@ -82,13 +81,14 @@ export function DrugTestingPanel({ isDemo }: DrugTestingPanelProps) {
       .then((data: Record<string, { type: string; nt: string | null }>) => {
         setNeuronTypes(data);
 
-        // Populate motor & ACh neuron lists
-        MOTOR_NEURONS.length = 0;
-        ACH_NEURONS.length = 0;
+        const motors: string[] = [];
+        const achs: string[] = [];
         for (const [id, info] of Object.entries(data)) {
-          if (info.type === 'motor') MOTOR_NEURONS.push(id);
-          if (info.nt === 'Acetylcholine' || info.nt === 'ACh') ACH_NEURONS.push(id);
+          if (info.type === 'motor') motors.push(id);
+          if (info.nt === 'Acetylcholine' || info.nt === 'ACh') achs.push(id);
         }
+        setMotorNeurons(motors);
+        setAchNeurons(achs);
       })
       .catch(() => {});
   }, []);
@@ -127,7 +127,7 @@ export function DrugTestingPanel({ isDemo }: DrugTestingPanelProps) {
       }
       case 'stimulate_by_nt': {
         // Stimulate all ACh neurons
-        const neurons = ACH_NEURONS.length > 0 ? ACH_NEURONS : Object.entries(neuronTypes)
+        const neurons = achNeurons.length > 0 ? achNeurons : Object.entries(neuronTypes)
           .filter(([, info]) => info.nt === 'Acetylcholine' || info.nt === 'ACh')
           .map(([id]) => id);
         sendWsCommand({ type: 'stimulate', neuron_ids: neurons, current });
@@ -136,7 +136,7 @@ export function DrugTestingPanel({ isDemo }: DrugTestingPanelProps) {
       }
       case 'stimulate_type': {
         // Stimulate all motor neurons
-        const neurons = MOTOR_NEURONS.length > 0 ? MOTOR_NEURONS : Object.entries(neuronTypes)
+        const neurons = motorNeurons.length > 0 ? motorNeurons : Object.entries(neuronTypes)
           .filter(([, info]) => info.type === 'motor')
           .map(([id]) => id);
         sendWsCommand({ type: 'stimulate', neuron_ids: neurons, current });
@@ -149,7 +149,7 @@ export function DrugTestingPanel({ isDemo }: DrugTestingPanelProps) {
       }
     }
     setAppliedDrug(drug.name);
-  }, [doses, neuronTypes, sendWsCommand]);
+  }, [doses, neuronTypes, motorNeurons, achNeurons, sendWsCommand]);
 
   const handleReset = useCallback(() => {
     // Send a reset command (best-effort -- depends on backend support)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import uuid
 from datetime import datetime
@@ -24,6 +23,13 @@ def _mgr() -> EvolutionManager:
     if manager is None:
         raise RuntimeError("EvolutionManager not initialized")
     return manager
+
+
+def _get(obj: Any, key: str, default: Any = None) -> Any:
+    """Extract a field from either a dict or an object with attributes."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
 
 
 class AnalyzeRequest(BaseModel):
@@ -79,19 +85,12 @@ async def analyze(req: AnalyzeRequest):
 
         result = await god.analyze_and_intervene()
 
-        # The result might be a dict or a dataclass
-        if isinstance(result, dict):
-            analysis = result.get('analysis', 'No analysis available')
-            trend = result.get('fitness_trend', 'unknown')
-            interventions = result.get('interventions', [])
-            hypothesis = result.get('hypothesis', 'No hypothesis')
-            report_text = result.get('report', analysis)
-        else:
-            analysis = getattr(result, 'analysis', 'No analysis available')
-            trend = getattr(result, 'fitness_trend', 'unknown')
-            interventions = getattr(result, 'interventions', [])
-            hypothesis = getattr(result, 'hypothesis', 'No hypothesis')
-            report_text = getattr(result, 'report', analysis)
+        # Extract fields uniformly whether result is a dict or dataclass
+        analysis = _get(result, 'analysis', 'No analysis available')
+        trend = _get(result, 'fitness_trend', 'unknown')
+        interventions = _get(result, 'interventions', [])
+        hypothesis = _get(result, 'hypothesis', 'No hypothesis')
+        report_text = _get(result, 'report', analysis)
 
         # Convert intervention objects to dicts if needed
         intervention_dicts = []
@@ -166,8 +165,7 @@ async def get_status():
     for r in reversed(runs):
         reports = getattr(r, 'god_reports', []) or []
         if reports:
-            last = reports[-1]
-            latest_hypothesis = last.get('hypothesis') if isinstance(last, dict) else getattr(last, 'hypothesis', None)
+            latest_hypothesis = _get(reports[-1], 'hypothesis')
             break
 
     return {
