@@ -8,8 +8,10 @@ on:
 
 jobs:
   test-python:
-    name: Python Tests
+    name: Python Tests (255)
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: creatures-core:creatures-api
     steps:
       - uses: actions/checkout@v4
 
@@ -28,7 +30,7 @@ jobs:
       - name: Install creatures-core[dev]
         run: pip install -e "./creatures-core[dev]"
 
-      - name: Run pytest
+      - name: Run full test suite
         run: python -m pytest creatures-core/tests/ -v --tb=short
 
   check-typescript:

@@ -214,7 +214,7 @@ async def batch_screen(sim_id: str, req: BatchScreenRequest):
         nt = neuron.neurotransmitter
         key = nt.upper() if nt else "__GLOBAL__"
         out_degree = sum(
-            1 for edge in connectome.edges if edge.pre_id == nid
+            1 for edge in connectome.synapses if edge.pre_id == nid
         )
         nt_synapse_counts[key] = nt_synapse_counts.get(key, 0) + out_degree
         total_synapses += out_degree

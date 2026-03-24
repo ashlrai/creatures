@@ -2,30 +2,16 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/Tests-183%20passing-brightgreen.svg)](https://github.com/ashlrai/creatures/actions)
+[![Tests](https://img.shields.io/badge/Tests-255%20passing-brightgreen.svg)](https://github.com/ashlrai/creatures/actions)
+[![Endpoints](https://img.shields.io/badge/API-70%20endpoints-orange.svg)](https://neurevo.dev)
+[![Brian2](https://img.shields.io/badge/Brian2-SNN-blueviolet.svg)](https://brian2.readthedocs.io/)
+[![MuJoCo](https://img.shields.io/badge/MuJoCo-Physics-red.svg)](https://mujoco.org/)
 
-# Neurevo
-
-**Evolving real brains. Understanding life.**
+# Neurevo -- Simulate Real Brains. Evolve New Life.
 
 **[neurevo.dev](https://neurevo.dev)**
 
-Neurevo is a neuroevolution platform built on real biological connectome data. It takes the complete C. elegans wiring diagram -- 299 neurons, 3,363 synapses -- runs it as a spiking neural network inside a physics-simulated body, and evolves populations across generations using natural selection and ML-accelerated optimization. The first platform to perform evolutionary optimization starting from real biological neural architectures.
-
----
-
-## Key Features
-
-- **Real C. elegans connectome** -- 299 neurons, 3,363 synapses from OpenWorm/Cook et al. 2019
-- **Spiking neural network simulation** -- Brian2 leaky integrate-and-fire engine, calibrated to Shiu et al. 2024
-- **3D MuJoCo physics body** -- 12-segment worm with real motor neuron-to-muscle mappings
-- **Neuroevolution from biological templates** -- mutate, crossover, and select on real connectome architectures
-- **AI God Agent** -- xAI/Grok-powered intelligent evolution oversight with narrative generation
-- **8 pharmacological drugs** -- receptor-level targeting (levamisole, ivermectin, aldicarb, and more)
-- **101 neurons with gene expression data** -- CeNGEN single-cell RNA-seq receptor/ion channel profiles
-- **75% behavioral accuracy** -- validated against real C. elegans biology (chemotaxis, withdrawal reflex, omega turns)
-- **Interactive 3D web visualization** -- React + Three.js real-time brain-body rendering
-- **Publication-quality scientific reports** -- automated PDF/HTML generation with statistical analysis
+Neurevo is a multi-organism neuroevolution platform built on real biological connectome data. It runs the complete C. elegans nervous system (299 neurons, OpenWorm) and a Drosophila brain circuit (500 neurons, FlyWire v783) as spiking neural networks inside physics-simulated bodies, then evolves populations across generations using NEAT neuroevolution and AI-guided selection. Three modes of operation -- **Simulation**, **Evolution**, and **Ecosystem** -- let you probe individual neural circuits, breed new organisms, or watch entire food webs emerge. The first platform to perform evolutionary optimization starting from real biological neural architectures.
 
 ---
 
@@ -33,128 +19,219 @@ Neurevo is a neuroevolution platform built on real biological connectome data. I
 
 ```bash
 git clone https://github.com/ashlrai/creatures.git && cd creatures
-make setup
-make dev        # API on :8420, frontend on :5173
+make setup        # Python venv, npm install, Cython compilation
+make dev          # API on :8420, frontend on :5173
 ```
 
 Open [http://localhost:5173](http://localhost:5173) to see the live simulation.
+
+```bash
+make test         # 255 tests across core, API, and frontend
+```
+
+---
+
+## Three Modes
+
+### Simulation
+
+Run a single organism's brain-body loop in real time. Stimulate neurons, apply drugs, observe spike cascades and motor output in the 3D viewer.
+
+### Evolution
+
+Launch NEAT neuroevolution from a real connectome template. The God Agent (xAI/Grok) evaluates populations, narrates selection events, and guides evolution toward configurable fitness targets.
+
+### Ecosystem
+
+Populate an arena with multiple organisms. Predator/prey dynamics, food webs, reproduction, and competition emerge from individual neural circuits interacting through a shared physics environment.
 
 ---
 
 ## Architecture
 
 ```
-                    +------------------+
-                    |   creatures-web  |    React + Three.js
-                    |   (Frontend)     |    Real-time 3D visualization
-                    +--------+---------+
-                             |
-                        WebSocket / REST
-                             |
-                    +--------+---------+
-                    |  creatures-api   |    FastAPI
-                    |   (Backend)      |    Simulation lifecycle, export, evolution
-                    +--------+---------+
-                             |
-              +--------------+--------------+
-              |                             |
-     +--------+--------+          +--------+--------+
-     |  Neural Engine   |          |   Physics Body   |
-     |  (Brian2 SNN)    |          |   (MuJoCo)       |
-     +--------+---------+          +--------+---------+
-              |                             |
-     +--------+---------+          +--------+---------+
-     |   Connectome      |          |   Environment    |
-     |   (OpenWorm data) |          |   (Arena/Sensors)|
-     +---------+---------+          +------------------+
-              |
-     +--------+---------+
-     |   Evolution       |    Mutation, crossover, fitness,
-     |   + God Agent     |    population management, AI oversight
-     +-------------------+
+                         +-------------------+
+                         |   creatures-web   |   React 18 + Three.js
+                         |    (Frontend)     |   3D bodies, spike particles,
+                         +---------+---------+   neuron tooltips, dashboards
+                                   |
+                              WS / REST  (70 endpoints)
+                                   |
+                         +---------+---------+
+                         |   creatures-api   |   FastAPI + WebSocket
+                         |    (Backend)      |   Simulation lifecycle,
+                         +---------+---------+   evolution, ecosystem mgmt
+                                   |
+                +------------------+------------------+
+                |                  |                  |
+       +--------+-------+ +-------+--------+ +-------+--------+
+       |  Neural Engine  | |  Physics Body  | |   Ecosystem    |
+       |  (Brian2 SNN)   | |   (MuJoCo)     | |  (Multi-org)   |
+       +--------+--------+ +-------+--------+ +-------+--------+
+                |                  |                  |
+       +--------+--------+ +------+--------+  +------+--------+
+       |   Connectome     | |  WormBody     |  |  Food Webs    |
+       | OpenWorm / FlyWire| | NeuroMechFly |  |  Predator/Prey|
+       +--------+---------+ +------+--------+  +---------------+
+                |
+       +--------+---------+
+       |   Evolution       |   NEAT mutation/crossover/selection
+       |   + God Agent     |   xAI/Grok narratives (8 event types)
+       +-------------------+
 ```
 
 ```
 creatures/
-├── creatures-core/             # Python library (pip installable)
+├── creatures-core/             # Python library
 │   └── creatures/
-│       ├── connectome/         # Connectome loaders + gene expression
-│       ├── neural/             # Brian2 spiking engine + pharmacology
-│       ├── body/               # MuJoCo physics bodies
-│       ├── evolution/          # Genome, mutation, crossover, fitness, population
-│       ├── god/                # AI God Agent (xAI/Grok) + narrator
+│       ├── connectome/         # OpenWorm + FlyWire loaders, gene expression
+│       ├── neural/             # Brian2 engine, pharmacology (8 drugs)
+│       ├── body/               # WormBody + NeuroMechFly (MuJoCo)
+│       ├── evolution/          # NEAT genome, mutation, crossover, fitness
+│       ├── god/                # God Agent (xAI/Grok), narrator, 8 event types
 │       ├── environment/        # Arena, sensors, chemical gradients
 │       ├── experiment/         # Brain-body simulation runner
-│       ├── reporting/          # Scientific report generation
+│       ├── ecosystem/          # Multi-organism, food webs, reproduction
+│       ├── analysis/           # Circuit analysis, community detection, motifs
+│       ├── reporting/          # PDF/HTML scientific reports
 │       └── ml/                 # ML-accelerated optimization
-├── creatures-api/              # FastAPI server
+├── creatures-api/              # FastAPI server (70 endpoints)
 │   └── app/
-│       ├── routers/            # REST + WebSocket endpoints
-│       └── services/           # Simulation lifecycle management
-├── creatures-web/              # React + Three.js frontend
+│       ├── routers/            # REST + WebSocket (12 router modules)
+│       └── services/           # Simulation & evolution managers
+├── creatures-web/              # React + Three.js + TypeScript frontend
 │   └── src/
-│       ├── components/         # 3D scene, worm body, dashboard
-│       ├── hooks/              # WebSocket + demo mode hooks
+│       ├── components/         # 3D scene, neuron detail panel, dashboards
+│       ├── hooks/              # WebSocket, demo mode, URL routing
 │       └── stores/             # Zustand state management
 ├── notebooks/                  # Jupyter demos
-└── scripts/                    # CLI tools (evolution, validation, reports)
+└── scripts/                    # CLI: evolution, validation, reports
 ```
 
 ---
 
-## Run Evolution
+## API Reference
 
-```bash
-# Run 50 generations of neuroevolution from the C. elegans connectome
-python scripts/run_evolution.py --generations 50 --population 20
+70 endpoints across REST and WebSocket. Key routes:
 
-# Run with the AI God Agent overseeing evolution
-python scripts/run_evolution.py --generations 100 --god-agent
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/experiments` | Create a simulation (C. elegans or Drosophila) |
+| `GET` | `/experiments/{id}` | Experiment state and neural metrics |
+| `WS` | `/ws/{id}` | Real-time spikes, body state, muscle activation |
+| `POST` | `/evolution/start` | Launch NEAT evolution run |
+| `GET` | `/evolution/status` | Generation, fitness, population stats |
+| `POST` | `/evolution/select` | Manual or God Agent selection |
+| `POST` | `/god/evaluate` | AI evaluation of current population |
+| `GET` | `/god/narrative` | Rich narrative feed (8 event types) |
+| `GET` | `/neurons` | Neuron metadata, types, positions |
+| `GET` | `/neurons/{id}` | Single neuron detail with gene expression |
+| `POST` | `/pharmacology/apply` | Apply drug at dose (Hill equation) |
+| `GET` | `/pharmacology/drugs` | Available drugs with dose-response curves |
+| `GET` | `/analysis/circuits` | Shortest paths, hubs, communities, motifs |
+| `GET` | `/metrics/synchrony` | Real-time synchrony and oscillation data |
+| `POST` | `/ecosystem/create` | Create multi-organism ecosystem |
+| `GET` | `/ecosystem/{id}/status` | Food web, population counts, interactions |
+| `POST` | `/export/{id}` | Export data (JSON/CSV) |
 
-# Validate simulation against known C. elegans behaviors
-python scripts/validate_simulation.py
+Full interactive docs at `http://localhost:8420/docs`.
 
-# Generate a scientific report from evolution results
-python scripts/generate_report.py --input evolution_results/
+---
+
+## Pharmacology
+
+Eight drugs with receptor-level targeting and Hill equation dose-response curves:
+
+```
+response = dose^n / (EC50^n + dose^n)
 ```
 
-### Python API
+| Drug | Target | Effect | EC50 |
+|------|--------|--------|------|
+| Picrotoxin | GABA-A | Blocks inhibitory transmission | 0.5 |
+| Aldicarb | AChE | Enhances cholinergic signaling (paralysis) | 0.8 |
+| Levamisole | nAChR | Agonist, muscle hypercontraction | -- |
+| Muscimol | GABA-A | Agonist, inhibitory enhancement | -- |
+| Dopamine | DA receptors | Modulates locomotion and reward | -- |
+| Serotonin | 5-HT receptors | Modulates feeding and egg-laying | -- |
+| Ivermectin | GluCl | Irreversible paralysis | -- |
+| Nemadipine | L-type Ca2+ | Blocks calcium channels, reduces activity | -- |
 
-```python
-from creatures.connectome.openworm import load
-from creatures.neural.brian2_engine import Brian2Engine
-from creatures.neural.base import NeuralConfig
-from creatures.body.worm_body import WormBody
-from creatures.experiment.runner import SimulationRunner
+Apply drugs through the API or frontend. The dose-response panel shows real-time sigmoidal curves as you adjust concentration.
 
-# Load the real connectome
-connectome = load("edge_list")  # 299 neurons, 3,363 synapses
+---
 
-# Build a spiking neural network
-engine = Brian2Engine()
-engine.build(connectome, NeuralConfig(weight_scale=3.0))
+## God Agent
 
-# Connect brain to body
-body = WormBody()
-runner = SimulationRunner(engine, body)
-runner.poke("seg_8")  # Touch the posterior
-runner.run(200)        # Watch the withdrawal reflex emerge
-```
+The God Agent is an xAI/Grok-powered AI that oversees evolution with rich narratives. It evaluates populations, makes selection decisions, and generates stories about the organisms it governs.
+
+**8 narrative event types:** birth, death, mutation, selection, extinction, speciation, adaptation, and divine intervention.
+
+The God Agent can:
+- Evaluate organism fitness with biological reasoning
+- Choose which organisms reproduce or are culled
+- Trigger environmental pressures (droughts, predators, resource scarcity)
+- Generate rich narratives that explain evolutionary dynamics
+- Intervene directly to accelerate or redirect evolution
+
+---
+
+## Ecosystem
+
+Multi-organism simulations with emergent dynamics:
+
+- **Predator/prey interactions** -- organisms hunt, flee, and compete
+- **Food webs** -- energy flows through trophic levels
+- **Reproduction** -- organisms that meet fitness thresholds can reproduce
+- **Resource competition** -- shared food sources drive selection pressure
+- **Species tracking** -- monitor population dynamics across generations
+
+---
+
+## Circuit Analysis
+
+Analyze neural circuit topology and dynamics in real time:
+
+- **Shortest paths** between any two neurons
+- **Hub neuron detection** -- identify the most connected/influential neurons
+- **Community detection** -- find functional clusters within the connectome
+- **Network motifs** -- recurring circuit patterns (feedforward, feedback, mutual inhibition)
+- **Synchrony metrics** -- measure correlated firing across neural populations
+- **Oscillation detection** -- identify rhythmic activity patterns
+- **Firing rate analysis** -- per-neuron and population-level statistics
 
 ---
 
 ## Scientific Validation
 
-Simulation outputs validated against published C. elegans behavioral data:
+Simulation validated against published C. elegans behavioral data:
 
-| Behavior | Biological Reference | Simulated | Accuracy |
-|----------|---------------------|-----------|----------|
-| Touch withdrawal (posterior) | Chalfie et al. 1985 | Backward locomotion within 200ms | 85% |
-| Chemotaxis (NaCl gradient) | Bargmann & Horvitz 1991 | Biased random walk toward source | 72% |
-| Omega turn | Gray et al. 2005 | Head-to-tail body bend | 70% |
-| Pharyngeal pumping rate | Avery & Horvitz 1989 | 3.5 Hz baseline | 78% |
-| Forward/reverse ratio | Zheng et al. 1999 | ~3:1 forward bias | 71% |
-| **Overall** | | | **75%** |
+| Behavior | Reference | Accuracy |
+|----------|-----------|----------|
+| Touch withdrawal (posterior) | Chalfie et al. 1985 | 85% |
+| Chemotaxis (NaCl gradient) | Bargmann & Horvitz 1991 | 72% |
+| Omega turn | Gray et al. 2005 | 70% |
+| Pharyngeal pumping rate | Avery & Horvitz 1989 | 78% |
+| Forward/reverse ratio | Zheng et al. 1999 | 71% |
+| **Overall** | | **75%** |
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Neural simulation | [Brian2](https://brian2.readthedocs.io/) with Cython backend (4x speedup) |
+| Physics engine | [MuJoCo](https://mujoco.org/) -- WormBody + NeuroMechFly |
+| Neuroevolution | NEAT with organism-agnostic fitness functions |
+| Backend | [FastAPI](https://fastapi.tiangolo.com/) + WebSocket (70 endpoints) |
+| Frontend | [React 18](https://react.dev/) + [Three.js](https://threejs.org/) + TypeScript |
+| State management | [Zustand](https://zustand-demo.pmnd.rs/) |
+| AI God Agent | [xAI Grok](https://x.ai/) -- evolution oversight + rich narratives |
+| Connectome data | [OpenWorm](https://openworm.org/) (C. elegans), [FlyWire](https://flywire.ai/) v783 (Drosophila) |
+| Gene expression | [CeNGEN](https://cengen.org/) single-cell RNA-seq (101 neuron classes) |
+| Build tooling | Vite, Cython, Make |
+| Testing | pytest (Python), Vitest (TypeScript) |
 
 ---
 
@@ -163,66 +240,9 @@ Simulation outputs validated against published C. elegans behavioral data:
 | Source | Data | Size | Reference |
 |--------|------|------|-----------|
 | [OpenWorm](https://openworm.org/) | C. elegans connectome | 299 neurons, 3,363 synapses | Cook et al. 2019 |
-| [FlyWire](https://flywire.ai/) | Drosophila connectome | 139K neurons, 50M synapses | Dorkenwald et al. 2024 |
+| [FlyWire](https://flywire.ai/) | Drosophila connectome | 139K neurons (500 modeled) | Dorkenwald et al. 2024 |
 | [CeNGEN](https://cengen.org/) | Gene expression (scRNA-seq) | 101 neuron classes | Taylor et al. 2021 |
 | Shiu et al. 2024 | LIF parameter calibration | Biophysical constants | bioRxiv preprint |
-
----
-
-## API Reference
-
-The FastAPI server exposes REST and WebSocket endpoints:
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/experiments` | Create a new simulation experiment |
-| `GET` | `/experiments/{id}` | Get experiment state |
-| `WS` | `/ws/{id}` | Real-time WebSocket (spikes, body state, muscle activation) |
-| `POST` | `/evolution/start` | Launch an evolution run |
-| `GET` | `/evolution/status` | Current generation, fitness, population stats |
-| `POST` | `/god/evaluate` | AI God Agent evaluation of current population |
-| `GET` | `/neurons` | Neuron metadata, positions, types |
-| `GET` | `/morphology/{neuron_id}` | 3D neuron morphology data |
-| `POST` | `/export/{id}` | Export simulation data (JSON/CSV) |
-
-Full interactive docs available at `http://localhost:8420/docs` when the server is running.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| Neural simulation | [Brian2](https://brian2.readthedocs.io/) -- spiking neural networks |
-| Physics engine | [MuJoCo](https://mujoco.org/) -- multi-joint dynamics |
-| Backend | [FastAPI](https://fastapi.tiangolo.com/) + WebSocket streaming |
-| Frontend | [React](https://react.dev/) + [Three.js](https://threejs.org/) via React Three Fiber |
-| State management | [Zustand](https://zustand-demo.pmnd.rs/) |
-| AI God Agent | [xAI Grok](https://x.ai/) -- evolution oversight + narrative |
-| Connectome data | [OpenWorm](https://openworm.org/), [FlyWire](https://flywire.ai/), [CeNGEN](https://cengen.org/) |
-| Gene expression | CeNGEN single-cell RNA-seq |
-| Scientific reports | Matplotlib, Jinja2, WeasyPrint |
-| Testing | pytest, Vitest |
-
----
-
-## Contributing
-
-We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-Areas where help is most needed:
-
-- Additional organism support (zebrafish, mouse cortical columns)
-- Improved biophysical neuron models (Hodgkin-Huxley, multi-compartment)
-- New fitness functions and behavioral assays
-- Performance optimization for large-scale evolution runs
-- Documentation and scientific validation
-
----
-
-## License
-
-[MIT](LICENSE)
 
 ---
 
@@ -239,3 +259,24 @@ Areas where help is most needed:
 5. Lobato-Rios, V. et al. "NeuroMechFly v2, simulating embodied sensorimotor control in adult Drosophila." *Nature Methods* 21, 2295--2309 (2024). [doi:10.1038/s41592-024-02497-y](https://doi.org/10.1038/s41592-024-02497-y)
 
 6. Bargmann, C.I. & Horvitz, H.R. "Chemosensory neurons with overlapping functions direct chemotaxis to multiple chemicals in C. elegans." *Neuron* 7(5), 729--742 (1991). [doi:10.1016/0896-6273(91)90276-6](https://doi.org/10.1016/0896-6273(91)90276-6)
+
+---
+
+## Contributing
+
+We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+Areas where help is most needed:
+
+- **New organisms** -- zebrafish, mouse cortical columns, or other connectomes
+- **Neuron models** -- Hodgkin-Huxley, multi-compartment alongside existing LIF
+- **Fitness functions** -- foraging, learning tasks, social behavior assays
+- **Performance** -- GPU acceleration, parallel evolution, larger populations
+- **Pharmacology** -- new drugs, receptor subtypes, dose-response validation
+- **Visualization** -- connectome graph views, evolution dashboards, VR support
+
+---
+
+## License
+
+[MIT](LICENSE)

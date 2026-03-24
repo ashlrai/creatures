@@ -1,6 +1,6 @@
 # Contributing to Neurevo
 
-Thank you for your interest in contributing to Neurevo. This document outlines the process for contributing to the project.
+Thank you for your interest in contributing to Neurevo. This document covers everything you need to get started, whether you are fixing a bug, adding a new organism, or building new analysis tools.
 
 ## Getting Started
 
@@ -14,13 +14,13 @@ cd creatures
 2. Set up the development environment:
 
 ```bash
-make setup
+make setup    # Creates Python venv, installs dependencies, compiles Cython, runs npm install
 ```
 
-3. Run the test suite to verify everything works:
+3. Run the full test suite to verify everything works:
 
 ```bash
-make test
+make test     # 255 tests across creatures-core and creatures-web
 ```
 
 ## Development Workflow
@@ -36,11 +36,11 @@ git checkout -b feature/your-feature-name
 3. Run tests and ensure they pass:
 
 ```bash
-# Python tests
-make test
+# Full Python test suite (255 tests)
+PYTHONPATH="creatures-core:creatures-api" .venv/bin/python -m pytest creatures-core/tests/ -v
 
-# Frontend tests (if you modified creatures-web)
-cd creatures-web && npm test
+# Frontend type check and tests
+cd creatures-web && npx tsc --noEmit && npm test
 ```
 
 4. Commit your changes with a clear message:
@@ -51,16 +51,34 @@ git commit -m "Add description of what changed and why"
 
 5. Push to your fork and open a pull request against `main`.
 
+## Project Structure
+
+| Directory | Language | Purpose |
+|-----------|----------|---------|
+| `creatures-core/` | Python | Core library: connectome loaders (OpenWorm, FlyWire), Brian2 neural engine, MuJoCo bodies (WormBody, NeuroMechFly), NEAT evolution, pharmacology, ecosystem, circuit analysis, God Agent |
+| `creatures-api/` | Python | FastAPI server with 70 REST + WebSocket endpoints across 12 router modules |
+| `creatures-web/` | TypeScript | React 18 + Three.js frontend: 3D bodies, spike particles, neuron detail panel, dose-response charts, narrative feed, ecosystem view |
+| `scripts/` | Python | CLI tools for evolution, validation, and reporting |
+| `notebooks/` | Jupyter | Interactive demos and exploration |
+
+### Supported Organisms
+
+| Organism | Neurons | Source | Body Model |
+|----------|---------|--------|------------|
+| C. elegans | 299 | OpenWorm / Cook et al. 2019 | WormBody (12-segment MuJoCo) |
+| Drosophila | 500 | FlyWire v783 / Dorkenwald et al. 2024 | NeuroMechFly (tripod gait MuJoCo) |
+
 ## Coding Standards
 
 ### Python (creatures-core, creatures-api)
 
 - Python 3.13+
 - Follow PEP 8 style guidelines
-- Use type hints for function signatures
+- Use type hints for all function signatures
 - Write docstrings for public functions and classes
 - Keep functions focused -- one function, one responsibility
-- Add unit tests for new functionality in `creatures-core/tests/`
+- Add unit tests in `creatures-core/tests/` for new functionality
+- Use `PYTHONPATH="creatures-core:creatures-api"` when running tests
 
 ### TypeScript (creatures-web)
 
@@ -68,6 +86,7 @@ git commit -m "Add description of what changed and why"
 - Use functional components with hooks
 - Keep components small and composable
 - Use Zustand for shared state, not prop drilling
+- Run `npx tsc --noEmit` before committing
 
 ### General
 
@@ -75,44 +94,151 @@ git commit -m "Add description of what changed and why"
 - Keep dependencies minimal -- justify new additions
 - Write clear commit messages that explain *why*, not just *what*
 
-## Project Structure
+---
 
-| Directory | Language | Purpose |
-|-----------|----------|---------|
-| `creatures-core/` | Python | Core library: connectome, neural simulation, evolution, pharmacology |
-| `creatures-api/` | Python | FastAPI server with REST and WebSocket endpoints |
-| `creatures-web/` | TypeScript | React + Three.js frontend |
-| `scripts/` | Python | CLI tools for evolution, validation, and reporting |
-| `notebooks/` | Jupyter | Interactive demos and exploration |
+## Adding a New Organism
 
-## Where to Contribute
+To add a new organism (e.g., zebrafish), you need four things:
 
-### High-Impact Areas
+### 1. Connectome Loader
 
-- **New organisms**: Add connectome loaders and body models for zebrafish, mouse, or other species
-- **Neuron models**: Implement Hodgkin-Huxley or multi-compartment models alongside the existing LIF engine
-- **Fitness functions**: Design new behavioral assays for evolution (foraging efficiency, learning tasks, social behavior)
-- **Performance**: Optimize Brian2 simulation speed, parallelize evolution runs, GPU acceleration
-- **Pharmacology**: Add new drug models with receptor-level specificity
-- **Visualization**: Improve 3D rendering, add connectome graph views, evolution dashboards
+Create `creatures-core/creatures/connectome/your_organism.py`:
 
-### Good First Issues
+```python
+def load(format: str = "edge_list") -> dict:
+    """Load the connectome for your organism.
 
-Look for issues labeled `good first issue` on GitHub. These are scoped tasks suitable for new contributors.
+    Returns:
+        Dictionary with keys: neurons, synapses, neuron_types, metadata
+    """
+    ...
+```
+
+Follow the patterns in `openworm.py` (C. elegans) and `flywire.py` (Drosophila). Your loader must return a dictionary with `neurons` (list of neuron IDs), `synapses` (list of (pre, post, weight) tuples), and `neuron_types` (mapping of neuron ID to type string).
+
+### 2. Body Model
+
+Create `creatures-core/creatures/body/your_body.py`:
+
+```python
+from creatures.body.base import BodyBase
+
+class YourBody(BodyBase):
+    def __init__(self):
+        super().__init__(organism="your_organism")
+        # Load or generate MuJoCo XML
+
+    def apply_motor_output(self, motor_signals: dict) -> dict:
+        """Map neural motor output to body actuators."""
+        ...
+```
+
+Follow the patterns in `worm_body.py` and `neuromechfly.py`.
+
+### 3. Register the Organism
+
+Add your organism to the experiment runner and API so it can be selected when creating simulations. Update the organism registry in `creatures-core/creatures/experiment/runner.py`.
+
+### 4. Tests
+
+Add test files:
+- `creatures-core/tests/test_your_connectome.py` -- loader tests
+- `creatures-core/tests/test_your_body.py` -- body model tests
+- `creatures-core/tests/test_your_pipeline.py` -- end-to-end brain-body tests
+
+---
+
+## Adding a New Drug
+
+Drugs are defined in `creatures-core/creatures/neural/pharmacology.py` in the `DRUG_LIBRARY` dictionary.
+
+### 1. Add the DrugEffect Entry
+
+```python
+DRUG_LIBRARY["your_drug"] = DrugEffect(
+    name="Your Drug",
+    target_nt="ACh",           # Target neurotransmitter: ACh, GABA, DA, 5-HT, Glu
+    target_type=None,          # Optional receptor subtype filter
+    weight_scale=0.5,          # Multiplier on synaptic weights (0.0 = block, 2.0 = double)
+    ec50=1.0,                  # Half-maximal effective concentration
+    hill_coefficient=1.5,      # Hill equation steepness
+    description="Description of mechanism and biological effect.",
+)
+```
+
+The Hill equation `response = dose^n / (EC50^n + dose^n)` governs dose-response. Choose `ec50` and `hill_coefficient` based on published pharmacological data.
+
+### 2. Add Tests
+
+Add test cases in `creatures-core/tests/test_pharmacology.py`:
+- Verify the drug appears in the library
+- Test dose-response curve shape at key doses (0, EC50, 2x EC50)
+- Test that it affects the correct synapses
+
+### 3. Update the Frontend
+
+The frontend drug selector in `creatures-web/` picks up drugs dynamically from the API, so no frontend changes should be needed.
+
+---
+
+## Adding Analysis Functions
+
+Circuit analysis lives in `creatures-core/creatures/analysis/`. The API exposes analysis through `creatures-api/app/routers/analysis.py`.
+
+### 1. Add the Analysis Function
+
+```python
+# creatures-core/creatures/analysis/your_analysis.py
+
+def your_analysis(connectome: dict, **kwargs) -> dict:
+    """Describe what this analysis computes.
+
+    Args:
+        connectome: Connectome dictionary with neurons and synapses.
+
+    Returns:
+        Dictionary with analysis results.
+    """
+    ...
+```
+
+Existing analyses include: shortest paths, hub neurons, community detection, and network motifs.
+
+### 2. Add an API Endpoint
+
+Add a route in `creatures-api/app/routers/analysis.py`:
+
+```python
+@router.get("/analysis/your-analysis")
+async def get_your_analysis(experiment_id: str):
+    ...
+```
+
+### 3. Add Tests
+
+Add test cases in `creatures-core/tests/test_analysis.py`.
+
+---
 
 ## Testing
 
-All contributions should include tests where applicable.
+All contributions should include tests. The test suite currently has 255 tests across 14 test files.
 
 ```bash
-# Run Python tests with verbose output
-python -m pytest creatures-core/tests/ -v
+# Full Python test suite
+PYTHONPATH="creatures-core:creatures-api" .venv/bin/python -m pytest creatures-core/tests/ -v
 
 # Run a specific test file
-python -m pytest creatures-core/tests/test_connectome.py -v
+.venv/bin/python -m pytest creatures-core/tests/test_pharmacology.py -v
 
 # Run with coverage
-python -m pytest creatures-core/tests/ --cov=creatures --cov-report=term-missing
+.venv/bin/python -m pytest creatures-core/tests/ --cov=creatures --cov-report=term-missing
+
+# Frontend type check
+cd creatures-web && npx tsc --noEmit
+
+# Frontend tests
+cd creatures-web && npm test
 ```
 
 ## Pull Request Guidelines
@@ -120,7 +246,7 @@ python -m pytest creatures-core/tests/ --cov=creatures --cov-report=term-missing
 - Keep PRs focused on a single change
 - Include a clear description of what changed and why
 - Reference any related issues
-- Ensure CI passes before requesting review
+- Ensure CI passes before requesting review (Python tests + TypeScript type check)
 - Add tests for new functionality
 - Update documentation if the public API changes
 
