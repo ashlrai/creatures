@@ -185,25 +185,26 @@ def load(
 
     # If neuropil filtering requested, identify neurons in those regions
     if neuropils:
-        # Load neuropil counts to identify neurons in target regions
+        # Load neuropil counts (long format: pre_pt_root_id, neuropil, count)
         pre_path = data_dir / "per_neuron_neuropil_count_pre_783.feather"
         if not pre_path.exists():
             _download_file(_NEUROPIL_PRE_URL, pre_path, "neuropil pre-synaptic counts")
 
         neuropil_df = pd.read_feather(pre_path)
 
-        # Filter to neurons that have synapses in target neuropils
-        target_cols = [c for c in neuropil_df.columns if c in neuropils]
-        if not target_cols:
-            available = [c for c in neuropil_df.columns if c != "root_id"]
+        # Check available neuropils
+        available_neuropils = set(neuropil_df["neuropil"].unique())
+        matched = [n for n in neuropils if n in available_neuropils]
+        if not matched:
             raise ValueError(
-                f"No matching neuropils found. Available: {sorted(available)[:20]}"
+                f"No matching neuropils found for {neuropils}. "
+                f"Available: {sorted(available_neuropils)[:20]}"
             )
 
-        # Neurons with any presynaptic output in target neuropils
-        mask = neuropil_df[target_cols].sum(axis=1) > 0
-        target_ids = set(neuropil_df.loc[mask, "root_id"].values)
-        logger.info(f"  {len(target_ids)} neurons in neuropils {neuropils}")
+        # Filter to neurons with presynaptic output in target neuropils
+        mask = neuropil_df["neuropil"].isin(matched)
+        target_ids = set(neuropil_df.loc[mask, "pre_pt_root_id"].values)
+        logger.info(f"  {len(target_ids)} neurons in neuropils {matched}")
 
         # Filter connections to only those between target neurons
         conn_df = conn_df[
