@@ -8,9 +8,11 @@ import uuid
 from dataclasses import dataclass, field
 
 from creatures.connectome.openworm import load as load_celegans
+from creatures.connectome.flywire import load as load_drosophila
 from creatures.neural.brian2_engine import Brian2Engine
 from creatures.neural.base import NeuralConfig
 from creatures.body.worm_body import WormBody
+from creatures.body.fly_body import FlyBody
 from creatures.body.base import BodyConfig
 from creatures.experiment.runner import SimulationRunner, CouplingConfig
 
@@ -46,6 +48,15 @@ class SimulationManager:
 
         if config.organism == "c_elegans":
             connectome = load_celegans(config.connectome_source)
+            body = WormBody(BodyConfig(dt=1.0))
+        elif config.organism == "drosophila":
+            neuropils = config.neuropils or "central_complex"
+            connectome = load_drosophila(
+                neuropils=neuropils,
+                min_synapse_count=5,
+                max_neurons=config.max_neurons,
+            )
+            body = FlyBody(BodyConfig(dt=0.5))
         else:
             raise ValueError(f"Organism '{config.organism}' not yet supported")
 
@@ -56,8 +67,6 @@ class SimulationManager:
         )
         engine = Brian2Engine()
         engine.build(connectome, neural_config)
-
-        body = WormBody(BodyConfig(dt=1.0))
         body.reset()
 
         coupling = CouplingConfig(

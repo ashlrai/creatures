@@ -23,6 +23,10 @@ class ExperimentCreate(BaseModel):
     firing_rate_to_torque_gain: float = 0.004
     inhibitory_gain: float = -0.002
 
+    # Drosophila-specific
+    neuropils: str | None = None  # brain region preset for fly
+    max_neurons: int | None = None  # limit neuron count for testing
+
 
 class ExperimentInfo(BaseModel):
     """Response with experiment metadata."""

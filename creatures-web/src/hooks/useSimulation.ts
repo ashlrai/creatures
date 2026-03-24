@@ -9,11 +9,20 @@ export function useSimulation() {
   const wsRef = useRef<WebSocket | null>(null);
   const store = useSimulationStore();
 
-  const createExperiment = useCallback(async () => {
+  const createExperiment = useCallback(async (organism = 'c_elegans') => {
+    const configs: Record<string, Record<string, unknown>> = {
+      c_elegans: { name: 'C. elegans', organism: 'c_elegans', weight_scale: 3.0 },
+      drosophila: {
+        name: 'Drosophila', organism: 'drosophila',
+        weight_scale: 0.5, tau_syn: 5.0, tau_m: 10.0,
+        neuropils: 'central_complex', max_neurons: 1000,
+      },
+    };
+    const body = configs[organism] ?? configs.c_elegans;
     const res = await fetch(`${API_BASE}/experiments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'interactive' }),
+      body: JSON.stringify(body),
     });
     const exp: ExperimentInfo = await res.json();
     store.setExperiment(exp);

@@ -22,7 +22,7 @@ interface DashboardProps {
   onPoke: (segment: string) => void;
   onPause: () => void;
   onResume: () => void;
-  onStart: () => void;
+  onStart: (organism: string) => void;
   connected: boolean;
 }
 
@@ -120,12 +120,20 @@ export function Dashboard({ onPoke, onPause, onResume, onStart, connected }: Das
           <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.7 }}>CONTROLS</div>
 
           {!experiment ? (
-            <button
-              onClick={onStart}
-              style={{ ...buttonStyle, background: '#4CAF50', color: 'white' }}
-            >
-              Start Experiment
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button
+                onClick={() => onStart('c_elegans')}
+                style={{ ...buttonStyle, background: '#4CAF50', color: 'white' }}
+              >
+                C. elegans (299 neurons)
+              </button>
+              <button
+                onClick={() => onStart('drosophila')}
+                style={{ ...buttonStyle, background: '#FF9800', color: 'white' }}
+              >
+                Fruit Fly (1000 neurons)
+              </button>
+            </div>
           ) : (
             <>
               <button
@@ -165,7 +173,7 @@ export function Dashboard({ onPoke, onPause, onResume, onStart, connected }: Das
               ORGANISM
             </div>
             <div style={{ fontSize: 14, fontWeight: 600 }}>
-              C. elegans
+              {experiment.organism === 'drosophila' ? 'Drosophila' : 'C. elegans'}
             </div>
             <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>
               {experiment.n_neurons} neurons

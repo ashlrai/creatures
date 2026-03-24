@@ -14,8 +14,8 @@ export default function App() {
     experiment,
   } = useSimulation();
 
-  const handleStart = useCallback(async () => {
-    const exp = await createExperiment();
+  const handleStart = useCallback(async (organism: string) => {
+    const exp = await createExperiment(organism);
     connect(exp.id);
   }, [createExperiment, connect]);
 
