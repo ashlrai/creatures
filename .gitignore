@@ -40,3 +40,4 @@ creatures-web/dist/
 # Environment
 .env
 .env.local
+*.TXT
