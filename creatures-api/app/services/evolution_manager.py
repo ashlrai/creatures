@@ -11,6 +11,7 @@ from dataclasses import asdict
 from typing import Any
 
 from creatures.connectome.openworm import load as load_celegans
+from creatures.connectome.flywire import load as load_drosophila
 from creatures.evolution.fitness import FitnessConfig, evaluate_genome_fast
 from creatures.evolution.genome import Genome
 from creatures.evolution.population import GenerationStats, Population, PopulationConfig
@@ -82,6 +83,8 @@ class EvolutionManager:
             organism = config.get("organism", "c_elegans")
             if organism == "c_elegans":
                 connectome = load_celegans(config.get("connectome_source", "edge_list"))
+            elif organism == "drosophila":
+                connectome = load_drosophila("locomotion", max_neurons=500, min_synapse_count=5)
             else:
                 raise ValueError(f"Organism '{organism}' not yet supported for evolution")
 
@@ -111,22 +114,23 @@ class EvolutionManager:
         self._runs[run_id] = run
         self._queues[run_id] = []
         self._stop_events[run_id] = threading.Event()
-        self._god_agents: dict[str, Any] = getattr(self, "_god_agents", {})
+        if not hasattr(self, "_god_agents"):
+            self._god_agents: dict[str, Any] = {}
 
-        # Initialize God Agent if requested
-        if config.get("god_agent_enabled", False):
-            try:
-                from creatures.god.agent import GodAgent, GodConfig
-                god_config = GodConfig(
-                    api_key=config.get("xai_api_key"),
-                    intervention_interval=config.get("god_interval", 10),
-                )
-                god = GodAgent(god_config)
-                self._god_agents[run_id] = god
-                god_mode = "AI" if god_config.api_key else "fallback"
-                logger.info(f"God Agent enabled for run {run_id} in {god_mode} mode")
-            except Exception as e:
-                logger.warning(f"Failed to initialize God Agent for run {run_id}: {e}")
+        # Always create God Agent — it provides narratives and interventions
+        try:
+            from creatures.god.agent import GodAgent, GodConfig
+            god_config = GodConfig(
+                api_key=config.get("xai_api_key"),
+                intervention_interval=config.get("god_interval", 10),
+            )
+            god = GodAgent(god_config)
+            self._god_agents[run_id] = god
+            run.god_agent = god  # Store on run for API access
+            god_mode = "AI" if god_config.api_key else "fallback"
+            logger.info(f"God Agent created for run {run_id} in {god_mode} mode")
+        except Exception as e:
+            logger.warning(f"Failed to initialize God Agent for run {run_id}: {e}")
 
         return run
 
@@ -218,6 +222,7 @@ class EvolutionManager:
                 run.elapsed_seconds = time.time() - t_start
 
                 stats_dict: dict[str, Any] = {
+                    "type": "generation_complete",
                     "generation": stats.generation,
                     "best_fitness": stats.best_fitness,
                     "mean_fitness": stats.mean_fitness,
@@ -300,6 +305,7 @@ class EvolutionManager:
                 self._notify_subscribers(run_id, stats_dict)
 
             run.status = "completed"
+            self._notify_subscribers(run_id, {"type": "run_complete"})
 
             # Attach final God Agent report
             god_agents = getattr(self, "_god_agents", {})

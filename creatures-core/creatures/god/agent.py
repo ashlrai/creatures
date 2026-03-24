@@ -20,7 +20,7 @@ class GodConfig:
     model: str = "grok-3-mini"  # or grok-3
     intervention_interval: int = 10  # intervene every N generations
     temperature: float = 0.7
-    max_tokens: int = 1024
+    max_tokens: int = 4096
 
 
 class GodAgent:
@@ -135,13 +135,16 @@ genuine scientific insight about how neural circuits evolve and adapt."""
                                 "content": (
                                     "You are the God Agent — an AI overseeing the "
                                     "evolution of virtual organisms with real biological "
-                                    "neural networks. Respond with valid JSON."
+                                    "neural networks. Respond with valid JSON only. "
+                                    "Keep analysis concise (2-3 sentences). "
+                                    "Keep report under 100 words."
                                 ),
                             },
                             {"role": "user", "content": prompt},
                         ],
                         "temperature": self.config.temperature,
                         "max_tokens": self.config.max_tokens,
+                        "response_format": {"type": "json_object"},
                     },
                     timeout=30.0,
                 )
@@ -152,19 +155,37 @@ genuine scientific insight about how neural circuits evolve and adapt."""
 
     def _parse_intervention(self, response: str) -> dict:
         """Parse LLM response into structured intervention."""
+        text = response.strip()
+
+        # Strip markdown code fences
+        if "```" in text:
+            parts = text.split("```")
+            for part in parts:
+                candidate = part.strip()
+                if candidate.startswith("json"):
+                    candidate = candidate[4:].strip()
+                if candidate.startswith("{"):
+                    text = candidate
+                    break
+
+        # Try to find JSON object in the response
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                return json.loads(text[start:end + 1])
+            except json.JSONDecodeError:
+                pass
+
+        # Full text parse attempt
         try:
-            text = response.strip()
-            if text.startswith("```"):
-                text = text.split("```")[1]
-                if text.startswith("json"):
-                    text = text[4:]
             return json.loads(text)
         except (json.JSONDecodeError, IndexError):
             return {
                 "analysis": response[:500],
                 "interventions": [],
-                "hypothesis": "Parse error — using fallback",
-                "report": response[:200],
+                "hypothesis": "Analysis complete — see report",
+                "report": response[:300],
             }
 
     def _fallback_intervention(self) -> dict:

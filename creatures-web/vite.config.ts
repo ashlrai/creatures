@@ -15,6 +15,15 @@ export default defineConfig({
         target: 'ws://localhost:8420',
         ws: true,
       },
+      '/evolution/ws': {
+        target: 'ws://localhost:8420',
+        ws: true,
+      },
+      '/api/ecosystem/ws': {
+        target: 'ws://localhost:8420',
+        ws: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
     },
   },
 })

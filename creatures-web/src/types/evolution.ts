@@ -42,6 +42,21 @@ export interface EvolutionWsMessage {
   best_genome_id?: string;
   message?: string;
   god_report?: GodReport;
+  god_intervention?: {
+    analysis?: string;
+    interventions?: GodReport['interventions'];
+    applied?: string[];
+  };
+  narrative_events?: Array<{
+    icon: string;
+    event_type: string;
+    title: string;
+    description: string;
+    generation: number;
+  }>;
+  // God intervention direct fields (when type === 'god_intervention')
+  analysis?: string;
+  interventions?: GodReport['interventions'];
 }
 
 export interface FitnessHistory {

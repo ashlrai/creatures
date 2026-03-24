@@ -3,7 +3,7 @@ import { useEvolutionStore } from '../../stores/evolutionStore';
 import type { GodReport } from '../../types/evolution';
 import { NarrativeFeed, type NarrativeEvent } from './NarrativeFeed';
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+const API_BASE = '/api';
 
 export function GodAgentPanel() {
   const currentRun = useEvolutionStore((s) => s.currentRun);

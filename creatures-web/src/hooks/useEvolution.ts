@@ -67,7 +67,7 @@ export function useEvolution() {
     (runId: string) => {
       if (wsRef.current) wsRef.current.close();
 
-      const ws = new WebSocket(`${WS_BASE}/ws/evolution/${runId}`);
+      const ws = new WebSocket(`${WS_BASE}/evolution/ws/${runId}`);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -97,9 +97,30 @@ export function useEvolution() {
               best_genome_id: msg.best_genome_id,
             };
             addGeneration(stats);
+
+            // Capture God Agent interventions from the WS stream
+            if (msg.god_intervention) {
+              const { addGodReport } = useEvolutionStore.getState();
+              addGodReport({
+                analysis: msg.god_intervention.analysis ?? '',
+                fitness_trend: 'intervening',
+                interventions: msg.god_intervention.interventions ?? [],
+                hypothesis: '',
+                report: '',
+              });
+            }
           } else if (msg.type === 'run_complete') {
             const run = useEvolutionStore.getState().currentRun;
             if (run) setRun({ ...run, status: 'completed' });
+          } else if (msg.type === 'god_intervention') {
+            const { addGodReport } = useEvolutionStore.getState();
+            addGodReport({
+              analysis: msg.analysis ?? '',
+              fitness_trend: 'intervening',
+              interventions: msg.interventions ?? [],
+              hypothesis: '',
+              report: '',
+            });
           } else if (msg.type === 'error') {
             console.error('Evolution error:', msg.message);
           }
