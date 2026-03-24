@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "creatures-core"))
 
 import asyncio
 
-from app.routers import ecosystem, evolution, experiments, export, god, morphology, neurons, pharmacology, ws
+from app.routers import analysis, ecosystem, evolution, experiments, export, god, metrics, morphology, neurons, pharmacology, ws
 from app.services.evolution_manager import EvolutionManager
 from app.services.simulation_manager import SimulationManager
 
@@ -23,6 +23,8 @@ from app.services.simulation_manager import SimulationManager
 async def lifespan(app: FastAPI):
     """Initialize shared state on startup."""
     manager = SimulationManager()
+    analysis.manager = manager
+    metrics.manager = manager
     experiments.manager = manager
     neurons.manager = manager
     pharmacology.manager = manager
@@ -53,6 +55,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(analysis.router)
+app.include_router(metrics.router)
 app.include_router(ecosystem.router)
 app.include_router(evolution.router)
 app.include_router(experiments.router)

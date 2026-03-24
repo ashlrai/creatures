@@ -4,17 +4,30 @@ import * as THREE from 'three';
 import { useSimulationStore } from '../../stores/simulationStore';
 
 /**
- * Particle burst effects at neuron spike locations.
- * When a neuron fires, a burst of colored particles appears
- * at its 3D position and fades over 500ms with upward drift.
+ * Spike propagation visualization with cascade particles.
  *
- * Color by neuron type: sensory=green, inter=cyan, motor=red
+ * Two layers of particles:
+ * 1. Burst particles — the original "fireworks" at neuron spike locations
+ * 2. Cascade particles — glowing dots that travel along synapse edges
+ *    from pre-synaptic to post-synaptic neurons, colored by
+ *    neurotransmitter type (ACh=cyan, GABA=magenta, glutamate=green)
+ *
+ * Cascade particles use the connectome-graph.json edge data to know
+ * which neurons connect to which, and lerp from source to target
+ * position over ~200ms per synapse.
  */
 
-const MAX_PARTICLES = 600;
-const PARTICLE_LIFETIME = 0.5; // 500ms for longer visible trails
+// --- Burst particles (original spike location effects) ---
+const MAX_BURST = 400;
+const BURST_LIFETIME = 0.5;
 
-interface Particle {
+// --- Cascade particles (signal propagation along synapses) ---
+const MAX_CASCADE = 200;
+const CASCADE_TRAVEL_TIME = 0.2; // 200ms per synapse hop
+const MAX_SPIKES_PER_FRAME = 20; // cap to avoid flooding
+const MAX_EDGES_PER_SPIKE = 6;  // top N strongest outgoing edges
+
+interface BurstParticle {
   position: THREE.Vector3;
   velocity: THREE.Vector3;
   color: THREE.Color;
@@ -22,24 +35,96 @@ interface Particle {
   alive: boolean;
 }
 
+interface CascadeParticle {
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  color: THREE.Color;
+  baseSize: number; // larger for stronger synapses
+  age: number;
+  lifetime: number; // CASCADE_TRAVEL_TIME
+  alive: boolean;
+}
+
+interface ConnectomeEdge {
+  pre: string;
+  post: string;
+  weight: number;
+  type: string;
+}
+
+interface ConnectomeNode {
+  id: string;
+  type: string;
+  nt: string;
+  x: number;
+  y: number;
+  z: number;
+}
+
+// Neurotransmitter-based colors for cascade particles
+const NT_COLORS: Record<string, THREE.Color> = {
+  Acetylcholine: new THREE.Color(0.2, 1.4, 1.4),   // cyan
+  GABA:          new THREE.Color(1.3, 0.3, 1.3),    // magenta
+  Glutamate:     new THREE.Color(0.3, 1.4, 0.5),    // green
+  Serotonin:     new THREE.Color(1.2, 1.0, 0.3),    // warm yellow
+  Dopamine:      new THREE.Color(1.4, 0.6, 0.2),    // orange
+};
+const NT_DEFAULT_COLOR = new THREE.Color(0.8, 0.8, 1.0); // white-blue
+
+// Burst colors by neuron type
 const TYPE_BURST_COLORS: Record<string, THREE.Color> = {
-  sensory: new THREE.Color(0.3, 1.2, 0.6),  // brighter green
-  inter: new THREE.Color(0.4, 0.8, 1.5),    // brighter cyan
-  motor: new THREE.Color(1.4, 0.4, 0.25),   // brighter red-orange
+  sensory: new THREE.Color(0.3, 1.2, 0.6),
+  inter:   new THREE.Color(0.4, 0.8, 1.5),
+  motor:   new THREE.Color(1.4, 0.4, 0.25),
   unknown: new THREE.Color(0.6, 0.6, 0.8),
 };
+
+/**
+ * Pre-builds an adjacency map: neuronId -> sorted outgoing edges (strongest first).
+ * Only keeps the top MAX_EDGES_PER_SPIKE per source to bound work at emit time.
+ */
+function buildAdjacency(edges: ConnectomeEdge[]): Map<string, ConnectomeEdge[]> {
+  const adj = new Map<string, ConnectomeEdge[]>();
+  for (const e of edges) {
+    let list = adj.get(e.pre);
+    if (!list) { list = []; adj.set(e.pre, list); }
+    list.push(e);
+  }
+  // Sort descending by weight, keep top N
+  for (const [id, list] of adj) {
+    list.sort((a, b) => b.weight - a.weight);
+    if (list.length > MAX_EDGES_PER_SPIKE) {
+      adj.set(id, list.slice(0, MAX_EDGES_PER_SPIKE));
+    }
+  }
+  return adj;
+}
 
 export function SpikeParticles() {
   const frame = useSimulationStore((s) => s.frame);
   const experiment = useSimulationStore((s) => s.experiment);
-  const pointsRef = useRef<THREE.Points>(null);
+
+  // Refs for the two Points objects
+  const burstRef = useRef<THREE.Points>(null);
+  const cascadeRef = useRef<THREE.Points>(null);
+
+  // --- Neuron data loaded from static JSON files ---
   const [neuronData, setNeuronData] = useState<{
     positions: Record<number, [number, number, number]>;
     types: Record<number, string>;
+    idByIndex: string[];  // spike index -> neuron ID string
   } | null>(null);
 
-  const particles = useRef<Particle[]>(
-    Array.from({ length: MAX_PARTICLES }, () => ({
+  // --- Connectome graph: node positions + adjacency ---
+  const [connectome, setConnectome] = useState<{
+    nodePos: Map<string, THREE.Vector3>;
+    nodeNt: Map<string, string>;
+    adjacency: Map<string, ConnectomeEdge[]>;
+  } | null>(null);
+
+  // --- Burst particle pool ---
+  const burstParticles = useRef<BurstParticle[]>(
+    Array.from({ length: MAX_BURST }, () => ({
       position: new THREE.Vector3(),
       velocity: new THREE.Vector3(),
       color: new THREE.Color(),
@@ -47,10 +132,25 @@ export function SpikeParticles() {
       alive: false,
     }))
   );
-  const nextParticle = useRef(0);
+  const nextBurst = useRef(0);
+
+  // --- Cascade particle pool ---
+  const cascadeParticles = useRef<CascadeParticle[]>(
+    Array.from({ length: MAX_CASCADE }, () => ({
+      from: new THREE.Vector3(),
+      to: new THREE.Vector3(),
+      color: new THREE.Color(),
+      baseSize: 0.003,
+      age: 0,
+      lifetime: CASCADE_TRAVEL_TIME,
+      alive: false,
+    }))
+  );
+  const nextCascade = useRef(0);
+
   const lastSpikes = useRef<Set<number>>(new Set());
 
-  // Load neuron positions and types for positioning particles
+  // ---- Load neuron positions & types (same logic as before) ----
   useEffect(() => {
     if (!experiment) return;
     const base = import.meta.env.BASE_URL || '/';
@@ -61,6 +161,7 @@ export function SpikeParticles() {
     ]).then(([posData, typeData]) => {
       const positions: Record<number, [number, number, number]> = {};
       const types: Record<number, string> = {};
+      const idByIndex: string[] = [];
       const neuronIds = Object.keys(posData);
 
       const yMin = -320, yMax = 420;
@@ -72,23 +173,55 @@ export function SpikeParticles() {
         const z = -nx * 0.0003;
         positions[idx] = [x, y, z];
         types[idx] = typeData[nid]?.type || 'unknown';
+        idByIndex[idx] = nid;
       });
 
-      setNeuronData({ positions, types });
+      setNeuronData({ positions, types, idByIndex });
     }).catch(() => {});
   }, [experiment]);
 
-  const positionArray = useMemo(() => new Float32Array(MAX_PARTICLES * 3), []);
-  const colorArray = useMemo(() => new Float32Array(MAX_PARTICLES * 3), []);
-  const sizeArray = useMemo(() => new Float32Array(MAX_PARTICLES), []);
+  // ---- Load connectome graph for cascade routing ----
+  useEffect(() => {
+    const base = import.meta.env.BASE_URL || '/';
+    fetch(`${base}connectome-graph.json`)
+      .then(r => r.json())
+      .then((data: { nodes: ConnectomeNode[]; edges: ConnectomeEdge[] }) => {
+        const nodePos = new Map<string, THREE.Vector3>();
+        const nodeNt = new Map<string, string>();
+        for (const n of data.nodes) {
+          // Use the pre-computed x/y/z from the graph (already in scene coords)
+          nodePos.set(n.id, new THREE.Vector3(n.x, n.y, n.z));
+          nodeNt.set(n.id, n.nt || '');
+        }
+        const adjacency = buildAdjacency(data.edges);
+        setConnectome({ nodePos, nodeNt, adjacency });
+      })
+      .catch(() => {});
+  }, []);
+
+  // ---- GPU buffer arrays ----
+  const burstPosArr = useMemo(() => new Float32Array(MAX_BURST * 3), []);
+  const burstColArr = useMemo(() => new Float32Array(MAX_BURST * 3), []);
+  const burstSizeArr = useMemo(() => new Float32Array(MAX_BURST), []);
+
+  const cascadePosArr = useMemo(() => new Float32Array(MAX_CASCADE * 3), []);
+  const cascadeColArr = useMemo(() => new Float32Array(MAX_CASCADE * 3), []);
+  const cascadeSizeArr = useMemo(() => new Float32Array(MAX_CASCADE), []);
+
+  // Temp vector for lerp calculations (avoid allocation per frame)
+  const _tmpVec = useMemo(() => new THREE.Vector3(), []);
 
   useFrame((_, delta) => {
-    if (!frame || !neuronData || !pointsRef.current) return;
+    if (!frame || !neuronData) return;
 
-    // Spawn particles for new spikes
+    // ===== Spawn burst + cascade particles for new spikes =====
     const currentSpikes = new Set(frame.spikes);
+    let spikeCount = 0;
+
     for (const spikeIdx of currentSpikes) {
       if (lastSpikes.current.has(spikeIdx)) continue;
+      if (spikeCount >= MAX_SPIKES_PER_FRAME) break;
+      spikeCount++;
 
       const pos = neuronData.positions[spikeIdx];
       if (!pos) continue;
@@ -96,85 +229,184 @@ export function SpikeParticles() {
       const type = neuronData.types[spikeIdx] || 'unknown';
       const burstColor = TYPE_BURST_COLORS[type] || TYPE_BURST_COLORS.unknown;
 
-      // Spawn 3-4 particles per spike for more visible bursts
-      const count = 3 + Math.floor(Math.random() * 2);
-      for (let j = 0; j < count; j++) {
-        const p = particles.current[nextParticle.current % MAX_PARTICLES];
+      // --- Burst particles (2-3 per spike) ---
+      const bCount = 2 + Math.floor(Math.random() * 2);
+      for (let j = 0; j < bCount; j++) {
+        const p = burstParticles.current[nextBurst.current % MAX_BURST];
         p.position.set(pos[0], pos[1], pos[2]);
         p.velocity.set(
           (Math.random() - 0.5) * 0.025,
-          Math.random() * 0.02 + 0.01,   // upward drift bias
+          Math.random() * 0.02 + 0.01,
           (Math.random() - 0.5) * 0.025,
         );
         p.color.copy(burstColor);
         p.age = 0;
         p.alive = true;
-        nextParticle.current++;
+        nextBurst.current++;
+      }
+
+      // --- Cascade particles along outgoing synapses ---
+      if (connectome) {
+        const neuronId = neuronData.idByIndex[spikeIdx];
+        if (!neuronId) continue;
+        const outEdges = connectome.adjacency.get(neuronId);
+        if (!outEdges) continue;
+
+        const srcPos = connectome.nodePos.get(neuronId);
+        if (!srcPos) continue;
+
+        for (const edge of outEdges) {
+          const tgtPos = connectome.nodePos.get(edge.post);
+          if (!tgtPos) continue;
+
+          const cp = cascadeParticles.current[nextCascade.current % MAX_CASCADE];
+          cp.from.copy(srcPos);
+          cp.to.copy(tgtPos);
+
+          // Color by neurotransmitter of the pre-synaptic neuron
+          const nt = connectome.nodeNt.get(neuronId) || '';
+          cp.color.copy(NT_COLORS[nt] || NT_DEFAULT_COLOR);
+
+          // Stronger synapses = larger particles (weight typically 1-40+)
+          const normWeight = Math.min(edge.weight / 30, 1);
+          cp.baseSize = 0.002 + normWeight * 0.004; // range 0.002 - 0.006
+
+          cp.age = 0;
+          cp.lifetime = CASCADE_TRAVEL_TIME;
+          cp.alive = true;
+          nextCascade.current++;
+        }
       }
     }
     lastSpikes.current = currentSpikes;
 
-    // Update particles
-    const geo = pointsRef.current.geometry;
+    // ===== Update burst particles =====
+    if (burstRef.current) {
+      for (let i = 0; i < MAX_BURST; i++) {
+        const p = burstParticles.current[i];
+        if (!p.alive) {
+          burstSizeArr[i] = 0;
+          continue;
+        }
+        p.age += delta;
+        if (p.age > BURST_LIFETIME) {
+          p.alive = false;
+          burstSizeArr[i] = 0;
+          continue;
+        }
 
-    for (let i = 0; i < MAX_PARTICLES; i++) {
-      const p = particles.current[i];
-      if (!p.alive) {
-        sizeArray[i] = 0;
-        continue;
+        p.position.addScaledVector(p.velocity, delta);
+        p.velocity.y += delta * 0.005;
+        p.velocity.x *= 0.98;
+        p.velocity.z *= 0.98;
+
+        const life = 1 - p.age / BURST_LIFETIME;
+        const fade = life * Math.sqrt(life);
+
+        burstPosArr[i * 3]     = p.position.x;
+        burstPosArr[i * 3 + 1] = p.position.y;
+        burstPosArr[i * 3 + 2] = p.position.z;
+
+        burstColArr[i * 3]     = p.color.r * fade * 1.5;
+        burstColArr[i * 3 + 1] = p.color.g * fade * 1.5;
+        burstColArr[i * 3 + 2] = p.color.b * fade * 1.5;
+
+        burstSizeArr[i] = 0.008 * fade;
       }
 
-      p.age += delta;
-      if (p.age > PARTICLE_LIFETIME) {
-        p.alive = false;
-        sizeArray[i] = 0;
-        continue;
-      }
-
-      // Move with upward drift and very slight gravity
-      p.position.add(p.velocity.clone().multiplyScalar(delta));
-      p.velocity.y += delta * 0.005; // net upward drift (organic feel)
-      p.velocity.x *= 0.98; // slight horizontal damping
-      p.velocity.z *= 0.98;
-
-      // Fade curve: bright flash then gradual fade
-      const life = 1 - p.age / PARTICLE_LIFETIME;
-      const fade = life * Math.sqrt(life); // slower fade than quadratic
-
-      positionArray[i * 3] = p.position.x;
-      positionArray[i * 3 + 1] = p.position.y;
-      positionArray[i * 3 + 2] = p.position.z;
-
-      // Brighter colors — these are the visual "fireworks"
-      colorArray[i * 3] = p.color.r * fade * 1.5;
-      colorArray[i * 3 + 1] = p.color.g * fade * 1.5;
-      colorArray[i * 3 + 2] = p.color.b * fade * 1.5;
-
-      // Larger particles
-      sizeArray[i] = 0.008 * fade;
+      const geo = burstRef.current.geometry;
+      geo.attributes.position.needsUpdate = true;
+      geo.attributes.color.needsUpdate = true;
+      geo.attributes.size.needsUpdate = true;
     }
 
-    geo.attributes.position.needsUpdate = true;
-    geo.attributes.color.needsUpdate = true;
-    geo.attributes.size.needsUpdate = true;
+    // ===== Update cascade particles =====
+    if (cascadeRef.current) {
+      for (let i = 0; i < MAX_CASCADE; i++) {
+        const cp = cascadeParticles.current[i];
+        if (!cp.alive) {
+          cascadeSizeArr[i] = 0;
+          continue;
+        }
+        cp.age += delta;
+        if (cp.age > cp.lifetime) {
+          cp.alive = false;
+          cascadeSizeArr[i] = 0;
+          continue;
+        }
+
+        // Lerp position from source to target
+        const t = cp.age / cp.lifetime;
+        _tmpVec.lerpVectors(cp.from, cp.to, t);
+
+        // Slight upward arc for visual flair: parabolic offset peaking at t=0.5
+        const arc = 4 * t * (1 - t) * 0.004;
+        _tmpVec.y += arc;
+
+        cascadePosArr[i * 3]     = _tmpVec.x;
+        cascadePosArr[i * 3 + 1] = _tmpVec.y;
+        cascadePosArr[i * 3 + 2] = _tmpVec.z;
+
+        // Fade: bright at start, fade toward end (trail-like feel)
+        // Peak brightness at t~0.15, then fade out
+        const fadeCurve = t < 0.15
+          ? t / 0.15
+          : 1.0 - ((t - 0.15) / 0.85) * ((t - 0.15) / 0.85);
+        const brightness = Math.max(fadeCurve, 0) * 1.8;
+
+        cascadeColArr[i * 3]     = cp.color.r * brightness;
+        cascadeColArr[i * 3 + 1] = cp.color.g * brightness;
+        cascadeColArr[i * 3 + 2] = cp.color.b * brightness;
+
+        // Size pulses slightly during travel
+        const sizePulse = 1.0 + 0.3 * Math.sin(t * Math.PI);
+        cascadeSizeArr[i] = cp.baseSize * sizePulse * (1 - t * 0.4);
+      }
+
+      const geo = cascadeRef.current.geometry;
+      geo.attributes.position.needsUpdate = true;
+      geo.attributes.color.needsUpdate = true;
+      geo.attributes.size.needsUpdate = true;
+    }
   });
 
   return (
-    <points ref={pointsRef}>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" array={positionArray} count={MAX_PARTICLES} itemSize={3} />
-        <bufferAttribute attach="attributes-color" array={colorArray} count={MAX_PARTICLES} itemSize={3} />
-        <bufferAttribute attach="attributes-size" array={sizeArray} count={MAX_PARTICLES} itemSize={1} />
-      </bufferGeometry>
-      <pointsMaterial
-        vertexColors
-        sizeAttenuation
-        transparent
-        opacity={0.95}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-        size={0.008}
-      />
-    </points>
+    <group>
+      {/* Burst particles — spike location fireworks */}
+      <points ref={burstRef}>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" array={burstPosArr} count={MAX_BURST} itemSize={3} />
+          <bufferAttribute attach="attributes-color" array={burstColArr} count={MAX_BURST} itemSize={3} />
+          <bufferAttribute attach="attributes-size" array={burstSizeArr} count={MAX_BURST} itemSize={1} />
+        </bufferGeometry>
+        <pointsMaterial
+          vertexColors
+          sizeAttenuation
+          transparent
+          opacity={0.95}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          size={0.008}
+        />
+      </points>
+
+      {/* Cascade particles — signal propagation along synapses */}
+      <points ref={cascadeRef}>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" array={cascadePosArr} count={MAX_CASCADE} itemSize={3} />
+          <bufferAttribute attach="attributes-color" array={cascadeColArr} count={MAX_CASCADE} itemSize={3} />
+          <bufferAttribute attach="attributes-size" array={cascadeSizeArr} count={MAX_CASCADE} itemSize={1} />
+        </bufferGeometry>
+        <pointsMaterial
+          vertexColors
+          sizeAttenuation
+          transparent
+          opacity={0.9}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          size={0.005}
+        />
+      </points>
+    </group>
   );
 }

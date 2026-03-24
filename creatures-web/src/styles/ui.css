@@ -669,6 +669,170 @@ body {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
 
+/* Neuron detail panel — slide-in inspection overlay */
+.neuron-detail-panel {
+  position: fixed;
+  top: 52px;
+  right: 0;
+  bottom: 0;
+  width: 320px;
+  background: rgba(6, 10, 22, 0.85);
+  backdrop-filter: blur(28px);
+  border-left: 1px solid rgba(0, 150, 255, 0.12);
+  z-index: 50;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px 14px;
+  transform: translateX(100%);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: -4px 0 30px rgba(0, 0, 0, 0.4);
+}
+.neuron-detail-panel--open {
+  transform: translateX(0);
+}
+.neuron-detail-panel__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+.neuron-detail-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.neuron-detail-panel__id {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+.neuron-detail-panel__type-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border: 1px solid;
+}
+.neuron-detail-panel__nt {
+  font-size: 10px;
+  color: var(--text-label);
+  font-family: var(--font-mono);
+}
+.neuron-detail-panel__close {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-label);
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.neuron-detail-panel__close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  border-color: var(--border-active);
+}
+.neuron-detail-panel__section {
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(80, 130, 200, 0.05);
+}
+.neuron-detail-panel__section-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-label);
+  margin-bottom: 6px;
+}
+.neuron-detail-panel__activity-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.neuron-detail-panel__activity-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+.neuron-detail-panel__pattern-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  text-transform: lowercase;
+}
+.neuron-detail-panel__pattern-tag[data-pattern="tonic"] {
+  background: rgba(0, 212, 255, 0.1);
+  color: var(--accent-cyan);
+}
+.neuron-detail-panel__pattern-tag[data-pattern="bursting"] {
+  background: rgba(255, 34, 136, 0.1);
+  color: var(--accent-magenta);
+}
+.neuron-detail-panel__pattern-tag[data-pattern="silent"] {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-label);
+}
+.neuron-detail-panel__no-connections {
+  font-size: 11px;
+  color: var(--text-label);
+  font-style: italic;
+  padding: 4px 0;
+}
+.neuron-detail-panel__connection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.neuron-detail-panel__connection-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: left;
+}
+.neuron-detail-panel__connection-row:hover {
+  background: rgba(0, 150, 255, 0.06);
+  border-color: rgba(0, 150, 255, 0.12);
+  color: var(--text-primary);
+}
+.neuron-detail-panel__connection-id {
+  font-weight: 600;
+  color: inherit;
+}
+.neuron-detail-panel__connection-weight {
+  font-size: 10px;
+  color: var(--text-label);
+}
+
 /* Skeleton loading animation */
 @keyframes skeletonShimmer {
   0% { transform: translateX(-100%); }

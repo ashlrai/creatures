@@ -106,6 +106,90 @@ async def get_receptor_info(receptor_id: str):
     }
 
 
+@router.get("/{neuron_id}/profile")
+async def get_neuron_profile(neuron_id: str):
+    """Get a full profile for a neuron: type, connections, graph metrics."""
+    # Load the static connectome graph for connectivity data
+    graph_path = Path(__file__).resolve().parents[3] / "creatures-web" / "public" / "connectome-graph.json"
+    if not graph_path.exists():
+        raise HTTPException(404, f"Connectome graph data not found")
+
+    with open(graph_path) as f:
+        graph = json.load(f)
+
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+
+    # Find the neuron node
+    node = None
+    for n in nodes:
+        if n["id"] == neuron_id:
+            node = n
+            break
+    if node is None:
+        raise HTTPException(404, f"Neuron '{neuron_id}' not found in connectome")
+
+    # Compute connections
+    pre_edges = sorted(
+        [e for e in edges if e["post"] == neuron_id],
+        key=lambda e: e["weight"],
+        reverse=True,
+    )[:10]
+    post_edges = sorted(
+        [e for e in edges if e["pre"] == neuron_id],
+        key=lambda e: e["weight"],
+        reverse=True,
+    )[:10]
+
+    in_degree = sum(1 for e in edges if e["post"] == neuron_id)
+    out_degree = sum(1 for e in edges if e["pre"] == neuron_id)
+    total_degree = in_degree + out_degree
+    max_possible = (len(nodes) - 1) * 2
+    hub_score = total_degree / max_possible if max_possible > 0 else 0
+
+    # BFS layer depth from sensory neurons
+    adj: dict[str, list[str]] = {}
+    for e in edges:
+        adj.setdefault(e["pre"], []).append(e["post"])
+
+    sensory_ids = [n["id"] for n in nodes if n.get("type") == "sensory"]
+    depth_map: dict[str, int] = {}
+    queue = list(sensory_ids)
+    for sid in sensory_ids:
+        depth_map[sid] = 0
+
+    head = 0
+    while head < len(queue):
+        current = queue[head]
+        head += 1
+        d = depth_map[current]
+        for neighbor in adj.get(current, []):
+            if neighbor not in depth_map:
+                depth_map[neighbor] = d + 1
+                queue.append(neighbor)
+
+    layer_depth = depth_map.get(neuron_id, -1)
+
+    return JSONResponse({
+        "id": neuron_id,
+        "type": node.get("type", "unknown"),
+        "neurotransmitter": node.get("nt"),
+        "firing_rate": 0,  # Static endpoint — no live simulation data
+        "presynaptic": [
+            {"neuronId": e["pre"], "weight": e["weight"], "type": e.get("type", "chemical")}
+            for e in pre_edges
+        ],
+        "postsynaptic": [
+            {"neuronId": e["post"], "weight": e["weight"], "type": e.get("type", "chemical")}
+            for e in post_edges
+        ],
+        "in_degree": in_degree,
+        "out_degree": out_degree,
+        "hub_score": round(hub_score, 6),
+        "layer_depth": layer_depth,
+    })
+
+
 @router.get("/{neuron_id}/genes")
 async def get_neuron_genes(neuron_id: str):
     """Get gene expression / receptor data for a specific neuron."""

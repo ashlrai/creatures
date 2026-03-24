@@ -353,6 +353,208 @@ def compute_information_flow(
     }
 
 
+def classify_firing_pattern(spike_times: list[float], duration_ms: float) -> str:
+    """Classify a neuron's firing pattern based on its spike train.
+
+    Categories:
+        - 'silent': no spikes
+        - 'tonic': regular, steady firing (CV_ISI < 0.5)
+        - 'bursting': clustered spikes with pauses (CV_ISI > 1.0, Fano > 1.5)
+        - 'rhythmic': periodic firing with moderate regularity (0.3 < CV_ISI < 0.7, detectable periodicity)
+        - 'irregular': none of the above
+
+    Args:
+        spike_times: Sorted spike times in ms for a single neuron.
+        duration_ms: Total recording duration in ms.
+
+    Returns:
+        One of 'silent', 'tonic', 'bursting', 'irregular', 'rhythmic'.
+    """
+    times = np.asarray(spike_times, dtype=float)
+    if len(times) < 2 or duration_ms <= 0:
+        return "silent"
+
+    rate_hz = len(times) / (duration_ms / 1000.0)
+    if rate_hz < 0.1:
+        return "silent"
+
+    isi = np.diff(times)
+    if len(isi) == 0:
+        return "silent"
+
+    mean_isi = np.mean(isi)
+    if mean_isi <= 0:
+        return "irregular"
+
+    cv_isi = float(np.std(isi) / mean_isi)
+
+    # Fano factor on 50ms bins
+    bin_size_ms = 50.0
+    n_bins = max(1, int(duration_ms / bin_size_ms))
+    counts, _ = np.histogram(times, bins=np.linspace(0, duration_ms, n_bins + 1))
+    mean_count = np.mean(counts)
+    fano = float(np.var(counts) / mean_count) if mean_count > 0 else 0.0
+
+    # Bursting: high variability in ISI and clustered spikes
+    if cv_isi > 1.0 and fano > 1.5:
+        return "bursting"
+
+    # Tonic: very regular firing
+    if cv_isi < 0.5:
+        # Check for rhythmicity via autocorrelation peak
+        if len(isi) >= 8:
+            isi_centered = isi - np.mean(isi)
+            autocorr = np.correlate(isi_centered, isi_centered, mode="full")
+            autocorr = autocorr[len(autocorr) // 2 :]
+            if len(autocorr) > 2 and autocorr[0] > 0:
+                autocorr = autocorr / autocorr[0]
+                # Look for a secondary peak (rhythmic signature)
+                peaks = []
+                for i in range(1, len(autocorr) - 1):
+                    if autocorr[i] > autocorr[i - 1] and autocorr[i] > autocorr[i + 1]:
+                        if autocorr[i] > 0.3:
+                            peaks.append(i)
+                if peaks:
+                    return "rhythmic"
+        return "tonic"
+
+    # Moderate CV — check for rhythmic pattern
+    if 0.3 < cv_isi < 0.7 and len(isi) >= 8:
+        isi_centered = isi - np.mean(isi)
+        autocorr = np.correlate(isi_centered, isi_centered, mode="full")
+        autocorr = autocorr[len(autocorr) // 2 :]
+        if len(autocorr) > 2 and autocorr[0] > 0:
+            autocorr = autocorr / autocorr[0]
+            peaks = []
+            for i in range(1, len(autocorr) - 1):
+                if autocorr[i] > autocorr[i - 1] and autocorr[i] > autocorr[i + 1]:
+                    if autocorr[i] > 0.3:
+                        peaks.append(i)
+            if peaks:
+                return "rhythmic"
+
+    return "irregular"
+
+
+def synchrony_index(spike_trains: dict[str, list[float]], bin_ms: float = 5.0) -> float:
+    """Compute population synchrony index (0-1) using binned spike count correlation.
+
+    Higher values indicate more synchronous population activity.
+    Uses the SPIKE-distance-inspired approach: bin all spike trains, compute
+    pairwise Pearson correlations of binned counts, return mean correlation.
+
+    Args:
+        spike_trains: Mapping of neuron_id -> sorted spike times (ms).
+        bin_ms: Bin width in ms for discretizing spike trains.
+
+    Returns:
+        Synchrony index between 0.0 (asynchronous) and 1.0 (perfectly synchronous).
+        Returns 0.0 if fewer than 2 active neurons.
+    """
+    # Filter to active neurons only
+    active_trains = {k: v for k, v in spike_trains.items() if len(v) > 0}
+    if len(active_trains) < 2:
+        return 0.0
+
+    # Determine time range
+    all_times = np.concatenate([np.asarray(t) for t in active_trains.values()])
+    t_max = float(np.max(all_times))
+    n_bins = max(1, int(t_max / bin_ms) + 1)
+
+    # Build binned matrix: (n_neurons, n_bins)
+    neuron_ids = list(active_trains.keys())
+    binned = np.zeros((len(neuron_ids), n_bins))
+    for i, nid in enumerate(neuron_ids):
+        times = np.asarray(active_trains[nid])
+        indices = np.clip((times / bin_ms).astype(int), 0, n_bins - 1)
+        for idx in indices:
+            binned[i, idx] += 1
+
+    # Population vector correlation: compute mean pairwise correlation
+    # For efficiency, use population rate vector approach instead of all pairs
+    pop_rate = np.mean(binned, axis=0)
+    if np.std(pop_rate) < 1e-10:
+        return 0.0
+
+    # Synchrony = mean of individual neuron correlations with population
+    correlations = []
+    for i in range(len(neuron_ids)):
+        if np.std(binned[i]) < 1e-10:
+            continue
+        corr = np.corrcoef(binned[i], pop_rate)[0, 1]
+        if np.isfinite(corr):
+            correlations.append(corr)
+
+    if not correlations:
+        return 0.0
+
+    # Map from [-1, 1] correlation to [0, 1] synchrony
+    mean_corr = float(np.mean(correlations))
+    return float(np.clip((mean_corr + 1.0) / 2.0, 0.0, 1.0))
+
+
+def network_state_summary(firing_rates: dict[str, float], n_neurons: int) -> dict:
+    """Summarize the current network state from firing rates.
+
+    Args:
+        firing_rates: Mapping of neuron_id -> firing rate (Hz).
+        n_neurons: Total number of neurons in the network.
+
+    Returns:
+        Dictionary with:
+            active_count: number of neurons with rate > 0.1 Hz
+            silent_count: number of neurons with rate <= 0.1 Hz
+            active_fraction: active_count / n_neurons
+            mean_rate: mean firing rate across all neurons (Hz)
+            max_rate: maximum firing rate (Hz)
+            top_neuron: ID of the most active neuron
+            classification: 'quiescent' / 'sparse' / 'moderate' / 'active' / 'hyperactive'
+    """
+    if not firing_rates or n_neurons == 0:
+        return {
+            "active_count": 0,
+            "silent_count": n_neurons,
+            "active_fraction": 0.0,
+            "mean_rate": 0.0,
+            "max_rate": 0.0,
+            "top_neuron": None,
+            "classification": "quiescent",
+        }
+
+    rates = np.array(list(firing_rates.values()))
+    active_mask = rates > 0.1
+    active_count = int(np.sum(active_mask))
+    silent_count = n_neurons - active_count
+    active_fraction = active_count / n_neurons if n_neurons > 0 else 0.0
+    mean_rate = float(np.mean(rates))
+    max_rate = float(np.max(rates))
+
+    # Find top neuron
+    top_neuron = max(firing_rates, key=firing_rates.get) if firing_rates else None
+
+    # Classify network state
+    if active_fraction < 0.01:
+        classification = "quiescent"
+    elif active_fraction < 0.1:
+        classification = "sparse"
+    elif active_fraction < 0.4:
+        classification = "moderate"
+    elif active_fraction < 0.8:
+        classification = "active"
+    else:
+        classification = "hyperactive"
+
+    return {
+        "active_count": active_count,
+        "silent_count": silent_count,
+        "active_fraction": round(active_fraction, 4),
+        "mean_rate": round(mean_rate, 2),
+        "max_rate": round(max_rate, 2),
+        "top_neuron": top_neuron,
+        "classification": classification,
+    }
+
+
 def cross_correlation(
     spike_indices: np.ndarray,
     spike_times_ms: np.ndarray,

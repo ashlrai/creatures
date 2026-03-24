@@ -24,6 +24,7 @@ interface SimulationState {
   initialCom: number[] | null;
   lastPoke: { segment: string; time: number } | null;
   hoveredNeuron: HoveredNeuron | null;
+  selectedNeuron: string | null;
 
   setExperiment: (exp: ExperimentInfo) => void;
   setFrame: (frame: SimulationFrame) => void;
@@ -34,6 +35,7 @@ interface SimulationState {
   setError: (e: string | null) => void;
   setPoke: (segment: string) => void;
   setHoveredNeuron: (neuron: HoveredNeuron | null) => void;
+  setSelectedNeuron: (id: string | null) => void;
   reset: () => void;
 }
 
@@ -51,6 +53,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   initialCom: null,
   lastPoke: null,
   hoveredNeuron: null,
+  selectedNeuron: null,
 
   setExperiment: (exp) => set({ experiment: exp }),
 
@@ -75,10 +78,11 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   setError: (e) => set({ error: e }),
   setPoke: (segment) => set({ lastPoke: { segment, time: Date.now() } }),
   setHoveredNeuron: (neuron) => set({ hoveredNeuron: neuron }),
+  setSelectedNeuron: (id) => set({ selectedNeuron: id }),
 
   reset: () => set({
     experiment: null, frame: null, connected: false, connectionStatus: 'disconnected' as ConnectionStatus,
     reconnectAttempts: 0, loading: false, error: null, frameHistory: [], initialCom: null,
-    lastPoke: null, hoveredNeuron: null,
+    lastPoke: null, hoveredNeuron: null, selectedNeuron: null,
   }),
 }));
