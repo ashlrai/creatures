@@ -64,13 +64,27 @@ export function WormBody() {
       const breath = 1.0 + Math.sin(t * 2.0 + i * 0.4) * 0.015;
       mesh.scale.set(breath, 1, breath);
 
-      // Orient along body axis
+      // Orient along body axis — smoothed with slerp to prevent jitter
       if (i < n - 1 && positions[i + 1]) {
         const [nx, ny, nz] = positions[i + 1];
-        const dir = new THREE.Vector3(nx - x, nz - z, -(ny - y));
-        if (dir.length() > 0.0001) {
-          dir.normalize();
-          mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+        const fwd = new THREE.Vector3(nx - x, nz - z, -(ny - y));
+
+        // Average with previous direction for smoother tangent
+        if (i > 0 && positions[i - 1]) {
+          const [px, py, pz] = positions[i - 1];
+          const back = new THREE.Vector3(x - px, z - pz, -(y - py));
+          if (back.length() > 0.0001) {
+            back.normalize();
+            fwd.normalize();
+            fwd.add(back).normalize(); // catmull-rom tangent
+          }
+        }
+
+        if (fwd.length() > 0.001) {
+          fwd.normalize();
+          const up = new THREE.Vector3(0, 1, 0);
+          const targetQuat = new THREE.Quaternion().setFromUnitVectors(up, fwd);
+          mesh.quaternion.slerp(targetQuat, 0.25); // smooth interpolation
         }
       }
 
