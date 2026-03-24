@@ -206,16 +206,21 @@ class Brian2Engine(NeuralEngine):
         t_after = float(self._net.t / ms)
 
         # Get spikes that occurred during this step
-        spike_times = np.array(self._spike_mon.t / ms)
-        spike_indices = np.array(self._spike_mon.i)
-        mask = spike_times >= t_before
-        step_spikes = list(set(spike_indices[mask].astype(int)))
+        if self._spike_mon is not None:
+            spike_times = np.array(self._spike_mon.t / ms)
+            spike_indices = np.array(self._spike_mon.i)
+            mask = spike_times >= t_before
+            step_spikes = list(set(spike_indices[mask].astype(int)))
+        else:
+            spike_indices = np.array([], dtype=int)
+            mask = np.array([], dtype=bool)
+            step_spikes = []
 
         # Get current voltages
         voltages = list(float(v / mV) for v in self._neurons.v)
 
         # Update firing rates (exponential moving average)
-        alpha = duration_ms / cfg.tau_rate
+        alpha = min(1.0, duration_ms / cfg.tau_rate)
         spike_count = np.zeros(self.n_neurons)
         for idx in spike_indices[mask].astype(int):
             spike_count[idx] += 1

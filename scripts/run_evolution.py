@@ -235,7 +235,7 @@ def main(argv: list[str] | None = None) -> int:
     if fitness_mode == "fast":
         eval_fn = lambda g: evaluate_genome_fast(g)  # fast is organism-agnostic (topology only)
     elif fitness_mode == "medium":
-        eval_fn = lambda g: evaluate_genome_medium(g, organism=args.organism)
+        eval_fn = lambda g: evaluate_genome_medium(g, FitnessConfig(organism=args.organism))
     else:
         fitness_config = FitnessConfig(organism=args.organism)
         eval_fn = lambda g: evaluate_genome(g, fitness_config)

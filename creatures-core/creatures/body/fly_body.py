@@ -11,6 +11,7 @@ torque for each joint).
 from __future__ import annotations
 
 import logging
+import os
 import re
 import tempfile
 from pathlib import Path
@@ -54,11 +55,8 @@ def _find_flygym_data() -> Path:
     raise FileNotFoundError("flygym data directory not found. pip install flygym")
 
 
-def _load_fly_mjcf() -> tuple[mujoco.MjModel, str]:
-    """Load the NeuroMechFly MJCF model, patching compatibility issues.
-
-    Returns (MjModel, temp_file_path).
-    """
+def _load_fly_mjcf() -> mujoco.MjModel:
+    """Load the NeuroMechFly MJCF model, patching compatibility issues."""
     flygym_data = _find_flygym_data().resolve()
     mjcf_path = flygym_data / "mjcf" / "groundwalking_nmf_mjcf_nofloor_230518__bendTarsus_scaled.xml"
 
@@ -86,11 +84,13 @@ def _load_fly_mjcf() -> tuple[mujoco.MjModel, str]:
     tmp.flush()
 
     model = mujoco.MjModel.from_xml_path(tmp.name)
+    # Clean up temp file — MuJoCo copies data at load time
+    os.unlink(tmp.name)
     logger.info(
         f"Loaded NeuroMechFly: {model.nbody} bodies, {model.njnt} joints, "
         f"{model.nu} actuators"
     )
-    return model, tmp.name
+    return model
 
 
 class FlyBody(BodyModel):
@@ -103,7 +103,7 @@ class FlyBody(BodyModel):
     def __init__(self, config: BodyConfig | None = None, connectome=None) -> None:
         self._config = config or BodyConfig(dt=0.1)  # fly needs faster physics
         self._connectome = connectome
-        self._model, self._mjcf_path = _load_fly_mjcf()
+        self._model = _load_fly_mjcf()
         self._model.opt.timestep = self._config.dt / 1000.0
         self._data = mujoco.MjData(self._model)
         mujoco.mj_forward(self._model, self._data)

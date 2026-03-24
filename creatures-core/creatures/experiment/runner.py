@@ -139,9 +139,12 @@ class SimulationRunner:
                         [mapped_neuron, cfg.poke_current, cfg.poke_duration_ms]
                     )
                 else:
-                    # Fallback: stimulate all mapped sensory neurons with falloff
-                    for i, (sensor_name, neuron_id) in enumerate(sensor_map.items()):
-                        falloff = max(0.3, np.exp(-0.5 * (i / max(len(sensor_map) / 3, 1)) ** 2))
+                    # Fallback: stimulate a small sample of mapped sensory neurons
+                    max_stim = min(10, len(sensor_map))
+                    for i, (sensor_name, neuron_id) in enumerate(
+                        list(sensor_map.items())[:max_stim]
+                    ):
+                        falloff = max(0.3, np.exp(-0.5 * (i / max(max_stim / 3, 1)) ** 2))
                         self._active_pokes.append(
                             [neuron_id, cfg.poke_current * falloff,
                              cfg.poke_duration_ms]

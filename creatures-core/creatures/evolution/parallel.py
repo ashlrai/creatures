@@ -79,7 +79,7 @@ def _eval_worker_medium_fly(genome_data: dict) -> tuple[str, float]:
     from creatures.evolution.fitness import FitnessConfig, evaluate_genome_medium
 
     genome = Genome.from_dict(genome_data)
-    fitness = evaluate_genome_medium(genome, FitnessConfig(organism="drosophila"), organism="drosophila")
+    fitness = evaluate_genome_medium(genome, FitnessConfig(organism="drosophila"))
     return genome.id, fitness
 
 

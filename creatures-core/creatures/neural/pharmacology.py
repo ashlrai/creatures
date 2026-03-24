@@ -195,6 +195,10 @@ class PharmacologyEngine:
         if self._original_weights is None:
             self._original_weights = current_weights.copy()
 
+        # Always apply scaling from original weights to prevent compounding
+        # when multiple drugs are applied sequentially
+        base_weights = self._original_weights.copy()
+
         # Compute dose-adjusted parameters
         # weight_scale interpolates: dose=0 -> 1.0 (no effect), dose=1 -> drug.weight_scale
         if drug.weight_scale < 1.0:
@@ -233,15 +237,16 @@ class PharmacologyEngine:
                 target_pre_indices = type_filtered
 
         # If no specific target, affect all synapses
+        # Use base_weights (originals) to prevent compounding on repeated apply
         if drug.target_nt is None and drug.target_type is None:
             # Global effect
-            new_weights = current_weights * effective_scale
+            new_weights = base_weights * effective_scale
             self.engine.set_synapse_weights(new_weights)
-            n_affected = len(current_weights)
+            n_affected = len(base_weights)
         else:
             # Targeted effect: only modify synapses from target neurons
             pre_arr = self.engine.get_synapse_pre_indices()
-            new_weights = current_weights.copy()
+            new_weights = base_weights.copy()
             mask = np.isin(pre_arr, list(target_pre_indices))
             new_weights[mask] *= effective_scale
             self.engine.set_synapse_weights(new_weights)

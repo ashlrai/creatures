@@ -146,7 +146,7 @@ def evaluate_genome(genome: Genome, config: FitnessConfig | None = None) -> floa
     return fitness
 
 
-def evaluate_genome_medium(genome: Genome, config: FitnessConfig | None = None, organism: str = "c_elegans") -> float:
+def evaluate_genome_medium(genome: Genome, config: FitnessConfig | None = None) -> float:
     """Medium-speed fitness: run Brian2 for 100ms with a standard stimulus.
 
     Injects current into tail sensory neurons and measures motor neuron
