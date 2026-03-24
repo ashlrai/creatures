@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useRef, Component, type ReactNode } from 'react';
+import { useCallback, useState, useEffect, useRef, useMemo, Component, type ReactNode } from 'react';
 import { Scene } from './components/Scene';
 import { ConnectomeExplorer } from './components/ui/ConnectomeExplorer';
 import { DrugTestingPanel } from './components/ui/DrugTestingPanel';
@@ -11,9 +11,60 @@ import { ConnectomeComparison } from './components/evolution/ConnectomeCompariso
 import { GenerationTimeline } from './components/evolution/GenerationTimeline';
 import { useSimulation } from './hooks/useSimulation';
 import { useDemoMode } from './hooks/useDemoMode';
+import { useLocalStorage } from './hooks/useLocalStorage';
+import { useHashRouter, type HashState } from './hooks/useHashRouter';
 import { NeuronTooltip } from './components/ui/NeuronTooltip';
 import { useSimulationStore } from './stores/simulationStore';
 import { useEvolutionStore } from './stores/evolutionStore';
+import { GlobalErrorBoundary } from './components/ErrorBoundary';
+import {
+  NeuralActivitySkeleton,
+  InteractionSkeleton,
+  ConnectomeSkeleton,
+  WaveformSkeleton,
+} from './components/ui/Skeleton';
+import type { ConnectionStatus } from './stores/simulationStore';
+
+/** Connection status indicator for the header */
+function ConnectionIndicator({ status, connected, attempts }: {
+  status: ConnectionStatus;
+  connected: boolean;
+  attempts: number;
+}) {
+  if (status === 'connected' || connected) {
+    return (
+      <>
+        <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', boxShadow: '0 0 8px var(--accent-green)' }} />
+        <span style={{ color: 'var(--text-secondary)' }}>Live</span>
+      </>
+    );
+  }
+  if (status === 'reconnecting') {
+    return (
+      <>
+        <div className="connection-dot-reconnecting" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-amber)', boxShadow: '0 0 8px var(--accent-amber)' }} />
+        <span style={{ color: 'var(--accent-amber)', fontSize: 11 }}>Reconnecting{'.'.repeat(attempts)}</span>
+      </>
+    );
+  }
+  if (status === 'failed') {
+    return (
+      <>
+        <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-magenta)', opacity: 0.7 }} />
+        <span style={{ color: 'var(--text-label)', fontSize: 11 }}>Connection lost -- using cached data</span>
+      </>
+    );
+  }
+  if (status === 'connecting') {
+    return (
+      <>
+        <div className="connection-dot-reconnecting" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-amber)', boxShadow: '0 0 6px var(--accent-amber)' }} />
+        <span style={{ color: 'var(--text-label)', fontSize: 11 }}>Connecting...</span>
+      </>
+    );
+  }
+  return null;
+}
 
 // Error boundary for the 3D scene — if WebGL crashes, show fallback
 class SceneErrorBoundary extends Component<
@@ -63,6 +114,8 @@ export default function App() {
   const loading = useSimulationStore((s) => s.loading);
   const error = useSimulationStore((s) => s.error);
   const history = useSimulationStore((s) => s.frameHistory);
+  const connectionStatus = useSimulationStore((s) => s.connectionStatus);
+  const reconnectAttempts = useSimulationStore((s) => s.reconnectAttempts);
 
   const [lesionInput, setLesionInput] = useState('');
   const [stimInput, setStimInput] = useState('');
@@ -71,13 +124,45 @@ export default function App() {
   const [showConnectomeComparison, setShowConnectomeComparison] = useState(false);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const autoStarted = useRef(false);
+
+  // --- Local storage persistence ---
+  const [savedOrganism, setSavedOrganism] = useLocalStorage<string>('neurevo:organism', 'c_elegans');
+  const [savedMode, setSavedMode] = useLocalStorage<'sim' | 'evo'>('neurevo:mode', 'sim');
+  const [drugPanelExpanded, setDrugPanelExpanded] = useLocalStorage<boolean>('neurevo:drugPanelExpanded', false);
+  const [savedGeneration, setSavedGeneration] = useLocalStorage<number>('neurevo:lastGeneration', 0);
+
+  // Sync evolution mode from/to localStorage
+  useEffect(() => {
+    setSavedMode(isEvolutionMode ? 'evo' : 'sim');
+  }, [isEvolutionMode, setSavedMode]);
+
+  // Restore evolution mode from localStorage on mount
+  useEffect(() => {
+    if (savedMode === 'evo' && !isEvolutionMode) {
+      toggleEvolutionMode();
+    }
+    // Only on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Track latest generation for persistence
+  const latestStats = useEvolutionStore((s) => s.latestStats);
+  useEffect(() => {
+    if (latestStats?.generation != null) {
+      setSavedGeneration(latestStats.generation);
+    }
+  }, [latestStats, setSavedGeneration]);
+
+  // Derive current organism from experiment or saved value
+  const currentOrganism = experiment?.organism ?? savedOrganism;
 
   // Auto-start demo on page load — no welcome screen, immediate wow factor
   useEffect(() => {
     if (autoStarted.current) return;
     autoStarted.current = true;
-    startDemo().then(() => {
+    startDemo(savedOrganism).then(() => {
       // Auto-poke so users see neural cascade immediately
       const store = useSimulationStore.getState();
       store.setPoke('seg_8');
@@ -125,19 +210,62 @@ export default function App() {
       const exp = await createExperiment(organism);
       connect(exp.id);
     } catch {
-      await startDemo();
+      await startDemo(organism);
     }
   }, [createExperiment, connect, startDemo]);
 
   const handleSwitchOrganism = useCallback(async (organism: string) => {
     // Try live server first, fall back to demo
+    setSavedOrganism(organism);
     try {
       const exp = await createExperiment(organism);
       connect(exp.id);
     } catch {
-      await startDemo();
+      await startDemo(organism);
     }
-  }, [createExperiment, connect, startDemo]);
+  }, [createExperiment, connect, startDemo, setSavedOrganism]);
+
+  // --- Hash-based URL routing ---
+  const hashState = useMemo<HashState>(() => ({
+    mode: isEvolutionMode ? 'evo' : 'sim',
+    organism: currentOrganism,
+    compare: showConnectomeComparison,
+  }), [isEvolutionMode, currentOrganism, showConnectomeComparison]);
+
+  const handleHashChange = useCallback((state: HashState) => {
+    // Sync mode
+    if (state.mode === 'evo' && !useEvolutionStore.getState().isEvolutionMode) {
+      toggleEvolutionMode();
+    } else if (state.mode === 'sim' && useEvolutionStore.getState().isEvolutionMode) {
+      toggleEvolutionMode();
+    }
+    // Sync connectome comparison
+    setShowConnectomeComparison(state.compare);
+  }, [toggleEvolutionMode]);
+
+  // Handle organism change from hash separately to avoid stale closure
+  const handleHashChangeWithOrganism = useCallback((state: HashState) => {
+    handleHashChange(state);
+    const current = useSimulationStore.getState().experiment?.organism ?? savedOrganism;
+    if (state.organism !== current) {
+      handleSwitchOrganism(state.organism);
+    }
+  }, [handleHashChange, savedOrganism, handleSwitchOrganism]);
+
+  useHashRouter(hashState, handleHashChangeWithOrganism);
+
+  // --- Share button handler ---
+  const handleShare = useCallback(() => {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url).then(() => {
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    }).catch(() => {
+      // Fallback for browsers that block clipboard API
+      setNotification('Copy this URL to share: ' + url);
+      setTimeout(() => setNotification(null), 4000);
+    });
+  }, []);
 
   const handleLesion = useCallback((id: string) => {
     sendCommand({ type: 'lesion_neuron', neuron_id: id });
@@ -232,13 +360,16 @@ export default function App() {
               Evolution
             </button>
           </div>
-          {connected && (
-            <>
-              <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', boxShadow: '0 0 8px var(--accent-green)' }} />
-              <span style={{ color: 'var(--text-secondary)' }}>Live</span>
-            </>
-          )}
+          <ConnectionIndicator status={connectionStatus} connected={connected} attempts={reconnectAttempts} />
           {frame && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-label)' }}>{frame.t_ms.toFixed(0)}ms</span>}
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: 11, padding: '3px 10px', position: 'relative' }}
+            onClick={handleShare}
+            title="Copy shareable link"
+          >
+            {shareCopied ? 'Link copied!' : 'Share'}
+          </button>
         </div>
       </header>
 
@@ -291,12 +422,13 @@ export default function App() {
                   <button className="btn btn-primary" onClick={() => { if (stimInput) { handleStim([stimInput]); setStimInput(''); }}}>Zap</button>
                 </div>
               </div>
-              <DrugTestingPanel isDemo={isDemo} />
+              <DrugTestingPanel isDemo={isDemo} expanded={drugPanelExpanded} onToggleExpanded={setDrugPanelExpanded} />
             </>
           ) : (
-            <div style={{ padding: 8, textAlign: 'center', opacity: 0.3, fontSize: 12 }}>
-              Loading neural network...
-            </div>
+            <>
+              <NeuralActivitySkeleton />
+              <InteractionSkeleton />
+            </>
           )}
         </div>
 
@@ -329,7 +461,7 @@ export default function App() {
               </div>
             </div>
           ) : (
-            experiment && <ConnectomeExplorer />
+            experiment ? <ConnectomeExplorer /> : <ConnectomeSkeleton />
           )}
         </div>
       </div>
@@ -362,9 +494,7 @@ export default function App() {
         ) : experiment ? (
           <Waveform />
         ) : (
-          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: 11, color: 'var(--text-label)' }}>Neural oscilloscope — loading...</span>
-          </div>
+          <WaveformSkeleton />
         )}
       </div>
     </div>

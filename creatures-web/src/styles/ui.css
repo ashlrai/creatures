@@ -668,3 +668,18 @@ body {
   line-height: 1.45;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
+
+/* Skeleton loading animation */
+@keyframes skeletonShimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Reconnecting dot pulse */
+.connection-dot-reconnecting {
+  animation: connectionPulse 1.2s ease-in-out infinite;
+}
+@keyframes connectionPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}

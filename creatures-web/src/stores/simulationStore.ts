@@ -10,10 +10,14 @@ export interface HoveredNeuron {
   mouseY: number;
 }
 
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'failed';
+
 interface SimulationState {
   experiment: ExperimentInfo | null;
   frame: SimulationFrame | null;
   connected: boolean;
+  connectionStatus: ConnectionStatus;
+  reconnectAttempts: number;
   loading: boolean;
   error: string | null;
   frameHistory: { t: number; n_active: number; displacement: number }[];
@@ -24,6 +28,8 @@ interface SimulationState {
   setExperiment: (exp: ExperimentInfo) => void;
   setFrame: (frame: SimulationFrame) => void;
   setConnected: (c: boolean) => void;
+  setConnectionStatus: (status: ConnectionStatus) => void;
+  setReconnectAttempts: (n: number) => void;
   setLoading: (l: boolean) => void;
   setError: (e: string | null) => void;
   setPoke: (segment: string) => void;
@@ -37,6 +43,8 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   experiment: null,
   frame: null,
   connected: false,
+  connectionStatus: 'disconnected' as ConnectionStatus,
+  reconnectAttempts: 0,
   loading: false,
   error: null,
   frameHistory: [],
@@ -61,13 +69,16 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   },
 
   setConnected: (c) => set({ connected: c }),
+  setConnectionStatus: (status) => set({ connectionStatus: status }),
+  setReconnectAttempts: (n) => set({ reconnectAttempts: n }),
   setLoading: (l) => set({ loading: l }),
   setError: (e) => set({ error: e }),
   setPoke: (segment) => set({ lastPoke: { segment, time: Date.now() } }),
   setHoveredNeuron: (neuron) => set({ hoveredNeuron: neuron }),
 
   reset: () => set({
-    experiment: null, frame: null, connected: false, loading: false,
-    error: null, frameHistory: [], initialCom: null, lastPoke: null, hoveredNeuron: null,
+    experiment: null, frame: null, connected: false, connectionStatus: 'disconnected' as ConnectionStatus,
+    reconnectAttempts: 0, loading: false, error: null, frameHistory: [], initialCom: null,
+    lastPoke: null, hoveredNeuron: null,
   }),
 }));

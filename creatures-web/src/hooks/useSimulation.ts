@@ -5,9 +5,13 @@ import type { SimulationFrame, ExperimentInfo } from '../types/simulation';
 const API_BASE = '/api';
 const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const WS_BASE = typeof window !== 'undefined' ? `${protocol}//${window.location.host}` : 'ws://localhost:5173';
+const MAX_RECONNECT_ATTEMPTS = 3;
+const RECONNECT_DELAYS = [1000, 2000, 4000]; // exponential backoff
 
 export function useSimulation() {
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const lastSimIdRef = useRef<string | null>(null);
   const store = useSimulationStore();
 
   const createExperiment = useCallback(async (organism = 'c_elegans') => {
@@ -40,20 +44,49 @@ export function useSimulation() {
     }
   }, []);
 
-  const connect = useCallback((simId: string) => {
+  const attemptReconnect = useCallback((simId: string) => {
+    const currentAttempts = useSimulationStore.getState().reconnectAttempts;
+    if (currentAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      store.setConnectionStatus('failed');
+      store.setError('Connection lost -- using cached data');
+      return;
+    }
+    store.setConnectionStatus('reconnecting');
+    store.setReconnectAttempts(currentAttempts + 1);
+    const delay = RECONNECT_DELAYS[currentAttempts] ?? 4000;
+    reconnectTimerRef.current = window.setTimeout(() => {
+      connect(simId, true);
+    }, delay);
+  }, []);
+
+  const connect = useCallback((simId: string, isReconnect = false) => {
     if (wsRef.current) wsRef.current.close();
+    lastSimIdRef.current = simId;
+
+    if (!isReconnect) {
+      store.setReconnectAttempts(0);
+      store.setConnectionStatus('connecting');
+    }
 
     const ws = new WebSocket(`${WS_BASE}/ws/${simId}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
       store.setConnected(true);
+      store.setConnectionStatus('connected');
+      store.setReconnectAttempts(0);
       store.setError(null);
     };
-    ws.onclose = () => store.setConnected(false);
+    ws.onclose = () => {
+      store.setConnected(false);
+      // Only attempt reconnect if we had a valid connection before and it wasn't intentional
+      if (lastSimIdRef.current === simId) {
+        attemptReconnect(simId);
+      }
+    };
     ws.onerror = () => {
       store.setConnected(false);
-      store.setError('WebSocket connection lost');
+      // Error is followed by onclose, which handles reconnect
     };
 
     ws.onmessage = (evt) => {
@@ -64,7 +97,7 @@ export function useSimulation() {
         console.warn('Failed to parse frame:', err);
       }
     };
-  }, []);
+  }, [attemptReconnect]);
 
   const sendCommand = useCallback((cmd: Record<string, unknown>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -85,7 +118,11 @@ export function useSimulation() {
   const resume = useCallback(() => sendCommand({ type: 'resume' }), [sendCommand]);
 
   useEffect(() => {
-    return () => { wsRef.current?.close(); };
+    return () => {
+      lastSimIdRef.current = null; // prevent reconnect on unmount
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      wsRef.current?.close();
+    };
   }, []);
 
   return {

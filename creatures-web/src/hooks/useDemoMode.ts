@@ -32,13 +32,16 @@ export function useDemoMode() {
   const [isDemo, setIsDemo] = useState(false);
   const demoDataRef = useRef<DemoData | null>(null);
 
-  const startDemo = useCallback(async () => {
+  const startDemo = useCallback(async (organism: string = 'c_elegans') => {
     store.setLoading(true);
     store.setError(null);
 
+    // Choose demo data file based on organism
+    const demoFile = organism === 'drosophila' ? 'demo-frames-fly.json' : 'demo-frames.json';
+
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const res = await fetch(`${base}demo-frames.json`);
+      const res = await fetch(`${base}${demoFile}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const contentType = res.headers.get('content-type') || '';
@@ -51,7 +54,7 @@ export function useDemoMode() {
         data = await res.json();
       }
 
-      console.log(`Demo: loaded ${data.frames.length} frames`);
+      console.log(`Demo (${organism}): loaded ${data.frames.length} frames`);
       demoDataRef.current = data;
       store.setExperiment(data.experiment);
       store.setConnected(true);
@@ -83,7 +86,7 @@ export function useDemoMode() {
         frameIdx.current++;
       }, 33);
     } catch (err) {
-      console.error('Demo mode failed:', err);
+      console.error(`Demo mode failed (${organism}):`, err);
       store.setError('Demo data not available');
       store.setLoading(false);
     }

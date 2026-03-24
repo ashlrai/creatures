@@ -62,9 +62,12 @@ const GABA_NEURONS = [
 
 interface DrugTestingPanelProps {
   isDemo: boolean;
+  /** Controlled expanded state (optional — falls back to internal state) */
+  expanded?: boolean;
+  onToggleExpanded?: (v: boolean) => void;
 }
 
-export function DrugTestingPanel({ isDemo }: DrugTestingPanelProps) {
+export function DrugTestingPanel({ isDemo, expanded: controlledExpanded, onToggleExpanded }: DrugTestingPanelProps) {
   const connected = useSimulationStore((s) => s.connected);
   const [doses, setDoses] = useState<Record<string, number>>({});
   const [appliedDrug, setAppliedDrug] = useState<string | null>(null);
@@ -72,7 +75,9 @@ export function DrugTestingPanel({ isDemo }: DrugTestingPanelProps) {
   const [neuronTypes, setNeuronTypes] = useState<Record<string, { type: string; nt: string | null }>>({});
   const [motorNeurons, setMotorNeurons] = useState<string[]>([]);
   const [achNeurons, setAchNeurons] = useState<string[]>([]);
-  const [expanded, setExpanded] = useState(false);
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const expanded = controlledExpanded ?? internalExpanded;
+  const setExpanded = onToggleExpanded ?? setInternalExpanded;
 
   // Load neuron types to resolve which neurons to target
   useEffect(() => {
@@ -166,7 +171,7 @@ export function DrugTestingPanel({ isDemo }: DrugTestingPanelProps) {
       <div
         className="glass-label"
         style={{ cursor: 'pointer', userSelect: 'none', marginBottom: expanded ? 8 : 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => setExpanded(!expanded)}
       >
         <span>Drug Testing</span>
         <span style={{ fontSize: 10, color: 'var(--text-label)' }}>{expanded ? '\u25BE' : '\u25B8'}</span>

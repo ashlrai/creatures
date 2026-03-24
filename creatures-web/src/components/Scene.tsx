@@ -7,6 +7,7 @@ import { NeuralNetwork3D } from './organism/NeuralNetwork3D';
 import { ConnectomeGraph3D } from './organism/ConnectomeGraph3D';
 import { SpikeParticles } from './organism/SpikeParticles';
 import { PostProcessing } from './effects/PostProcessing';
+import { PerformanceMonitor } from './ui/PerformanceMonitor';
 import { useSimulationStore } from '../stores/simulationStore';
 
 function SmoothCamera() {
@@ -201,6 +202,9 @@ export function Scene() {
 
       {/* Post-processing */}
       <PostProcessing />
+
+      {/* FPS warning — only visible when performance drops below 30fps */}
+      <PerformanceMonitor />
     </Canvas>
   );
 }

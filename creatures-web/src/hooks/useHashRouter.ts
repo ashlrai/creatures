@@ -1,0 +1,79 @@
+import { useEffect, useCallback, useRef } from 'react';
+
+/**
+ * Hash-based routing for shareable URLs.
+ *
+ * Patterns:
+ *   #/sim/c_elegans      — simulation mode, C. elegans
+ *   #/sim/drosophila     — simulation mode, fruit fly
+ *   #/evo                — evolution mode
+ *   #/evo/compare        — evolution mode + connectome comparison
+ */
+
+export interface HashState {
+  mode: 'sim' | 'evo';
+  organism: string;
+  compare: boolean;
+}
+
+function parseHash(hash: string): HashState | null {
+  const path = hash.replace(/^#\/?/, '');
+  if (!path) return null;
+
+  const parts = path.split('/');
+
+  if (parts[0] === 'evo') {
+    return { mode: 'evo', organism: 'c_elegans', compare: parts[1] === 'compare' };
+  }
+  if (parts[0] === 'sim' && parts[1]) {
+    return { mode: 'sim', organism: parts[1], compare: false };
+  }
+  return null;
+}
+
+function buildHash(state: HashState): string {
+  if (state.mode === 'evo') {
+    return state.compare ? '#/evo/compare' : '#/evo';
+  }
+  return `#/sim/${state.organism}`;
+}
+
+export function useHashRouter(
+  currentState: HashState,
+  onHashChange: (state: HashState) => void,
+) {
+  const suppressRef = useRef(false);
+
+  // On mount: read hash and push state to app
+  useEffect(() => {
+    const initial = parseHash(window.location.hash);
+    if (initial) {
+      onHashChange(initial);
+    }
+    // Only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // When app state changes, update the hash (suppress the resulting hashchange)
+  useEffect(() => {
+    const newHash = buildHash(currentState);
+    if (window.location.hash !== newHash) {
+      suppressRef.current = true;
+      window.location.hash = newHash;
+    }
+  }, [currentState.mode, currentState.organism, currentState.compare]);
+
+  // Listen for user/browser navigation (back/forward)
+  useEffect(() => {
+    const handler = () => {
+      if (suppressRef.current) {
+        suppressRef.current = false;
+        return;
+      }
+      const parsed = parseHash(window.location.hash);
+      if (parsed) onHashChange(parsed);
+    };
+    window.addEventListener('hashchange', handler);
+    return () => window.removeEventListener('hashchange', handler);
+  }, [onHashChange]);
+}
