@@ -25,12 +25,21 @@ from brian2 import (
 )
 
 from creatures.connectome.types import Connectome
-from creatures.neural.base import NeuralConfig, NeuralEngine, SimulationState
+from creatures.neural.base import MonitorConfig, NeuralConfig, NeuralEngine, SimulationState
 
 logger = logging.getLogger(__name__)
 
-# Use numpy for now; switch to cython for performance later
-prefs.codegen.target = "numpy"
+
+def _resolve_codegen_target(target: str) -> str:
+    """Resolve 'auto' to the best available backend."""
+    if target == "auto":
+        try:
+            import Cython  # noqa: F401
+            return "cython"
+        except ImportError:
+            logger.info("Cython not available, falling back to numpy backend")
+            return "numpy"
+    return target
 
 
 class Brian2Engine(NeuralEngine):
@@ -49,6 +58,7 @@ class Brian2Engine(NeuralEngine):
         self._voltage_mon: StateMonitor | None = None
         self._connectome: Connectome | None = None
         self._config: NeuralConfig | None = None
+        self._monitor_config: MonitorConfig | None = None
         self._neuron_ids: list[str] = []
         self._id_to_idx: dict[str, int] = {}
         self._firing_rates: np.ndarray | None = None
@@ -62,7 +72,11 @@ class Brian2Engine(NeuralEngine):
     def n_neurons(self) -> int:
         return len(self._neuron_ids)
 
-    def build(self, connectome: Connectome, config: NeuralConfig | None = None) -> None:
+    def get_neuron_index(self, neuron_id: str) -> int | None:
+        return self._id_to_idx.get(neuron_id)
+
+    def build(self, connectome: Connectome, config: NeuralConfig | None = None,
+              monitor: MonitorConfig | None = None) -> None:
         """Build the Brian2 network from a connectome.
 
         Args:
@@ -71,7 +85,13 @@ class Brian2Engine(NeuralEngine):
         """
         self._connectome = connectome
         self._config = config or NeuralConfig()
+        self._monitor_config = monitor or MonitorConfig()
         cfg = self._config
+
+        # Set codegen target per-build (not module-level)
+        resolved_target = _resolve_codegen_target(cfg.codegen_target)
+        prefs.codegen.target = resolved_target
+        logger.info(f"Brian2 codegen target: {resolved_target}")
 
         self._neuron_ids = connectome.neuron_ids
         self._id_to_idx = connectome.neuron_id_to_index
@@ -113,15 +133,31 @@ class Brian2Engine(NeuralEngine):
         self._synapses.connect(i=b2_params["i"], j=b2_params["j"])
         self._synapses.w = b2_params["w"] * cfg.weight_scale * mV
 
-        # Monitors
-        self._spike_mon = SpikeMonitor(self._neurons)
-        self._voltage_mon = StateMonitor(self._neurons, "v", record=True)
+        # Monitors — configurable to save memory on large networks
+        mon_cfg = self._monitor_config
+        components = [self._neurons, self._synapses]
+
+        if mon_cfg.record_spikes:
+            self._spike_mon = SpikeMonitor(self._neurons)
+            components.append(self._spike_mon)
+
+        if mon_cfg.record_voltages:
+            if mon_cfg.voltage_neuron_ids is not None:
+                # Selective voltage recording
+                record_indices = [
+                    self._id_to_idx[nid] for nid in mon_cfg.voltage_neuron_ids
+                    if nid in self._id_to_idx
+                ]
+                self._voltage_mon = StateMonitor(
+                    self._neurons, "v", record=record_indices
+                )
+            else:
+                # Record all voltages
+                self._voltage_mon = StateMonitor(self._neurons, "v", record=True)
+            components.append(self._voltage_mon)
 
         # Build network
-        self._net = Network(
-            self._neurons, self._synapses,
-            self._spike_mon, self._voltage_mon,
-        )
+        self._net = Network(*components)
         self._net.store("initial")
 
         # Firing rate tracking
@@ -269,6 +305,30 @@ class Brian2Engine(NeuralEngine):
             for i in indices:
                 self._synapses.w[int(i)] = 0 * mV
             logger.info(f"Lesioned neuron {neuron_id}: zeroed {len(indices)} synapses")
+
+    def get_firing_rates_array(self) -> np.ndarray:
+        """Return firing rates as a numpy array (ordered by neuron index)."""
+        if self._firing_rates is None:
+            return np.array([])
+        return self._firing_rates.copy()
+
+    def get_synapse_weights(self) -> np.ndarray:
+        """Return all synapse weights as a numpy array (in mV)."""
+        if self._synapses is None:
+            return np.array([])
+        return np.array(self._synapses.w / mV)
+
+    def set_synapse_weights(self, weights: np.ndarray) -> None:
+        """Set all synapse weights from a numpy array (in mV)."""
+        if self._synapses is None:
+            raise RuntimeError("Network not built. Call build() first.")
+        self._synapses.w[:] = weights * mV
+
+    def get_synapse_pre_indices(self) -> np.ndarray:
+        """Return presynaptic neuron indices for all synapses."""
+        if self._synapses is None:
+            return np.array([], dtype=int)
+        return np.array(self._synapses.i)
 
     def reset(self) -> None:
         """Reset the simulation to initial conditions."""

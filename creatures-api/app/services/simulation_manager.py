@@ -31,6 +31,7 @@ class SimulationInstance:
     runner: SimulationRunner
     engine: Brian2Engine
     connectome: object  # Connectome
+    pharma_engine: object | None = None  # PharmacologyEngine, lazily created
     status: str = "ready"  # ready, running, paused, stopped
     subscribers: list = field(default_factory=list)
     _task: asyncio.Task | None = None
@@ -56,7 +57,7 @@ class SimulationManager:
                 min_synapse_count=5,
                 max_neurons=config.max_neurons,
             )
-            body = FlyBody(BodyConfig(dt=0.5))
+            body = FlyBody(BodyConfig(dt=0.5), connectome=connectome)
         else:
             raise ValueError(f"Organism '{config.organism}' not yet supported")
 
@@ -75,7 +76,7 @@ class SimulationManager:
             firing_rate_to_torque_gain=config.firing_rate_to_torque_gain,
             inhibitory_gain=config.inhibitory_gain,
         )
-        runner = SimulationRunner(engine, body, coupling)
+        runner = SimulationRunner(engine, body, coupling, connectome=connectome)
 
         sim = SimulationInstance(
             id=sim_id,
@@ -115,11 +116,10 @@ class SimulationManager:
                     t_ms=frame_data.t_ms,
                     n_active=len(frame_data.active_neurons),
                     spikes=[
-                        sim.engine._id_to_idx[n]
-                        for n in frame_data.active_neurons
-                        if n in sim.engine._id_to_idx
+                        idx for n in frame_data.active_neurons
+                        if (idx := sim.engine.get_neuron_index(n)) is not None
                     ],
-                    firing_rates=list(sim.engine._firing_rates),
+                    firing_rates=list(sim.engine.get_firing_rates_array()),
                     body_positions=[
                         list(p) for p in frame_data.body_state.positions
                     ],

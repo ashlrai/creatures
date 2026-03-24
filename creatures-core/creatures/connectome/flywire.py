@@ -52,8 +52,11 @@ NEUROPIL_PRESETS = {
                        "MB_VL_R", "MB_VL_L", "MB_ML_R", "MB_ML_L"],
     "central_complex": ["FB", "EB", "PB", "NO"],
     "optic_lobe_right": ["ME_R", "LO_R", "LOP_R"],
-    "locomotion": ["T1_R", "T1_L", "T2_R", "T2_L", "T3_R", "T3_L",
-                    "ANm", "GNG"],
+    # Locomotion command circuit: central complex + gnathal ganglia
+    # (T1-T3 are VNC regions not in FlyWire brain data)
+    "locomotion": ["GNG", "FB", "EB", "PB", "NO"],
+    # Compact steering/heading circuit for testing (~2K neurons)
+    "locomotion_compact": ["EB", "PB", "NO"],
     "all_sensory": ["AL_R", "AL_L", "ME_R", "ME_L", "LO_R", "LO_L"],
 }
 
@@ -133,6 +136,9 @@ def _classify_neuron_type(row: pd.Series) -> NeuronType:
     if flow == "sensory" or super_class == "sensory":
         return NeuronType.SENSORY
     if flow == "motor" or super_class == "motor":
+        return NeuronType.MOTOR
+    # Descending neurons are the brain's motor output to VNC
+    if flow == "descending" or super_class == "descending":
         return NeuronType.MOTOR
     return NeuronType.INTER
 
@@ -247,20 +253,29 @@ def load(
             } if len(row) > 0 else {},
         )
 
-    # Build synapses
-    synapses: list[Synapse] = []
-    for _, row in conn_df.iterrows():
-        pre_str = str(row["pre_pt_root_id"])
-        post_str = str(row["post_pt_root_id"])
-        if pre_str in neurons and post_str in neurons:
-            nt = neurons[pre_str].neurotransmitter
-            synapses.append(Synapse(
-                pre_id=pre_str,
-                post_id=post_str,
-                weight=float(row["syn_count"]),
-                synapse_type=SynapseType.CHEMICAL,
-                neurotransmitter=nt,
-            ))
+    # Build synapses — vectorized for performance on large datasets
+    neuron_id_set = set(neurons.keys())
+    pre_strs = conn_df["pre_pt_root_id"].astype(str)
+    post_strs = conn_df["post_pt_root_id"].astype(str)
+    valid_mask = pre_strs.isin(neuron_id_set) & post_strs.isin(neuron_id_set)
+
+    valid_pre = pre_strs[valid_mask].values
+    valid_post = post_strs[valid_mask].values
+    valid_weights = conn_df.loc[valid_mask, "syn_count"].values.astype(float)
+
+    # Pre-compute neurotransmitter lookup
+    nt_lookup = {nid: n.neurotransmitter for nid, n in neurons.items()}
+
+    synapses: list[Synapse] = [
+        Synapse(
+            pre_id=pre,
+            post_id=post,
+            weight=w,
+            synapse_type=SynapseType.CHEMICAL,
+            neurotransmitter=nt_lookup.get(pre),
+        )
+        for pre, post, w in zip(valid_pre, valid_post, valid_weights)
+    ]
 
     connectome = Connectome(
         name=f"drosophila_flywire_v783{'_' + '_'.join(neuropils) if neuropils else ''}",

@@ -21,13 +21,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "creatures-core"))
 from creatures.connectome.flywire import load as load_fly
 from creatures.connectome.types import NeuronType
 from creatures.neural.brian2_engine import Brian2Engine
-from creatures.neural.base import NeuralConfig
+from creatures.neural.base import MonitorConfig, NeuralConfig
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 OUTPUT_PATH = Path(__file__).resolve().parents[1] / "creatures-web" / "public" / "demo-frames-fly.json"
-NUM_FRAMES = 400
+NUM_FRAMES = 800
 STEP_MS = 1.0  # each frame = 1ms of simulation
 
 
@@ -101,9 +101,9 @@ def generate_muscle_activations(firing_rates: list[float], n_neurons: int) -> di
 
 
 def main():
-    logger.info("Loading Drosophila central complex connectome...")
+    logger.info("Loading Drosophila locomotion connectome...")
     connectome = load_fly(
-        neuropils="central_complex",
+        neuropils="locomotion",
         min_synapse_count=5,
         max_neurons=500,
     )
@@ -128,7 +128,26 @@ def main():
         v_reset=-52.0,
     )
     engine = Brian2Engine()
-    engine.build(connectome, config)
+    monitor = MonitorConfig(record_voltages=False)  # save memory
+    engine.build(connectome, config, monitor=monitor)
+
+    # Try to set up real brain-body coupling
+    runner = None
+    try:
+        from creatures.body.fly_body import FlyBody
+        from creatures.body.base import BodyConfig
+        from creatures.experiment.runner import SimulationRunner, CouplingConfig
+
+        body = FlyBody(BodyConfig(dt=0.5), connectome=connectome)
+        body.reset()
+        coupling = CouplingConfig(
+            firing_rate_to_torque_gain=0.002,
+            sensor_to_current_gain=30.0,
+        )
+        runner = SimulationRunner(engine, body, coupling, connectome=connectome)
+        logger.info("Using real FlyBody + brain-body coupling for demo frames")
+    except Exception as e:
+        logger.warning(f"FlyBody unavailable ({e}), using synthetic body positions")
 
     n_neurons = connectome.n_neurons
     n_joints = 11  # matching the body segment count
@@ -141,31 +160,43 @@ def main():
     for i in range(NUM_FRAMES):
         # Periodic stimulation: inject current into random sensory neurons
         if i % 20 == 0:
-            # Pick 5-15 random neurons to stimulate
             n_stim = random.randint(5, min(15, len(stim_pool)))
             stim_neurons = random.sample(stim_pool, n_stim)
             currents = {nid: random.uniform(15.0, 30.0) for nid in stim_neurons}
-            engine.set_input_currents(currents)
+            if runner:
+                for nid, current in currents.items():
+                    runner.set_stimulus(nid, current)
+            else:
+                engine.set_input_currents(currents)
             if i % 100 == 0:
                 logger.info(f"  Frame {i}: stimulating {n_stim} neurons")
         elif i % 20 == 5:
-            # Turn off stimulation after 5 frames to let network ring
-            engine.set_input_currents({})
+            if runner:
+                runner.clear_stimuli()
+            else:
+                engine.set_input_currents({})
 
-        # Step simulation
-        state = engine.step(STEP_MS)
-
-        # Build frame matching SimulationFrame TypeScript interface
-        firing_rates = state.firing_rates
-        body_positions = generate_fly_body_positions(n_neurons, i, firing_rates)
-        joint_angles = generate_joint_angles(n_joints, i, firing_rates)
-        muscle_activations = generate_muscle_activations(firing_rates, n_neurons)
-        center_of_mass = [0.18, 0.0, 0.01]  # roughly thorax center
-
-        # Add slight COM drift from activity
-        mean_rate = float(np.mean(firing_rates))
-        center_of_mass[0] += 0.001 * mean_rate * np.sin(i * 0.03)
-        center_of_mass[1] += 0.0005 * mean_rate * np.cos(i * 0.03)
+        if runner:
+            # Real brain-body coupling
+            sim_frame = runner.step()
+            state = sim_frame.neural_state
+            body_state = sim_frame.body_state
+            firing_rates = state.firing_rates
+            body_positions = [list(p) for p in body_state.positions[:11]]
+            joint_angles = body_state.joint_angles[:n_joints]
+            muscle_activations = sim_frame.muscle_activations
+            center_of_mass = list(body_state.center_of_mass)
+        else:
+            # Synthetic fallback
+            state = engine.step(STEP_MS)
+            firing_rates = state.firing_rates
+            body_positions = generate_fly_body_positions(n_neurons, i, firing_rates)
+            joint_angles = generate_joint_angles(n_joints, i, firing_rates)
+            muscle_activations = generate_muscle_activations(firing_rates, n_neurons)
+            center_of_mass = [0.18, 0.0, 0.01]
+            mean_rate = float(np.mean(firing_rates))
+            center_of_mass[0] += 0.001 * mean_rate * np.sin(i * 0.03)
+            center_of_mass[1] += 0.0005 * mean_rate * np.cos(i * 0.03)
 
         frame = {
             "t_ms": float(state.t_ms),

@@ -123,6 +123,7 @@ class Population:
         parallel: bool = False,
         n_workers: int = 4,
         mode: str = "fast",
+        organism: str = "c_elegans",
     ) -> None:
         """Evaluate fitness for all genomes in the population.
 
@@ -135,11 +136,12 @@ class Population:
             n_workers: Number of worker processes for parallel evaluation.
             mode: Fitness tier for parallel evaluation -- ``'fast'``,
                   ``'medium'``, or ``'full'``.
+            organism: Organism type for fitness evaluation (default: c_elegans).
         """
         if parallel:
             from creatures.evolution.parallel import evaluate_parallel
 
-            results = evaluate_parallel(self._genomes, n_workers=n_workers, mode=mode)
+            results = evaluate_parallel(self._genomes, n_workers=n_workers, mode=mode, organism=organism)
             for genome in self._genomes:
                 genome.fitness = results.get(genome.id, 0.0)
         else:

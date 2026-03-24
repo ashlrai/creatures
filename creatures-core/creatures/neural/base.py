@@ -5,7 +5,23 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
+import numpy as np
+
 from creatures.connectome.types import Connectome
+
+
+@dataclass
+class MonitorConfig:
+    """Controls what data is recorded during simulation.
+
+    For large networks (10K+ neurons), disable voltage recording
+    to avoid memory exhaustion.
+    """
+
+    record_spikes: bool = True
+    record_voltages: bool = False  # OFF by default for large networks
+    voltage_neuron_ids: list[str] | None = None  # None = none; list = selective
+    record_firing_rates: bool = True
 
 
 @dataclass
@@ -30,6 +46,10 @@ class NeuralConfig:
     # Firing rate estimation
     tau_rate: float = 50.0  # time constant for firing rate EMA (ms)
 
+    # Code generation target: "numpy", "cython", or "auto"
+    # "auto" tries cython first, falls back to numpy
+    codegen_target: str = "auto"
+
 
 @dataclass
 class SimulationState:
@@ -44,8 +64,26 @@ class SimulationState:
 class NeuralEngine(ABC):
     """Abstract interface for neural simulation backends."""
 
+    @property
     @abstractmethod
-    def build(self, connectome: Connectome, config: NeuralConfig) -> None:
+    def neuron_ids(self) -> list[str]:
+        """Ordered list of neuron IDs in the network."""
+        ...
+
+    @property
+    @abstractmethod
+    def n_neurons(self) -> int:
+        """Number of neurons in the network."""
+        ...
+
+    @abstractmethod
+    def get_neuron_index(self, neuron_id: str) -> int | None:
+        """Return the index of a neuron by ID, or None if not found."""
+        ...
+
+    @abstractmethod
+    def build(self, connectome: Connectome, config: NeuralConfig | None = None,
+              monitor: MonitorConfig | None = None) -> None:
         """Build the neural network from connectome data."""
         ...
 
@@ -65,7 +103,7 @@ class NeuralEngine(ABC):
         ...
 
     @abstractmethod
-    def get_voltage_history(self, neuron_ids: list[str]) -> dict[str, tuple[list[float], list[float]]]:
+    def get_voltage_history(self, neuron_ids: list[str] | None = None) -> dict[str, tuple[list[float], list[float]]]:
         """Return {neuron_id: (times_ms, voltages_mV)} for specified neurons."""
         ...
 
@@ -75,8 +113,33 @@ class NeuralEngine(ABC):
         ...
 
     @abstractmethod
+    def get_firing_rates_array(self) -> np.ndarray:
+        """Return firing rates as a numpy array (ordered by neuron index)."""
+        ...
+
+    @abstractmethod
+    def get_synapse_weights(self) -> np.ndarray:
+        """Return all synapse weights as a numpy array (in engine units)."""
+        ...
+
+    @abstractmethod
+    def set_synapse_weights(self, weights: np.ndarray) -> None:
+        """Set all synapse weights from a numpy array."""
+        ...
+
+    @abstractmethod
+    def get_synapse_pre_indices(self) -> np.ndarray:
+        """Return presynaptic neuron indices for all synapses."""
+        ...
+
+    @abstractmethod
     def lesion(self, pre_id: str, post_id: str) -> None:
         """Remove a synapse between two neurons."""
+        ...
+
+    @abstractmethod
+    def lesion_neuron(self, neuron_id: str) -> None:
+        """Remove all synapses to and from a neuron."""
         ...
 
     @abstractmethod

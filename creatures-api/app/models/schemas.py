@@ -85,3 +85,33 @@ class SimulationFrame(BaseModel):
     joint_angles: list[float]
     center_of_mass: list[float]
     muscle_activations: dict[str, float]
+
+
+class DrugApplyRequest(BaseModel):
+    """Request to apply a drug to a simulation."""
+
+    drug_name: str
+    dose: float = 1.0
+
+
+class DrugInfo(BaseModel):
+    """Info about a drug from the library."""
+
+    key: str
+    name: str
+    target_nt: str | None
+    target_type: str | None
+    weight_scale: float
+    current_injection: float
+    description: str
+
+
+class DrugApplyResult(BaseModel):
+    """Result of applying a drug to a simulation."""
+
+    drug: str
+    dose: float
+    synapses_affected: int
+    neurons_injected: int
+    weight_scale_applied: float
+    description: str

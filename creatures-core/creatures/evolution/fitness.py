@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 class FitnessConfig:
     """Weights and parameters for fitness evaluation."""
 
+    organism: str = "c_elegans"  # "c_elegans" or "drosophila"
     lifetime_ms: float = 10000.0  # 10 seconds sim time
     w_distance: float = 1.0  # reward for distance traveled
     w_food: float = 2.0  # placeholder for future food reward
@@ -35,7 +36,7 @@ class FitnessConfig:
 
     # Poke stimulus to get things moving
     poke_at_ms: float = 100.0
-    poke_segment: str = "seg_8"
+    poke_segment: str = "seg_8"  # overridden to "Thorax" for drosophila
     poke_force: tuple[float, float, float] = (0, 0.1, 0)
 
 
@@ -53,7 +54,7 @@ def evaluate_genome(genome: Genome, config: FitnessConfig | None = None) -> floa
     """Evaluate a genome's fitness by running it through the full simulation.
 
     Builds a Brian2 spiking network from the genome's connectome,
-    couples it to a MuJoCo worm body, runs for ``config.lifetime_ms``,
+    couples it to a MuJoCo body (worm or fly), runs for ``config.lifetime_ms``,
     and scores based on distance traveled and neural activity.
 
     Args:
@@ -63,7 +64,6 @@ def evaluate_genome(genome: Genome, config: FitnessConfig | None = None) -> floa
     Returns:
         Scalar fitness value (higher is better).
     """
-    from creatures.body.worm_body import WormBody
     from creatures.experiment.runner import CouplingConfig, SimulationRunner
     from creatures.neural.brian2_engine import Brian2Engine
 
@@ -76,17 +76,28 @@ def evaluate_genome(genome: Genome, config: FitnessConfig | None = None) -> floa
     engine = Brian2Engine()
     engine.build(connectome)
 
-    # Build body
-    body = WormBody()
+    # Build body and runner based on organism
+    if config.organism == "drosophila":
+        from creatures.body.base import BodyConfig
+        from creatures.body.fly_body import FlyBody
+        from creatures.neural.base import MonitorConfig
 
-    # Build runner with default coupling
-    runner = SimulationRunner(engine, body, CouplingConfig())
+        body = FlyBody(BodyConfig(dt=0.5), connectome=connectome)
+        runner = SimulationRunner(engine, body, CouplingConfig(), connectome=connectome)
+        # Override poke segment for fly
+        poke_segment = "Thorax"
+    else:
+        from creatures.body.worm_body import WormBody
+
+        body = WormBody()
+        runner = SimulationRunner(engine, body, CouplingConfig())
+        poke_segment = config.poke_segment
 
     # Run simulation with a poke stimulus to provoke movement
     frames = runner.run(
         duration_ms=config.lifetime_ms,
         poke_at_ms=config.poke_at_ms,
-        poke_segment=config.poke_segment,
+        poke_segment=poke_segment,
         poke_force=config.poke_force,
     )
 
@@ -135,7 +146,7 @@ def evaluate_genome(genome: Genome, config: FitnessConfig | None = None) -> floa
     return fitness
 
 
-def evaluate_genome_medium(genome: Genome, config: FitnessConfig | None = None) -> float:
+def evaluate_genome_medium(genome: Genome, config: FitnessConfig | None = None, organism: str = "c_elegans") -> float:
     """Medium-speed fitness: run Brian2 for 100ms with a standard stimulus.
 
     Injects current into tail sensory neurons and measures motor neuron
@@ -159,6 +170,8 @@ def evaluate_genome_medium(genome: Genome, config: FitnessConfig | None = None) 
     connectome = genome.to_connectome()
 
     # Build neural engine
+    # Note: for fly-scale networks (drosophila), voltage recording is already
+    # disabled by default in MonitorConfig to avoid memory exhaustion.
     engine = Brian2Engine()
     engine.build(connectome)
 
@@ -193,7 +206,7 @@ def evaluate_genome_medium(genome: Genome, config: FitnessConfig | None = None) 
     step_ms = 10.0
     n_steps = int(sim_duration_ms / step_ms)
 
-    motor_idx_set = {engine._id_to_idx[nid] for nid in motor_ids if nid in engine._id_to_idx}
+    motor_idx_set = {engine.get_neuron_index(nid) for nid in motor_ids if engine.get_neuron_index(nid) is not None}
     first_motor_spike_ms = None
     motor_spike_counts = {nid: 0 for nid in motor_ids}
     total_spikes_per_step = []

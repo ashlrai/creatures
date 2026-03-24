@@ -19,6 +19,7 @@ import mujoco
 import numpy as np
 
 from creatures.body.base import BodyConfig, BodyModel, BodyState
+from creatures.body.fly_neuron_map import build_motor_map, build_sensor_map
 
 logger = logging.getLogger(__name__)
 
@@ -99,8 +100,9 @@ class FlyBody(BodyModel):
     actuators for each joint (189 total actuators).
     """
 
-    def __init__(self, config: BodyConfig | None = None) -> None:
+    def __init__(self, config: BodyConfig | None = None, connectome=None) -> None:
         self._config = config or BodyConfig(dt=0.1)  # fly needs faster physics
+        self._connectome = connectome
         self._model, self._mjcf_path = _load_fly_mjcf()
         self._model.opt.timestep = self._config.dt / 1000.0
         self._data = mujoco.MjData(self._model)
@@ -133,13 +135,31 @@ class FlyBody(BodyModel):
                 if f"joint_{leg}" in name
             ]
 
-        # Store initial state
+        # Settle the body to a stable initial state (prevents NaN/Inf at startup)
+        for _ in range(200):
+            self._data.ctrl[:] = 0
+            mujoco.mj_step(self._model, self._data)
+        # Store the settled configuration as the initial state
         self._initial_qpos = self._data.qpos.copy()
         self._initial_qvel = self._data.qvel.copy()
 
+        # Build neural maps from connectome (if provided)
+        self._sensor_map: dict[str, str] = {}
+        self._motor_map: dict[str, list[str]] = {}
+        if connectome is not None:
+            sensor_names = []
+            for i in range(self._model.nsensor):
+                name = mujoco.mj_id2name(self._model, mujoco.mjtObj.mjOBJ_SENSOR, i)
+                if name:
+                    sensor_names.append(name)
+            self._motor_map = build_motor_map(connectome, self._actuator_names)
+            self._sensor_map = build_sensor_map(connectome, sensor_names)
+
         logger.info(
             f"FlyBody: {len(self._pos_actuators)} position actuators, "
-            f"{len(self._leg_joints)} legs"
+            f"{len(self._leg_joints)} legs, "
+            f"{len(self._motor_map)} motor neurons, "
+            f"{len(self._sensor_map)} sensors mapped"
         )
 
     def reset(self) -> BodyState:
@@ -165,6 +185,8 @@ class FlyBody(BodyModel):
             if name in self._pos_actuators:
                 act_id = self._pos_actuators[name]
                 self._data.ctrl[act_id] = activation
+        # Clip all controls to safe range to prevent extreme actuator forces
+        self._data.ctrl[:] = np.clip(self._data.ctrl, -1.0, 1.0)
         mujoco.mj_step(self._model, self._data)
         return self.get_state()
 
@@ -206,13 +228,11 @@ class FlyBody(BodyModel):
 
     @property
     def sensor_neuron_map(self) -> dict[str, str]:
-        # Simplified mapping — would need FlyWire motor neuron annotations
-        return {}
+        return self._sensor_map
 
     @property
     def motor_neuron_map(self) -> dict[str, list[str]]:
-        # Simplified mapping — would need FlyWire descending neuron annotations
-        return {}
+        return self._motor_map
 
     @property
     def leg_joints(self) -> dict[str, list[str]]:
@@ -231,3 +251,16 @@ class FlyBody(BodyModel):
     @property
     def data(self) -> mujoco.MjData:
         return self._data
+
+    @staticmethod
+    def default_coupling_gains() -> dict:
+        """Recommended CouplingConfig values for FlyBody.
+
+        Lower gains reduce chaotic movement from simultaneous DN firing.
+        """
+        return {
+            "firing_rate_to_torque_gain": 0.001,
+            "inhibitory_gain": -0.0005,
+            "sensor_to_current_gain": 20.0,
+            "sync_interval_ms": 1.0,
+        }

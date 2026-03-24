@@ -60,6 +60,39 @@ def _eval_worker_full(genome_data: dict) -> tuple[str, float]:
     return genome.id, fitness
 
 
+# ── Drosophila worker variants ────────────────────────────────────────
+
+
+def _eval_worker_fast_fly(genome_data: dict) -> tuple[str, float]:
+    """Worker: fast fitness for fly genomes (topology-only, organism-agnostic)."""
+    from creatures.evolution.genome import Genome
+    from creatures.evolution.fitness import evaluate_genome_fast
+
+    genome = Genome.from_dict(genome_data)
+    fitness = evaluate_genome_fast(genome)
+    return genome.id, fitness
+
+
+def _eval_worker_medium_fly(genome_data: dict) -> tuple[str, float]:
+    """Worker: medium (Brian2) fitness for fly genomes."""
+    from creatures.evolution.genome import Genome
+    from creatures.evolution.fitness import FitnessConfig, evaluate_genome_medium
+
+    genome = Genome.from_dict(genome_data)
+    fitness = evaluate_genome_medium(genome, FitnessConfig(organism="drosophila"), organism="drosophila")
+    return genome.id, fitness
+
+
+def _eval_worker_full_fly(genome_data: dict) -> tuple[str, float]:
+    """Worker: full (Brian2 + MuJoCo) fitness for fly genomes."""
+    from creatures.evolution.genome import Genome
+    from creatures.evolution.fitness import FitnessConfig, evaluate_genome
+
+    genome = Genome.from_dict(genome_data)
+    fitness = evaluate_genome(genome, FitnessConfig(organism="drosophila"))
+    return genome.id, fitness
+
+
 # ── Public API ─────────────────────────────────────────────────────────
 
 
@@ -67,6 +100,9 @@ _WORKERS = {
     "fast": _eval_worker_fast,
     "medium": _eval_worker_medium,
     "full": _eval_worker_full,
+    "fast_fly": _eval_worker_fast_fly,
+    "medium_fly": _eval_worker_medium_fly,
+    "full_fly": _eval_worker_full_fly,
 }
 
 
@@ -74,6 +110,7 @@ def evaluate_parallel(
     genomes: list[Genome],
     n_workers: int = 4,
     mode: str = "fast",
+    organism: str = "c_elegans",
 ) -> dict[str, float]:
     """Evaluate a list of genomes in parallel using multiprocessing.Pool.
 
@@ -81,14 +118,18 @@ def evaluate_parallel(
         genomes: The genomes to evaluate.
         n_workers: Number of worker processes (default 4).
         mode: Fitness tier -- ``'fast'``, ``'medium'``, or ``'full'``.
+        organism: Organism type -- ``'c_elegans'`` or ``'drosophila'``.
 
     Returns:
         Dict mapping genome id to fitness score.
     """
-    if mode not in _WORKERS:
-        raise ValueError(f"Unknown fitness mode {mode!r}; expected one of {list(_WORKERS)}")
+    # Select organism-specific worker if needed
+    effective_mode = f"{mode}_fly" if organism == "drosophila" else mode
 
-    worker_fn = _WORKERS[mode]
+    if effective_mode not in _WORKERS:
+        raise ValueError(f"Unknown fitness mode {effective_mode!r}; expected one of {list(_WORKERS)}")
+
+    worker_fn = _WORKERS[effective_mode]
 
     # Serialise genomes to dicts for safe cross-process pickling
     genome_datas = [g.to_dict() for g in genomes]

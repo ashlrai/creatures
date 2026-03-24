@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from creatures.body.base import BodyConfig, BodyModel, BodyState
+from creatures.connectome.types import Connectome
 from creatures.neural.base import NeuralConfig, NeuralEngine, SimulationState
 
 logger = logging.getLogger(__name__)
@@ -73,10 +74,12 @@ class SimulationRunner:
         neural_engine: NeuralEngine,
         body: BodyModel,
         coupling_config: CouplingConfig | None = None,
+        connectome: Connectome | None = None,
     ) -> None:
         self._neural = neural_engine
         self._body = body
         self._config = coupling_config or CouplingConfig()
+        self._connectome = connectome
         self._t_ms: float = 0.0
         self._frames: list[SimFrame] = []
         self._external_stimuli: dict[str, float] = {}
@@ -123,26 +126,42 @@ class SimulationRunner:
             neuron_currents[neuron_id] = neuron_currents.get(neuron_id, 0) + current
 
         # Register new pokes as persistent stimuli
-        # Mechanical touch propagates along the body, activating all
-        # mechanosensory neurons with distance-dependent falloff.
-        # This mirrors real C. elegans where gentle touch activates
-        # ALM, AVM, and PLM neurons with varying strength.
-        _ALL_TOUCH_NEURONS = {
-            "ALML": 2, "ALMR": 3, "AVM": 5, "PLML": 8, "PLMR": 9,
-        }  # neuron_id → approximate body segment position
         sensor_map = self._body.sensor_neuron_map
         for seg_name, force in self._poke_segments:
             self._body.apply_external_force(seg_name, force)
-            seg_idx = int(seg_name.split("_")[1])
-            for neuron_id, neuron_pos in _ALL_TOUCH_NEURONS.items():
-                distance = abs(seg_idx - neuron_pos)
-                # Gaussian-like falloff: nearby neurons get full stimulus,
-                # distant ones get ~30% at max distance
-                falloff = max(0.3, np.exp(-0.5 * (distance / 4.0) ** 2))
-                self._active_pokes.append(
-                    [neuron_id, cfg.poke_current * falloff,
-                     cfg.poke_duration_ms]
-                )
+
+            if sensor_map:
+                # Organism-agnostic: use sensor map to find target neurons
+                # Direct mapping: if this segment has a mapped sensor neuron
+                mapped_neuron = sensor_map.get(seg_name)
+                if mapped_neuron:
+                    self._active_pokes.append(
+                        [mapped_neuron, cfg.poke_current, cfg.poke_duration_ms]
+                    )
+                else:
+                    # Fallback: stimulate all mapped sensory neurons with falloff
+                    for i, (sensor_name, neuron_id) in enumerate(sensor_map.items()):
+                        falloff = max(0.3, np.exp(-0.5 * (i / max(len(sensor_map) / 3, 1)) ** 2))
+                        self._active_pokes.append(
+                            [neuron_id, cfg.poke_current * falloff,
+                             cfg.poke_duration_ms]
+                        )
+            else:
+                # Legacy C. elegans fallback with hardcoded touch neurons
+                _ALL_TOUCH_NEURONS = {
+                    "ALML": 2, "ALMR": 3, "AVM": 5, "PLML": 8, "PLMR": 9,
+                }
+                try:
+                    seg_idx = int(seg_name.split("_")[1])
+                except (IndexError, ValueError):
+                    seg_idx = 5  # default to middle
+                for neuron_id, neuron_pos in _ALL_TOUCH_NEURONS.items():
+                    distance = abs(seg_idx - neuron_pos)
+                    falloff = max(0.3, np.exp(-0.5 * (distance / 4.0) ** 2))
+                    self._active_pokes.append(
+                        [neuron_id, cfg.poke_current * falloff,
+                         cfg.poke_duration_ms]
+                    )
         self._poke_segments.clear()
 
         # Apply active poke stimuli (persist for poke_duration_ms)
@@ -174,15 +193,24 @@ class SimulationRunner:
             if rate <= 0:
                 continue
 
-            # Determine gain based on neuron type
-            # Inhibitory neurons (DD, VD) reduce muscle activation
-            is_inhibitory = neuron_id.startswith(("DD", "VD"))
+            # Determine gain based on neuron type (organism-agnostic)
+            is_inhibitory = False
+            if self._connectome and neuron_id in self._connectome.neurons:
+                is_inhibitory = not self._connectome.neurons[neuron_id].is_excitatory
+            elif neuron_id.startswith(("DD", "VD")):
+                # Legacy C. elegans fallback
+                is_inhibitory = True
             gain = cfg.inhibitory_gain if is_inhibitory else cfg.firing_rate_to_torque_gain
 
             for act_name in actuator_names:
                 muscle_activations[act_name] = (
                     muscle_activations.get(act_name, 0) + rate * gain
                 )
+
+        # Apply gait patterning for fly locomotion
+        if hasattr(self._body, 'leg_joints'):  # FlyBody has this property
+            from creatures.body.fly_neuron_map import apply_tripod_gait
+            muscle_activations = apply_tripod_gait(muscle_activations, self._t_ms)
 
         # Clip activations
         for name in muscle_activations:
@@ -210,7 +238,7 @@ class SimulationRunner:
         return frame
 
     def run(self, duration_ms: float, poke_at_ms: float | None = None,
-            poke_segment: str = "seg_8",
+            poke_segment: str | None = None,
             poke_force: tuple[float, float, float] = (0, 0.1, 0)) -> list[SimFrame]:
         """Run the simulation for a duration.
 
@@ -230,7 +258,7 @@ class SimulationRunner:
             current_t = self._t_ms
 
             # Apply poke at specified time
-            if poke_at_ms is not None and current_t <= poke_at_ms < current_t + self._config.sync_interval_ms:
+            if poke_at_ms is not None and poke_segment is not None and current_t <= poke_at_ms < current_t + self._config.sync_interval_ms:
                 self.poke(poke_segment, poke_force)
                 logger.info(f"Poke applied at t={current_t:.0f}ms on {poke_segment}")
 

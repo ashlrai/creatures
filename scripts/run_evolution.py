@@ -32,7 +32,6 @@ for p in (_project_root, _core_root):
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
-from creatures.connectome.openworm import load as load_connectome
 from creatures.evolution.analytics import analyze_drift, summarize_evolution
 from creatures.evolution.config import EvolutionConfig
 from creatures.evolution.fitness import (
@@ -203,7 +202,14 @@ def main(argv: list[str] | None = None) -> int:
     # --- Load connectome ---
     logger.info("Loading %s connectome...", args.organism)
     t0 = time.time()
-    connectome = load_connectome("edge_list")
+    if args.organism == "c_elegans":
+        from creatures.connectome.openworm import load as load_connectome
+        connectome = load_connectome("edge_list")
+    elif args.organism == "drosophila":
+        from creatures.connectome.flywire import load as load_fly
+        connectome = load_fly("locomotion", max_neurons=500, min_synapse_count=5)
+    else:
+        raise ValueError(f"Unknown organism: {args.organism}")
     t_load = time.time() - t0
     print(f"Connectome loaded: {len(connectome.neurons)} neurons, "
           f"{len(connectome.synapses)} synapses ({t_load:.2f}s)")
@@ -227,11 +233,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- Choose fitness function ---
     if fitness_mode == "fast":
-        eval_fn = lambda g: evaluate_genome_fast(g)
+        eval_fn = lambda g: evaluate_genome_fast(g)  # fast is organism-agnostic (topology only)
     elif fitness_mode == "medium":
-        eval_fn = lambda g: evaluate_genome_medium(g)
+        eval_fn = lambda g: evaluate_genome_medium(g, organism=args.organism)
     else:
-        fitness_config = FitnessConfig()
+        fitness_config = FitnessConfig(organism=args.organism)
         eval_fn = lambda g: evaluate_genome(g, fitness_config)
 
     # --- Setup storage ---
@@ -285,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
 
         # Evaluate
         if args.parallel:
-            population.evaluate(parallel=True, n_workers=args.workers, mode=fitness_mode)
+            population.evaluate(parallel=True, n_workers=args.workers, mode=fitness_mode, organism=args.organism)
         else:
             population.evaluate(eval_fn)
 

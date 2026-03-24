@@ -21,11 +21,10 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
-from brian2 import mV
 
 if TYPE_CHECKING:
     from creatures.connectome.types import Connectome, NeuronType
-    from creatures.neural.brian2_engine import Brian2Engine
+    from creatures.neural.base import NeuralEngine
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +150,7 @@ class PharmacologyEngine:
         pharma.reset()  # restore original weights
     """
 
-    def __init__(self, engine: Brian2Engine, connectome: Connectome) -> None:
+    def __init__(self, engine: NeuralEngine, connectome: Connectome) -> None:
         self.engine = engine
         self.connectome = connectome
         self._original_weights: np.ndarray | None = None
@@ -159,8 +158,9 @@ class PharmacologyEngine:
         self._injected_currents: dict[str, float] = {}
 
         # Cache original weights on construction
-        if engine._synapses is not None:
-            self._original_weights = np.array(engine._synapses.w / mV).copy()
+        weights = engine.get_synapse_weights()
+        if len(weights) > 0:
+            self._original_weights = weights.copy()
 
     def apply_drug(self, drug_name: str, dose: float = 1.0) -> dict:
         """Apply a drug effect to the neural network.
@@ -187,13 +187,13 @@ class PharmacologyEngine:
             )
 
         drug = DRUG_LIBRARY[drug_name]
-        synapses = self.engine._synapses
-        if synapses is None:
+        current_weights = self.engine.get_synapse_weights()
+        if len(current_weights) == 0:
             raise RuntimeError("Engine not built. Call engine.build() first.")
 
         # Save original weights if not already saved
         if self._original_weights is None:
-            self._original_weights = np.array(synapses.w / mV).copy()
+            self._original_weights = current_weights.copy()
 
         # Compute dose-adjusted parameters
         # weight_scale interpolates: dose=0 -> 1.0 (no effect), dose=1 -> drug.weight_scale
@@ -214,19 +214,19 @@ class PharmacologyEngine:
             for nid, neuron in self.connectome.neurons.items():
                 nt = neuron.neurotransmitter
                 if nt is not None and nt.upper() == drug.target_nt.upper():
-                    idx = self.engine._id_to_idx.get(nid)
+                    idx = self.engine.get_neuron_index(nid)
                     if idx is not None:
                         target_pre_indices.add(idx)
                         target_neuron_ids.add(nid)
 
         # If target_type specified, filter further
         if drug.target_type is not None:
-            type_filtered = {
-                self.engine._id_to_idx[nid]
-                for nid, neuron in self.connectome.neurons.items()
-                if neuron.neuron_type.value == drug.target_type
-                and nid in self.engine._id_to_idx
-            }
+            type_filtered = set()
+            for nid, neuron in self.connectome.neurons.items():
+                if neuron.neuron_type.value == drug.target_type:
+                    idx = self.engine.get_neuron_index(nid)
+                    if idx is not None:
+                        type_filtered.add(idx)
             if target_pre_indices:
                 target_pre_indices &= type_filtered
             else:
@@ -235,18 +235,17 @@ class PharmacologyEngine:
         # If no specific target, affect all synapses
         if drug.target_nt is None and drug.target_type is None:
             # Global effect
-            current_weights = np.array(synapses.w / mV)
-            synapses.w[:] = current_weights * effective_scale * mV
+            new_weights = current_weights * effective_scale
+            self.engine.set_synapse_weights(new_weights)
             n_affected = len(current_weights)
         else:
             # Targeted effect: only modify synapses from target neurons
-            pre_arr = np.array(synapses.i)
-            n_affected = 0
-            for syn_idx in range(len(pre_arr)):
-                if int(pre_arr[syn_idx]) in target_pre_indices:
-                    current_w = float(synapses.w[syn_idx] / mV)
-                    synapses.w[syn_idx] = current_w * effective_scale * mV
-                    n_affected += 1
+            pre_arr = self.engine.get_synapse_pre_indices()
+            new_weights = current_weights.copy()
+            mask = np.isin(pre_arr, list(target_pre_indices))
+            new_weights[mask] *= effective_scale
+            self.engine.set_synapse_weights(new_weights)
+            n_affected = int(mask.sum())
 
         # Apply current injection to target neurons
         n_injected = 0
@@ -281,8 +280,8 @@ class PharmacologyEngine:
 
     def reset(self) -> None:
         """Restore original synaptic weights and remove injected currents."""
-        if self._original_weights is not None and self.engine._synapses is not None:
-            self.engine._synapses.w[:] = self._original_weights * mV
+        if self._original_weights is not None:
+            self.engine.set_synapse_weights(self._original_weights)
             logger.info("Restored original synaptic weights")
 
         self._injected_currents.clear()

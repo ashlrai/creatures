@@ -16,6 +16,7 @@ dependencies = [
     "requests>=2.28",
     "pandas>=2.0",
     "scipy>=1.10",
+    "cython>=3.0",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +28,9 @@ dev = [
 ]
 flygym = [
     "flygym>=1.0",
+]
+gpu = [
+    "brian2genn>=1.7",
 ]
 
 [tool.setuptools.packages.find]

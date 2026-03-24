@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "creatures-core"))
 
 import asyncio
 
-from app.routers import evolution, experiments, export, god, morphology, neurons, ws
+from app.routers import evolution, experiments, export, god, morphology, neurons, pharmacology, ws
 from app.services.evolution_manager import EvolutionManager
 from app.services.simulation_manager import SimulationManager
 
@@ -25,6 +25,7 @@ async def lifespan(app: FastAPI):
     manager = SimulationManager()
     experiments.manager = manager
     neurons.manager = manager
+    pharmacology.manager = manager
     ws.manager = manager
 
     evo_manager = EvolutionManager()
@@ -58,6 +59,7 @@ app.include_router(export.router)
 app.include_router(god.router)
 app.include_router(morphology.router)
 app.include_router(neurons.router)
+app.include_router(pharmacology.router)
 app.include_router(ws.router)
 
 
