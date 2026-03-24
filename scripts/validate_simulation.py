@@ -304,8 +304,8 @@ def test_locomotion_alternation(connectome) -> ValidationResult:
     # Get indices for dorsal and ventral motor groups
     da_ids = [f"DA{i}" for i in range(1, 10) if f"DA{i}" in engine._id_to_idx]
     va_ids = [f"VA{i}" for i in range(1, 13) if f"VA{i}" in engine._id_to_idx]
-    dd_ids = [f"DD{i:02d}" for i in range(1, 7) if f"DD{i:02d}" in engine._id_to_idx]
-    vd_ids = [f"VD{i:02d}" for i in range(1, 14) if f"VD{i:02d}" in engine._id_to_idx]
+    dd_ids = [f"DD{i}" for i in range(1, 7) if f"DD{i}" in engine._id_to_idx]
+    vd_ids = [f"VD{i}" for i in range(1, 14) if f"VD{i}" in engine._id_to_idx]
 
     dorsal_idx = [engine._id_to_idx[n] for n in da_ids if n in engine._id_to_idx]
     ventral_idx = [engine._id_to_idx[n] for n in va_ids if n in engine._id_to_idx]

@@ -559,7 +559,6 @@ def evaluate_genome_fast(genome: Genome, config: FitnessConfig | None = None) ->
     noise_rng = np.random.default_rng(noise_seed)
 
     # Higher-order weight statistics that change with mutations
-    weight_skew = float(np.mean(weights))
     weight_kurtosis = float(np.mean((weights - mean_signed) ** 4) /
                            max(np.std(weights) ** 4, 1e-10)) if n_synapses > 1 else 0.0
 

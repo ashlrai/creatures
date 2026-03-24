@@ -221,11 +221,12 @@ class PharmacologyEngine:
 
         # If target_type specified, filter further
         if drug.target_type is not None:
-            type_filtered = set()
-            for nid, neuron in self.connectome.neurons.items():
-                if neuron.neuron_type.value == drug.target_type:
-                    type_filtered.add(self.engine._id_to_idx.get(nid))
-            type_filtered.discard(None)
+            type_filtered = {
+                self.engine._id_to_idx[nid]
+                for nid, neuron in self.connectome.neurons.items()
+                if neuron.neuron_type.value == drug.target_type
+                and nid in self.engine._id_to_idx
+            }
             if target_pre_indices:
                 target_pre_indices &= type_filtered
             else:

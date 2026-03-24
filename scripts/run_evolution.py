@@ -315,7 +315,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             if (gen + 1) % god_config.intervention_interval == 0:
                 import asyncio
-                intervention = asyncio.run(god_agent.analyze_and_intervene())
+                try:
+                    loop = asyncio.get_running_loop()
+                    future = asyncio.run_coroutine_threadsafe(god_agent.analyze_and_intervene(), loop)
+                    intervention = future.result(timeout=30)
+                except RuntimeError:
+                    intervention = asyncio.run(god_agent.analyze_and_intervene())
                 applied = god_agent.apply_interventions(
                     intervention,
                     mutation_config=mutation_config,

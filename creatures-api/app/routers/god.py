@@ -83,7 +83,11 @@ async def analyze(req: AnalyzeRequest):
                 {'generation': run.generation},
             )
 
-        result = await god.analyze_and_intervene()
+        try:
+            result = await god.analyze_and_intervene()
+        except Exception as exc:
+            logger.exception("God Agent analysis failed: %s", exc)
+            raise HTTPException(500, f"God Agent analysis failed: {exc}") from exc
 
         # Extract fields uniformly whether result is a dict or dataclass
         analysis = _get(result, 'analysis', 'No analysis available')
