@@ -12,9 +12,9 @@ const MAX_SEGMENTS = 88;
 const SEG_RADIUS = 0.012;
 const SEG_HALF_LEN = 0.032;
 
-const REST_COLOR = new THREE.Color(0.04, 0.22, 0.32);
-const ACTIVE_COLOR = new THREE.Color(0.05, 0.65, 0.9);
-const HOT_COLOR = new THREE.Color(0.6, 0.9, 1.0);
+const REST_COLOR = new THREE.Color(0.06, 0.2, 0.3);
+const ACTIVE_COLOR = new THREE.Color(0.1, 0.6, 0.85);
+const HOT_COLOR = new THREE.Color(0.5, 0.85, 1.0);
 const POKE_COLOR = new THREE.Color(1, 1, 1);
 
 export function WormBody() {
@@ -29,17 +29,14 @@ export function WormBody() {
 
   const materials = useMemo(
     () => Array.from({ length: MAX_SEGMENTS }, () =>
-      new THREE.MeshPhysicalMaterial({
+      new THREE.MeshStandardMaterial({
         color: REST_COLOR.clone(),
-        emissive: new THREE.Color(0.02, 0.06, 0.1),
-        emissiveIntensity: 0.8,
-        roughness: 0.3,
-        metalness: 0.1,
-        clearcoat: 0.4,
-        clearcoatRoughness: 0.2,
+        emissive: new THREE.Color(0.03, 0.1, 0.15),
+        emissiveIntensity: 1.0,
+        roughness: 0.4,
+        metalness: 0.2,
         transparent: true,
-        opacity: 0.55,
-        side: THREE.DoubleSide,
+        opacity: 0.7,
       })
     ),
     []
@@ -120,8 +117,8 @@ export function WormBody() {
         mat.emissiveIntensity = pokeFade * 0.5;
       } else {
         mat.color.copy(REST_COLOR);
-        mat.emissive.set(0.01, 0.04, 0.06);
-        mat.emissiveIntensity = 0.6 + Math.sin(t * 1.5 + i * 0.3) * 0.15;
+        mat.emissive.set(0.03, 0.1, 0.16);
+        mat.emissiveIntensity = 1.0 + Math.sin(t * 1.5 + i * 0.3) * 0.2;
       }
     }
 

@@ -155,7 +155,7 @@ export function NeuralNetwork3D() {
       </bufferGeometry>
       <pointsMaterial
         vertexColors
-        size={0.005}
+        size={0.007}
         sizeAttenuation
         transparent
         opacity={0.85}

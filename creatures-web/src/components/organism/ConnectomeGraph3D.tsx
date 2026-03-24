@@ -141,7 +141,7 @@ export function ConnectomeGraph3D() {
       <lineBasicMaterial
         vertexColors
         transparent
-        opacity={0.35}
+        opacity={0.2}
         blending={THREE.AdditiveBlending}
         depthWrite={false}
         linewidth={1}
