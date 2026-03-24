@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # Add creatures-core to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "creatures-core"))
 
-from app.routers import experiments, neurons, ws
+from app.routers import experiments, morphology, neurons, ws
 from app.services.simulation_manager import SimulationManager
 
 
@@ -43,6 +43,7 @@ app.add_middleware(
 )
 
 app.include_router(experiments.router)
+app.include_router(morphology.router)
 app.include_router(neurons.router)
 app.include_router(ws.router)
 

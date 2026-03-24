@@ -12,6 +12,7 @@
     "@react-three/drei": "^9.100",
     "@react-three/fiber": "^8.15",
     "@react-three/postprocessing": "^3.0.4",
+    "neu3d": "^1.1.4",
     "postprocessing": "^6.39.0",
     "react": "^18.3",
     "react-dom": "^18.3",
