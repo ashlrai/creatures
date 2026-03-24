@@ -329,6 +329,43 @@ section{padding:140px 0;position:relative}
   background:rgba(0,212,255,0.05);
 }
 
+/* ======== TRY IT LIVE ======== */
+.try-live{padding:100px 0 0;position:relative}
+.try-live .container{text-align:center}
+.try-live .section-label,.try-live .section-title,.try-live .section-desc{text-align:center}
+.try-live .section-desc{margin-left:auto;margin-right:auto}
+.try-live-embed{
+  position:relative;width:100%;max-width:1100px;margin:0 auto;
+  border-radius:20px;overflow:hidden;
+  border:2px solid rgba(0,212,255,0.2);
+  box-shadow:0 0 80px rgba(0,212,255,0.08),0 20px 60px rgba(0,0,0,0.4);
+  background:var(--bg2);
+}
+.try-live-embed iframe{
+  width:100%;height:600px;border:none;display:block;
+  background:var(--bg);
+}
+.try-live-embed .embed-fallback{
+  display:none;padding:80px 40px;text-align:center;
+}
+.try-live-embed .embed-fallback p{
+  font-size:16px;color:var(--muted);margin-bottom:32px;
+}
+.try-live-launch{
+  display:inline-flex;align-items:center;gap:10px;
+  margin-top:24px;
+  padding:16px 36px;border-radius:14px;font-size:18px;font-weight:700;
+  background:linear-gradient(135deg,var(--cyan),#0090cc);color:#000;
+  box-shadow:0 0 40px rgba(0,212,255,0.25);
+  transition:all 0.3s;
+}
+.try-live-launch:hover{
+  box-shadow:0 0 60px rgba(0,212,255,0.4);transform:translateY(-2px);color:#000;
+}
+@media(max-width:768px){
+  .try-live-embed iframe{height:400px}
+}
+
 /* ======== SIMULATOR PREVIEW ======== */
 .sim-preview{
   position:relative;border-radius:16px;overflow:hidden;
@@ -653,6 +690,7 @@ footer a:hover{color:var(--green)}
       <span class="nav-logo-text">neurevo</span>
     </a>
     <div class="nav-links">
+      <a href="#try">Try It</a>
       <a href="#demo">Demo</a>
       <a href="#how">How It Works</a>
       <a href="#science">Science</a>
@@ -667,6 +705,7 @@ footer a:hover{color:var(--green)}
 <!-- Mobile menu -->
 <div class="mobile-overlay" id="mobileOverlay"></div>
 <div class="mobile-nav" id="mobileNav">
+  <a href="#try" class="mobile-nav-link">Try It</a>
   <a href="#demo" class="mobile-nav-link">Demo</a>
   <a href="#how" class="mobile-nav-link">How It Works</a>
   <a href="#science" class="mobile-nav-link">Science</a>
@@ -686,10 +725,10 @@ footer a:hover{color:var(--green)}
       <h1><span class="grad-text">Evolving<br>Real Brains</span></h1>
       <p>The first platform that takes a real biological connectome &mdash; 299 neurons, 3,363 synapses &mdash; and evolves it through generations of natural selection in a physics-simulated world.</p>
       <div class="hero-ctas">
-        <a href="#demo" class="btn btn-primary">Watch It Evolve</a>
+        <a href="https://neurevo.dev/app" class="btn btn-primary" target="_blank" rel="noopener">Launch Simulator &rarr;</a>
         <a href="https://github.com/ashlrai/creatures" class="btn btn-secondary" target="_blank" rel="noopener">
           <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-          Star on GitHub
+          View on GitHub
         </a>
       </div>
     </div>
@@ -711,6 +750,27 @@ footer a:hover{color:var(--green)}
         <span class="ci-label">motor</span>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ===== TRY IT LIVE ===== -->
+<div class="section-divider"></div>
+<section class="try-live" id="try">
+  <div class="container">
+    <div class="section-label reveal">Try It Live</div>
+    <h2 class="section-title reveal reveal-delay-1">Launch the simulator</h2>
+    <p class="section-desc reveal reveal-delay-2">Watch organisms with real C. elegans neural networks learn to move, sense, and survive &mdash; right in your browser.</p>
+
+    <div class="try-live-embed reveal reveal-delay-3">
+      <iframe src="https://neurevo.dev/app" loading="lazy" allow="accelerometer; autoplay" title="Neurevo 3D Simulator"></iframe>
+      <noscript>
+        <div class="embed-fallback" style="display:block">
+          <p>Enable JavaScript to run the simulator inline, or launch it in a new tab.</p>
+          <a href="https://neurevo.dev/app" class="try-live-launch" target="_blank" rel="noopener">Launch Simulator &rarr;</a>
+        </div>
+      </noscript>
+    </div>
+    <a href="https://neurevo.dev/app" class="try-live-launch reveal reveal-delay-4" target="_blank" rel="noopener">Open Full Simulator &rarr;</a>
   </div>
 </section>
 
@@ -774,7 +834,7 @@ footer a:hover{color:var(--green)}
     <h2 class="section-title reveal reveal-delay-1">See evolution in action</h2>
     <p class="section-desc reveal reveal-delay-2">Launch the full 3D simulator to watch organisms with real C. elegans neural networks learn to move, sense, and survive.</p>
 
-    <a href="../index.html" class="sim-preview reveal reveal-delay-3" target="_blank" rel="noopener">
+    <a href="https://neurevo.dev/app" class="sim-preview reveal reveal-delay-3" target="_blank" rel="noopener">
       <div class="sim-preview-grid"></div>
       <div class="sim-preview-inner">
         <div class="sim-preview-icon">
@@ -1005,7 +1065,7 @@ footer a:hover{color:var(--green)}
 
 <footer>
   <div class="container">
-    <p>Built by <a href="https://ashlr.ai" target="_blank" rel="noopener">AshlrAI</a> &middot; neurevo.dev &middot; MIT License</p>
+    <p><a href="https://neurevo.dev">neurevo.dev</a> &mdash; Built by <a href="https://ashlr.ai" target="_blank" rel="noopener">AshlrAI</a> &middot; MIT License</p>
   </div>
 </footer>
 

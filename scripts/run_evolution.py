@@ -110,6 +110,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Crossover probability (default: 0.3)",
     )
     parser.add_argument(
+        "--parallel",
+        action="store_true",
+        help="Use multiprocessing for parallel genome evaluation",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Number of worker processes for --parallel (default: 4)",
+    )
+    parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         help="Enable debug logging",
@@ -182,6 +193,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Population:   {args.population}")
     print(f"  Fitness mode: {mode_str}")
     print(f"  Seed:         {args.seed}")
+    if args.parallel:
+        print(f"  Parallel:     {args.workers} workers")
     print(f"  Output:       {output_dir}")
     if args.god:
         print(f"  God Agent:    ENABLED (interval={args.god_interval})")
@@ -233,6 +246,8 @@ def main(argv: list[str] | None = None) -> int:
         "elitism": pop_config.elitism,
         "crossover_rate": pop_config.crossover_rate,
         "mutation": asdict(mutation_config),
+        "parallel": args.parallel,
+        "workers": args.workers if args.parallel else 1,
     }
     store.create_run(run_id, args.organism, config_dict)
 
@@ -269,7 +284,10 @@ def main(argv: list[str] | None = None) -> int:
         gen_start = time.time()
 
         # Evaluate
-        population.evaluate(eval_fn)
+        if args.parallel:
+            population.evaluate(parallel=True, n_workers=args.workers, mode=fitness_mode)
+        else:
+            population.evaluate(eval_fn)
 
         # Collect stats before advancing
         fitnesses = np.array([g.fitness for g in population.genomes])

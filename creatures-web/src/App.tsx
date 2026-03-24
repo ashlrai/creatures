@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, Component, type ReactNode } from 'react';
+import { useCallback, useState, useEffect, useRef, Component, type ReactNode } from 'react';
 import { Scene } from './components/Scene';
 import { ConnectomeExplorer } from './components/ui/ConnectomeExplorer';
 import { DrugTestingPanel } from './components/ui/DrugTestingPanel';
@@ -63,6 +63,22 @@ export default function App() {
   const [lesionInput, setLesionInput] = useState('');
   const [stimInput, setStimInput] = useState('');
   const [notification, setNotification] = useState<string | null>(null);
+  const [showHint, setShowHint] = useState(false);
+  const autoStarted = useRef(false);
+
+  // Auto-start demo on page load — no welcome screen, immediate wow factor
+  useEffect(() => {
+    if (autoStarted.current) return;
+    autoStarted.current = true;
+    startDemo().then(() => {
+      // Auto-poke so users see neural cascade from frame 1
+      const store = useSimulationStore.getState();
+      store.setPoke('seg_8');
+      // Show interaction hint briefly
+      setShowHint(true);
+      setTimeout(() => setShowHint(false), 3000);
+    });
+  }, [startDemo]);
 
   // Bridge custom events from child components to WebSocket
   useEffect(() => {
@@ -80,6 +96,16 @@ export default function App() {
   };
 
   const handleStart = useCallback(async (organism: string) => {
+    try {
+      const exp = await createExperiment(organism);
+      connect(exp.id);
+    } catch {
+      await startDemo();
+    }
+  }, [createExperiment, connect, startDemo]);
+
+  const handleSwitchOrganism = useCallback(async (organism: string) => {
+    // Try live server first, fall back to demo
     try {
       const exp = await createExperiment(organism);
       connect(exp.id);
@@ -115,11 +141,22 @@ export default function App() {
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
             Creatures
           </div>
+          <div className="organism-selector">
+            <button
+              className={`organism-pill${!experiment || experiment.organism !== 'drosophila' ? ' active' : ''}`}
+              onClick={() => handleSwitchOrganism('c_elegans')}
+            >
+              C. elegans
+            </button>
+            <button
+              className={`organism-pill${experiment?.organism === 'drosophila' ? ' active' : ''}`}
+              onClick={() => handleSwitchOrganism('drosophila')}
+            >
+              Drosophila
+            </button>
+          </div>
           {experiment && (
-            <div style={{ display: 'flex', gap: 16, marginLeft: 16, fontSize: 12, fontFamily: 'var(--font-mono)' }}>
-              <span style={{ color: 'var(--text-label)' }}>
-                {experiment.organism === 'drosophila' ? 'Drosophila melanogaster' : 'Caenorhabditis elegans'}
-              </span>
+            <div style={{ display: 'flex', gap: 16, marginLeft: 8, fontSize: 12, fontFamily: 'var(--font-mono)' }}>
               <span style={{ color: 'var(--accent-cyan)' }}>{experiment.n_neurons.toLocaleString()} neurons</span>
               <span style={{ color: 'var(--text-label)' }}>{experiment.n_synapses.toLocaleString()} synapses</span>
             </div>
@@ -200,7 +237,7 @@ export default function App() {
             </>
           ) : (
             <div style={{ padding: 8, textAlign: 'center', opacity: 0.3, fontSize: 12 }}>
-              Select an organism to begin
+              Loading neural network...
             </div>
           )}
         </div>
@@ -227,34 +264,10 @@ export default function App() {
         </div>
       </div>
 
-      {/* Welcome overlay — OUTSIDE viewport, always renders */}
-      {!experiment && (
-        <div className="welcome-overlay">
-          <div className="welcome-card">
-            {loading ? (
-              <>
-                <div className="spinner" style={{ width: 32, height: 32, borderWidth: 3, margin: '0 auto 16px' }} />
-                <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>Building neural network...</div>
-                <div style={{ fontSize: 11, color: 'var(--text-label)', marginTop: 4 }}>Compiling spiking neurons from real connectome data</div>
-              </>
-            ) : (
-              <>
-                <div className="welcome-title">Creatures</div>
-                <div className="welcome-sub">Virtual organisms powered by real brain wiring.<br />Select an organism to bring it to life.</div>
-                {error && <div style={{ fontSize: 11, color: 'var(--accent-magenta)', marginBottom: 12 }}>{error}</div>}
-                <div className="welcome-buttons">
-                  <button className="welcome-btn welcome-btn-worm" onClick={() => handleStart('c_elegans')}>
-                    <div><div className="welcome-btn-label">C. elegans</div><div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>Nematode worm — the first fully mapped brain</div></div>
-                    <div className="welcome-btn-detail">299 neurons<br/>3,363 synapses</div>
-                  </button>
-                  <button className="welcome-btn welcome-btn-fly" onClick={() => handleStart('drosophila')}>
-                    <div><div className="welcome-btn-label">Drosophila</div><div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>Fruit fly central complex — navigation circuit</div></div>
-                    <div className="welcome-btn-detail">1,000 neurons<br/>15K+ synapses</div>
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+      {/* Interaction hint — fades out after 3 seconds */}
+      {showHint && (
+        <div className="interaction-hint">
+          Click the worm to interact
         </div>
       )}
 
@@ -262,7 +275,7 @@ export default function App() {
       <div className="bottom-bar">
         {experiment ? <Waveform /> : (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: 11, color: 'var(--text-label)' }}>Neural oscilloscope — select an organism to begin</span>
+            <span style={{ fontSize: 11, color: 'var(--text-label)' }}>Neural oscilloscope — loading...</span>
           </div>
         )}
       </div>

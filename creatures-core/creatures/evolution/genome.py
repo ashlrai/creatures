@@ -120,6 +120,52 @@ class Genome:
             metadata={"genome_id": self.id, "generation": self.generation, "fitness": self.fitness},
         )
 
+    def to_dict(self) -> dict:
+        """Serialize genome to a plain dict (numpy arrays become lists).
+
+        Used for multiprocessing: genomes must be picklable across process
+        boundaries.  We convert numpy arrays to lists so the dict is safe
+        for ``multiprocessing.Pool.map``.
+        """
+        return {
+            "id": self.id,
+            "parent_ids": self.parent_ids,
+            "generation": self.generation,
+            "neuron_ids": list(self.neuron_ids),
+            "neuron_types": {nid: nt.value for nid, nt in self.neuron_types.items()},
+            "neuron_nts": dict(self.neuron_nts),
+            "pre_indices": self.pre_indices.tolist(),
+            "post_indices": self.post_indices.tolist(),
+            "weights": self.weights.tolist(),
+            "synapse_types": self.synapse_types.tolist(),
+            "template_name": self.template_name,
+            "fitness": self.fitness,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Genome:
+        """Reconstruct a Genome from a dict produced by ``to_dict()``.
+
+        Converts lists back to numpy arrays and enum values back to
+        ``NeuronType`` instances.
+        """
+        return cls(
+            id=d["id"],
+            parent_ids=tuple(d["parent_ids"]),
+            generation=d["generation"],
+            neuron_ids=d["neuron_ids"],
+            neuron_types={nid: NeuronType(v) for nid, v in d["neuron_types"].items()},
+            neuron_nts=d["neuron_nts"],
+            pre_indices=np.array(d["pre_indices"], dtype=np.int32),
+            post_indices=np.array(d["post_indices"], dtype=np.int32),
+            weights=np.array(d["weights"], dtype=np.float64),
+            synapse_types=np.array(d["synapse_types"], dtype=np.int8),
+            template_name=d.get("template_name", ""),
+            fitness=d.get("fitness", 0.0),
+            metadata=d.get("metadata", {}),
+        )
+
     def clone(self) -> Genome:
         """Deep copy with new ID."""
         return Genome(

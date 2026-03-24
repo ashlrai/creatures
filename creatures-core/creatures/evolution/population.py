@@ -117,15 +117,37 @@ class Population:
             f"{len(self._species)} species"
         )
 
-    def evaluate(self, eval_fn: Callable[[Genome], float]) -> None:
+    def evaluate(
+        self,
+        eval_fn: Callable[[Genome], float] | None = None,
+        parallel: bool = False,
+        n_workers: int = 4,
+        mode: str = "fast",
+    ) -> None:
         """Evaluate fitness for all genomes in the population.
 
         Args:
             eval_fn: Function that takes a Genome and returns a float fitness.
-                     Should also set genome.fitness as a side effect.
+                     Used when *parallel* is False.  Should also set
+                     ``genome.fitness`` as a side effect.
+            parallel: If True, use multiprocessing to evaluate genomes
+                      concurrently (ignores *eval_fn*; uses *mode* instead).
+            n_workers: Number of worker processes for parallel evaluation.
+            mode: Fitness tier for parallel evaluation -- ``'fast'``,
+                  ``'medium'``, or ``'full'``.
         """
-        for genome in self._genomes:
-            eval_fn(genome)
+        if parallel:
+            from creatures.evolution.parallel import evaluate_parallel
+
+            results = evaluate_parallel(self._genomes, n_workers=n_workers, mode=mode)
+            for genome in self._genomes:
+                genome.fitness = results.get(genome.id, 0.0)
+        else:
+            from creatures.evolution.fitness import evaluate_genome_fast
+
+            fn = eval_fn if eval_fn is not None else evaluate_genome_fast
+            for genome in self._genomes:
+                fn(genome)
 
     def advance_generation(self) -> GenerationStats:
         """Select, reproduce, and mutate to create the next generation.
