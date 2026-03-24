@@ -8,8 +8,10 @@ export default function App() {
     createExperiment,
     connect,
     poke,
+    stimulate,
     pause,
     resume,
+    sendCommand,
     connected,
     experiment,
   } = useSimulation();
@@ -19,6 +21,10 @@ export default function App() {
     connect(exp.id);
   }, [createExperiment, connect]);
 
+  const handleLesion = useCallback((neuronId: string) => {
+    sendCommand({ type: 'lesion_neuron', neuron_id: neuronId });
+  }, [sendCommand]);
+
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
       <Scene />
@@ -27,6 +33,8 @@ export default function App() {
         onPause={pause}
         onResume={resume}
         onStart={handleStart}
+        onLesion={handleLesion}
+        onStimulate={stimulate}
         connected={connected}
       />
     </div>

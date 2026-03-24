@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useSimulationStore } from '../stores/simulationStore';
+import { ActivityHeatmap } from './ActivityHeatmap';
 
 const panelStyle: React.CSSProperties = {
   background: 'rgba(10, 10, 20, 0.85)',
@@ -18,18 +20,33 @@ const buttonStyle: React.CSSProperties = {
   transition: 'all 0.15s',
 };
 
+const inputStyle: React.CSSProperties = {
+  padding: '6px 10px',
+  borderRadius: 4,
+  border: '1px solid rgba(255,255,255,0.15)',
+  background: 'rgba(255,255,255,0.05)',
+  color: '#e0e0e0',
+  fontSize: 12,
+  width: '100%',
+  outline: 'none',
+};
+
 interface DashboardProps {
   onPoke: (segment: string) => void;
   onPause: () => void;
   onResume: () => void;
   onStart: (organism: string) => void;
+  onLesion: (neuronId: string) => void;
+  onStimulate: (neuronIds: string[], current: number) => void;
   connected: boolean;
 }
 
-export function Dashboard({ onPoke, onPause, onResume, onStart, connected }: DashboardProps) {
+export function Dashboard({ onPoke, onPause, onResume, onStart, onLesion, onStimulate, connected }: DashboardProps) {
   const frame = useSimulationStore((s) => s.frame);
   const experiment = useSimulationStore((s) => s.experiment);
   const history = useSimulationStore((s) => s.frameHistory);
+  const [lesionInput, setLesionInput] = useState('');
+  const [stimInput, setStimInput] = useState('');
 
   return (
     <div style={{
@@ -40,11 +57,11 @@ export function Dashboard({ onPoke, onPause, onResume, onStart, connected }: Das
       {/* Top bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', pointerEvents: 'auto' }}>
         <div style={panelStyle}>
-          <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.5px' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.5px' }}>
             Creatures
           </div>
-          <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>
-            Virtual Organism Simulator
+          <div style={{ fontSize: 11, opacity: 0.5, marginTop: 2 }}>
+            Virtual organisms powered by real brain wiring
           </div>
         </div>
 
@@ -52,13 +69,14 @@ export function Dashboard({ onPoke, onPause, onResume, onStart, connected }: Das
           <div style={{
             width: 8, height: 8, borderRadius: '50%',
             background: connected ? '#4CAF50' : '#F44336',
+            boxShadow: connected ? '0 0 8px #4CAF50' : 'none',
           }} />
           <span style={{ fontSize: 12 }}>
-            {connected ? 'Connected' : 'Disconnected'}
+            {connected ? 'Live' : 'Disconnected'}
           </span>
           {frame && (
-            <span style={{ fontSize: 12, opacity: 0.6 }}>
-              t={frame.t_ms.toFixed(0)}ms
+            <span style={{ fontSize: 12, opacity: 0.5, fontFamily: 'monospace' }}>
+              {frame.t_ms.toFixed(0)}ms
             </span>
           )}
         </div>
@@ -67,60 +85,70 @@ export function Dashboard({ onPoke, onPause, onResume, onStart, connected }: Das
       {/* Spacer */}
       <div style={{ flex: 1 }} />
 
-      {/* Bottom controls */}
-      <div style={{ display: 'flex', gap: 12, pointerEvents: 'auto' }}>
-        {/* Stats panel */}
+      {/* Bottom row */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', pointerEvents: 'auto', flexWrap: 'wrap' }}>
+        {/* Stats + mini graph */}
         <div style={{ ...panelStyle, minWidth: 200 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, opacity: 0.7 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8, opacity: 0.6 }}>
             NEURAL ACTIVITY
           </div>
           {frame ? (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 11, opacity: 0.5 }}>Active neurons</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#2196F3' }}>
+                <span style={{ fontSize: 11, opacity: 0.4 }}>Active neurons</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: '#2196F3', fontFamily: 'monospace' }}>
                   {frame.n_active}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 11, opacity: 0.5 }}>Active muscles</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#FF5722' }}>
+                <span style={{ fontSize: 11, opacity: 0.4 }}>Muscles</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: '#FF5722', fontFamily: 'monospace' }}>
                   {Object.keys(frame.muscle_activations).length}
                 </span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 11, opacity: 0.5 }}>Displacement</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#4CAF50' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 11, opacity: 0.4 }}>Displacement</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#4CAF50', fontFamily: 'monospace' }}>
                   {history.length > 0
                     ? history[history.length - 1].displacement.toFixed(4)
                     : '0.0000'}
                 </span>
               </div>
 
-              {/* Mini activity graph */}
-              <div style={{ marginTop: 8, height: 40, display: 'flex', alignItems: 'flex-end', gap: 1 }}>
-                {history.slice(-60).map((h, i) => (
-                  <div key={i} style={{
-                    flex: 1,
-                    height: `${Math.min(100, h.n_active * 2)}%`,
-                    background: h.n_active > 0 ? '#2196F3' : 'rgba(255,255,255,0.05)',
-                    borderRadius: '1px 1px 0 0',
-                    minHeight: 1,
-                  }} />
-                ))}
+              {/* Mini activity sparkline */}
+              <div style={{ height: 48, display: 'flex', alignItems: 'flex-end', gap: 1 }}>
+                {history.slice(-80).map((h, i) => {
+                  const height = Math.min(100, h.n_active * 1.5);
+                  return (
+                    <div key={i} style={{
+                      flex: 1,
+                      height: `${height}%`,
+                      background: h.n_active > 10
+                        ? `hsl(${200 - Math.min(h.n_active, 60) * 3}, 80%, 50%)`
+                        : h.n_active > 0
+                          ? '#1565C0'
+                          : 'rgba(255,255,255,0.03)',
+                      borderRadius: '1px 1px 0 0',
+                      minHeight: 1,
+                      transition: 'height 0.1s',
+                    }} />
+                  );
+                })}
               </div>
             </>
           ) : (
-            <div style={{ fontSize: 12, opacity: 0.4 }}>No data yet</div>
+            <div style={{ fontSize: 12, opacity: 0.3, padding: '20px 0', textAlign: 'center' }}>
+              Select an organism to begin
+            </div>
           )}
         </div>
 
-        {/* Control buttons */}
-        <div style={{ ...panelStyle, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.7 }}>CONTROLS</div>
+        {/* Controls */}
+        <div style={{ ...panelStyle, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 180 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, opacity: 0.6 }}>CONTROLS</div>
 
           {!experiment ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <>
               <button
                 onClick={() => onStart('c_elegans')}
                 style={{ ...buttonStyle, background: '#4CAF50', color: 'white' }}
@@ -133,25 +161,27 @@ export function Dashboard({ onPoke, onPause, onResume, onStart, connected }: Das
               >
                 Fruit Fly (1000 neurons)
               </button>
-            </div>
+            </>
           ) : (
             <>
-              <button
-                onClick={() => onPoke('seg_8')}
-                style={{ ...buttonStyle, background: '#FF5722', color: 'white' }}
-              >
-                Poke Posterior
-              </button>
-              <button
-                onClick={() => onPoke('seg_2')}
-                style={{ ...buttonStyle, background: '#FF9800', color: 'white' }}
-              >
-                Poke Anterior
-              </button>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  onClick={() => onPoke('seg_8')}
+                  style={{ ...buttonStyle, flex: 1, background: '#E91E63', color: 'white' }}
+                >
+                  Poke Tail
+                </button>
+                <button
+                  onClick={() => onPoke('seg_2')}
+                  style={{ ...buttonStyle, flex: 1, background: '#FF5722', color: 'white' }}
+                >
+                  Poke Head
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
                 <button
                   onClick={onPause}
-                  style={{ ...buttonStyle, flex: 1, background: '#333', color: '#ccc' }}
+                  style={{ ...buttonStyle, flex: 1, background: '#333', color: '#aaa' }}
                 >
                   Pause
                 </button>
@@ -166,25 +196,84 @@ export function Dashboard({ onPoke, onPause, onResume, onStart, connected }: Das
           )}
         </div>
 
-        {/* Experiment info */}
+        {/* Neuron tools (only when running) */}
         {experiment && (
-          <div style={panelStyle}>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, opacity: 0.7 }}>
-              ORGANISM
+          <div style={{ ...panelStyle, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 200 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, opacity: 0.6 }}>NEURON TOOLS</div>
+
+            {/* Lesion */}
+            <div>
+              <div style={{ fontSize: 10, opacity: 0.4, marginBottom: 3 }}>Lesion neuron (remove all synapses)</div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <input
+                  style={inputStyle}
+                  placeholder="e.g. AVAL"
+                  value={lesionInput}
+                  onChange={(e) => setLesionInput(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && lesionInput) {
+                      onLesion(lesionInput);
+                      setLesionInput('');
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => { if (lesionInput) { onLesion(lesionInput); setLesionInput(''); } }}
+                  style={{ ...buttonStyle, background: '#b71c1c', color: 'white', padding: '6px 12px', fontSize: 11 }}
+                >
+                  Lesion
+                </button>
+              </div>
             </div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>
-              {experiment.organism === 'drosophila' ? 'Drosophila' : 'C. elegans'}
-            </div>
-            <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>
-              {experiment.n_neurons} neurons
-            </div>
-            <div style={{ fontSize: 11, opacity: 0.5 }}>
-              {experiment.n_synapses} synapses
-            </div>
-            <div style={{ fontSize: 11, opacity: 0.5 }}>
-              12 body segments
+
+            {/* Stimulate */}
+            <div>
+              <div style={{ fontSize: 10, opacity: 0.4, marginBottom: 3 }}>Stimulate neuron (inject current)</div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <input
+                  style={inputStyle}
+                  placeholder="e.g. PLML"
+                  value={stimInput}
+                  onChange={(e) => setStimInput(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && stimInput) {
+                      onStimulate([stimInput], 30);
+                      setStimInput('');
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => { if (stimInput) { onStimulate([stimInput], 30); setStimInput(''); } }}
+                  style={{ ...buttonStyle, background: '#1565C0', color: 'white', padding: '6px 12px', fontSize: 11 }}
+                >
+                  Stim
+                </button>
+              </div>
             </div>
           </div>
+        )}
+
+        {/* Organism info */}
+        {experiment && (
+          <div style={panelStyle}>
+            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6, opacity: 0.6 }}>
+              ORGANISM
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>
+              {experiment.organism === 'drosophila' ? 'Drosophila' : 'C. elegans'}
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.4, marginTop: 4, fontFamily: 'monospace' }}>
+              {experiment.n_neurons.toLocaleString()} neurons
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.4, fontFamily: 'monospace' }}>
+              {experiment.n_synapses.toLocaleString()} synapses
+            </div>
+          </div>
+        )}
+
+        {/* Activity heatmap */}
+        {frame && frame.firing_rates && frame.firing_rates.length > 0 && (
+          <ActivityHeatmap />
         )}
       </div>
     </div>
