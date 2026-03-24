@@ -31,15 +31,15 @@ export function WormBody() {
     () => Array.from({ length: MAX_SEGMENTS }, () =>
       new THREE.MeshPhysicalMaterial({
         color: REST_COLOR.clone(),
-        emissive: new THREE.Color(0.01, 0.04, 0.06),
-        emissiveIntensity: 0.5,
-        roughness: 0.25,
-        metalness: 0.05,
-        transmission: 0.45,
-        thickness: 0.5,
-        ior: 1.45,
+        emissive: new THREE.Color(0.02, 0.06, 0.1),
+        emissiveIntensity: 0.8,
+        roughness: 0.3,
+        metalness: 0.1,
+        clearcoat: 0.4,
+        clearcoatRoughness: 0.2,
         transparent: true,
-        opacity: 0.75,
+        opacity: 0.55,
+        side: THREE.DoubleSide,
       })
     ),
     []
@@ -113,7 +113,7 @@ export function WormBody() {
           : ACTIVE_COLOR.clone().lerp(HOT_COLOR, (activity - 0.5) * 2);
         mat.color.copy(c);
         mat.emissive.copy(c);
-        mat.emissiveIntensity = 0.3 + activity * 1.5;
+        mat.emissiveIntensity = 0.5 + activity * 2.5;
       } else if (nearPoke) {
         mat.color.copy(REST_COLOR);
         mat.emissive.set(0.3, 0.3, 0.3);
@@ -121,7 +121,7 @@ export function WormBody() {
       } else {
         mat.color.copy(REST_COLOR);
         mat.emissive.set(0.01, 0.04, 0.06);
-        mat.emissiveIntensity = 0.3 + Math.sin(t * 1.5 + i * 0.3) * 0.1;
+        mat.emissiveIntensity = 0.6 + Math.sin(t * 1.5 + i * 0.3) * 0.15;
       }
     }
 

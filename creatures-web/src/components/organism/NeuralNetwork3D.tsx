@@ -119,16 +119,17 @@ export function NeuralNetwork3D() {
       const rate = rates[i];
       const intensity = Math.min(rate / 100, 1);
 
-      if (intensity > 0.01) {
-        // Active: brighten toward white
-        arr[i * 3] = baseColors[i * 3] + (1 - baseColors[i * 3]) * intensity;
-        arr[i * 3 + 1] = baseColors[i * 3 + 1] + (1 - baseColors[i * 3 + 1]) * intensity;
-        arr[i * 3 + 2] = baseColors[i * 3 + 2] + (1 - baseColors[i * 3 + 2]) * intensity;
+      if (intensity > 0.02) {
+        // Active: brighten and saturate
+        const boost = 0.3 + intensity * 0.7;
+        arr[i * 3] = baseColors[i * 3] * boost + intensity * 0.5;
+        arr[i * 3 + 1] = baseColors[i * 3 + 1] * boost + intensity * 0.5;
+        arr[i * 3 + 2] = baseColors[i * 3 + 2] * boost + intensity * 0.5;
       } else {
-        // Silent: dim base color
-        arr[i * 3] = baseColors[i * 3] * 0.25;
-        arr[i * 3 + 1] = baseColors[i * 3 + 1] * 0.25;
-        arr[i * 3 + 2] = baseColors[i * 3 + 2] * 0.25;
+        // Silent: visible but dim
+        arr[i * 3] = baseColors[i * 3] * 0.4;
+        arr[i * 3 + 1] = baseColors[i * 3 + 1] * 0.4;
+        arr[i * 3 + 2] = baseColors[i * 3 + 2] * 0.4;
       }
     }
     colorAttr.needsUpdate = true;
@@ -154,7 +155,7 @@ export function NeuralNetwork3D() {
       </bufferGeometry>
       <pointsMaterial
         vertexColors
-        size={0.003}
+        size={0.005}
         sizeAttenuation
         transparent
         opacity={0.85}

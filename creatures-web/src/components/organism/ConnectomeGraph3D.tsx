@@ -58,10 +58,10 @@ export function ConnectomeGraph3D() {
       positions.push(pre.x, pre.y, pre.z);
       positions.push(post.x, post.y, post.z);
 
-      // Base color: dim cyan
-      const intensity = 0.08;
-      colors.push(intensity, intensity * 1.5, intensity * 2);
-      colors.push(intensity, intensity * 1.5, intensity * 2);
+      // Base color: very dim (barely visible until active)
+      const intensity = 0.015;
+      colors.push(intensity, intensity * 1.5, intensity * 2.5);
+      colors.push(intensity, intensity * 1.5, intensity * 2.5);
     }
 
     return {
@@ -93,24 +93,27 @@ export function ConnectomeGraph3D() {
       const postRate = rates[postNode.idx] ?? 0;
       const activity = Math.min((preRate + postRate) / 200, 1);
 
-      if (activity > 0.05) {
-        // Active connection: bright cyan-white
-        const t = activity;
-        arr[edgeIdx * 6] = 0.1 + t * 0.9;
-        arr[edgeIdx * 6 + 1] = 0.2 + t * 0.8;
-        arr[edgeIdx * 6 + 2] = 0.3 + t * 0.7;
-        arr[edgeIdx * 6 + 3] = 0.1 + t * 0.9;
-        arr[edgeIdx * 6 + 4] = 0.2 + t * 0.8;
-        arr[edgeIdx * 6 + 5] = 0.3 + t * 0.7;
+      if (activity > 0.1) {
+        // Active connection: subtle cyan glow, NOT white
+        const t = Math.min(activity, 1);
+        const r = 0.02 + t * 0.15;
+        const g = 0.04 + t * 0.35;
+        const b = 0.06 + t * 0.5;
+        arr[edgeIdx * 6] = r;
+        arr[edgeIdx * 6 + 1] = g;
+        arr[edgeIdx * 6 + 2] = b;
+        arr[edgeIdx * 6 + 3] = r;
+        arr[edgeIdx * 6 + 4] = g;
+        arr[edgeIdx * 6 + 5] = b;
       } else {
-        // Dim
-        const d = 0.03;
+        // Nearly invisible
+        const d = 0.008;
         arr[edgeIdx * 6] = d;
-        arr[edgeIdx * 6 + 1] = d * 1.2;
-        arr[edgeIdx * 6 + 2] = d * 1.5;
+        arr[edgeIdx * 6 + 1] = d * 1.5;
+        arr[edgeIdx * 6 + 2] = d * 2.5;
         arr[edgeIdx * 6 + 3] = d;
-        arr[edgeIdx * 6 + 4] = d * 1.2;
-        arr[edgeIdx * 6 + 5] = d * 1.5;
+        arr[edgeIdx * 6 + 4] = d * 1.5;
+        arr[edgeIdx * 6 + 5] = d * 2.5;
       }
       edgeIdx++;
     }
@@ -138,7 +141,7 @@ export function ConnectomeGraph3D() {
       <lineBasicMaterial
         vertexColors
         transparent
-        opacity={0.6}
+        opacity={0.35}
         blending={THREE.AdditiveBlending}
         depthWrite={false}
         linewidth={1}

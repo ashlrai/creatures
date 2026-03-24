@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { WormBody } from './organism/WormBody';
 import { NeuralNetwork3D } from './organism/NeuralNetwork3D';
 import { ConnectomeGraph3D } from './organism/ConnectomeGraph3D';
+import { SpikeParticles } from './organism/SpikeParticles';
 import { PostProcessing } from './effects/PostProcessing';
 import { useSimulationStore } from '../stores/simulationStore';
 
@@ -82,6 +83,7 @@ export function Scene() {
       <WormBody />
       <NeuralNetwork3D />
       <ConnectomeGraph3D />
+      <SpikeParticles />
 
       {/* Camera */}
       <SmoothCamera />
