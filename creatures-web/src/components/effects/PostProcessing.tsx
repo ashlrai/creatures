@@ -1,26 +1,39 @@
-import { EffectComposer, Bloom, Vignette, ChromaticAberration, Noise } from '@react-three/postprocessing';
-import { BlendFunction } from 'postprocessing';
-import { Vector2 } from 'three';
+import { Component, type ReactNode } from 'react';
+import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 
-const chromaticOffset = new Vector2(0.0004, 0.0004);
+class EffectErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.warn('PostProcessing failed (non-fatal):', error.message);
+  }
+
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
+}
 
 export function PostProcessing() {
   return (
-    <EffectComposer multisampling={0}>
-      <Bloom
-        intensity={1.4}
-        luminanceThreshold={0.15}
-        luminanceSmoothing={0.9}
-        radius={0.85}
-        mipmapBlur
-      />
-      <ChromaticAberration
-        offset={chromaticOffset}
-        radialModulation
-        modulationOffset={0.15}
-      />
-      <Vignette eskil={false} offset={0.12} darkness={0.85} />
-      <Noise premultiply blendFunction={BlendFunction.SOFT_LIGHT} opacity={0.1} />
-    </EffectComposer>
+    <EffectErrorBoundary>
+      <EffectComposer multisampling={0}>
+        <Bloom
+          intensity={1.2}
+          luminanceThreshold={0.2}
+          luminanceSmoothing={0.9}
+          radius={0.8}
+          mipmapBlur
+        />
+        <Vignette eskil={false} offset={0.12} darkness={0.7} />
+      </EffectComposer>
+    </EffectErrorBoundary>
   );
 }

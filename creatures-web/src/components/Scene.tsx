@@ -1,10 +1,8 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Sparkles, MeshReflectorMaterial } from '@react-three/drei';
+import { OrbitControls, Sparkles } from '@react-three/drei';
 import * as THREE from 'three';
 import { WormBody } from './organism/WormBody';
-import { NeuralNetwork3D } from './organism/NeuralNetwork3D';
-import { ConnectomeGraph3D } from './organism/ConnectomeGraph3D';
 import { PostProcessing } from './effects/PostProcessing';
 import { useSimulationStore } from '../stores/simulationStore';
 
@@ -34,74 +32,57 @@ function SmoothCamera() {
   );
 }
 
-function ReflectiveGround() {
+function GroundPlane() {
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0.44, -0.001, 0]}>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0.44, -0.002, 0]} receiveShadow>
       <planeGeometry args={[6, 6]} />
-      <MeshReflectorMaterial
-        blur={[300, 80]}
-        resolution={512}
-        mixBlur={15}
-        mixStrength={0.35}
-        roughness={0.85}
-        depthScale={1.2}
-        minDepthThreshold={0.4}
-        maxDepthThreshold={1.4}
-        color="#080812"
-        metalness={0.15}
-        mirror={0.25}
-      />
+      <meshStandardMaterial color="#060610" roughness={0.9} metalness={0.1} />
     </mesh>
   );
 }
 
 export function Scene() {
+  const [canvasError, setCanvasError] = useState(false);
+
+  if (canvasError) {
+    return (
+      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666' }}>
+        3D rendering unavailable. Try refreshing.
+      </div>
+    );
+  }
+
   return (
     <Canvas
-      camera={{ position: [0.55, 0.18, 0.32], fov: 48, near: 0.005 }}
-      gl={{ antialias: false, alpha: false, powerPreference: 'high-performance' }}
-      dpr={[1, 1.5]}
+      camera={{ position: [0.55, 0.18, 0.32], fov: 48, near: 0.005, far: 10 }}
+      gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
+      dpr={[1, 2]}
       style={{
         background: 'radial-gradient(ellipse at 50% 35%, #0c1228 0%, #050510 55%, #020206 100%)',
       }}
+      onCreated={({ gl }) => {
+        console.log('Three.js canvas created', gl.info);
+      }}
     >
-      {/* Atmospheric fog */}
-      <fogExp2 attach="fog" args={['#050510', 0.55]} />
+      {/* Lighting — moody but visible */}
+      <ambientLight intensity={0.25} color="#1a2545" />
+      <pointLight position={[0.55, 0.4, 0.2]} intensity={0.6} color="#4499dd" distance={3} decay={2} />
+      <pointLight position={[0.3, 0.1, -0.2]} intensity={0.3} color="#7755bb" distance={2} decay={2} />
+      <spotLight position={[0.44, 0.8, 0.1]} angle={0.6} penumbra={0.9} intensity={0.4} color="#ffffff" distance={4} />
 
-      {/* Moody lighting */}
-      <ambientLight intensity={0.1} color="#182040" />
-      <pointLight position={[0.55, 0.35, 0.15]} intensity={0.45} color="#3388cc" distance={2.5} decay={2} />
-      <pointLight position={[0.3, 0.08, -0.2]} intensity={0.2} color="#6644aa" distance={1.8} decay={2} />
-      <spotLight
-        position={[0.44, 0.7, 0.05]}
-        angle={0.5}
-        penumbra={0.95}
-        intensity={0.25}
-        color="#ffffff"
-        distance={3}
-      />
+      {/* Ground */}
+      <GroundPlane />
 
-      {/* Environment */}
-      <ReflectiveGround />
-      <Sparkles
-        count={50}
-        size={0.25}
-        speed={0.08}
-        opacity={0.1}
-        color="#4488aa"
-        scale={[2, 0.8, 1.5]}
-        position={[0.44, 0.15, 0]}
-      />
+      {/* Particles */}
+      <Sparkles count={40} size={0.2} speed={0.06} opacity={0.08} color="#4488aa" scale={[2, 0.6, 1.5]} position={[0.44, 0.15, 0]} />
 
       {/* Organism */}
       <WormBody />
-      <NeuralNetwork3D />
-      <ConnectomeGraph3D />
 
       {/* Camera */}
       <SmoothCamera />
 
-      {/* Post-processing */}
+      {/* Post-processing (optional — fails gracefully) */}
       <PostProcessing />
     </Canvas>
   );
