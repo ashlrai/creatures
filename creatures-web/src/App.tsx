@@ -141,7 +141,7 @@ export default function App() {
           <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.3px',
             background: 'linear-gradient(135deg, #e0eaf0, #88ccff)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            Creatures
+            Neurevo
           </div>
           <div className="organism-selector">
             <button

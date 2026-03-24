@@ -28,7 +28,7 @@ body {
 
 .app-root {
   display: grid;
-  grid-template-rows: 52px 1fr 68px;
+  grid-template-rows: 52px 1fr 80px;
   width: 100vw;
   height: 100vh;
 }
@@ -46,7 +46,7 @@ body {
 
 .app-content {
   display: grid;
-  grid-template-columns: 220px 1fr 280px;
+  grid-template-columns: 200px 1fr 300px;
   overflow: hidden;
   position: relative;
 }
@@ -64,7 +64,7 @@ body {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   z-index: 5;
 }
 

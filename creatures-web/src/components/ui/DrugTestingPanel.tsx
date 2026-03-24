@@ -72,6 +72,7 @@ export function DrugTestingPanel({ isDemo }: DrugTestingPanelProps) {
   const [neuronTypes, setNeuronTypes] = useState<Record<string, { type: string; nt: string | null }>>({});
   const [motorNeurons, setMotorNeurons] = useState<string[]>([]);
   const [achNeurons, setAchNeurons] = useState<string[]>([]);
+  const [expanded, setExpanded] = useState(false);
 
   // Load neuron types to resolve which neurons to target
   useEffect(() => {
@@ -161,94 +162,105 @@ export function DrugTestingPanel({ isDemo }: DrugTestingPanelProps) {
   const canApply = connected && !isDemo;
 
   return (
-    <div className="glass">
-      <div className="glass-label">Drug Testing</div>
-
-      {!canApply && (
-        <div style={{
-          fontSize: 10,
-          color: 'var(--accent-amber)',
-          padding: '4px 8px',
-          background: 'rgba(255, 170, 34, 0.06)',
-          borderRadius: 6,
-          marginBottom: 8,
-          textAlign: 'center',
-        }}>
-          Connect to server for live drug testing
-        </div>
-      )}
-
-      {notification && (
-        <div style={{
-          fontSize: 10,
-          color: 'var(--accent-cyan)',
-          padding: '4px 8px',
-          background: 'rgba(0, 212, 255, 0.06)',
-          borderRadius: 6,
-          marginBottom: 8,
-        }}>
-          {notification}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {DRUGS.map((drug) => (
-          <div key={drug.name} className="drug-card" style={{ borderLeftColor: drug.color }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
-                  {drug.name}
-                  {appliedDrug === drug.name && (
-                    <span style={{ fontSize: 9, color: drug.color, marginLeft: 6 }}>ACTIVE</span>
-                  )}
-                </div>
-                <div style={{ fontSize: 9, color: 'var(--text-label)', marginTop: 1 }}>
-                  {drug.mechanism}
-                </div>
-              </div>
-            </div>
-            <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.3 }}>
-              {drug.effect}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
-              <span style={{ fontSize: 9, color: 'var(--text-label)', whiteSpace: 'nowrap' }}>
-                {getDose(drug.name).toFixed(1)}x
-              </span>
-              <input
-                type="range"
-                min="0.1"
-                max="3.0"
-                step="0.1"
-                value={getDose(drug.name)}
-                onChange={(e) => setDose(drug.name, parseFloat(e.target.value))}
-                style={{
-                  flex: 1,
-                  height: 3,
-                  accentColor: drug.color,
-                  cursor: 'pointer',
-                }}
-              />
-              <button
-                className="drug-apply-btn"
-                style={{ background: canApply ? drug.color : 'rgba(255,255,255,0.05)' }}
-                disabled={!canApply}
-                onClick={() => applyDrug(drug)}
-              >
-                Apply
-              </button>
-            </div>
-          </div>
-        ))}
+    <div className="glass" style={{ padding: expanded ? undefined : '6px 12px' }}>
+      <div
+        className="glass-label"
+        style={{ cursor: 'pointer', userSelect: 'none', marginBottom: expanded ? 8 : 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span>Drug Testing</span>
+        <span style={{ fontSize: 10, color: 'var(--text-label)' }}>{expanded ? '\u25BE' : '\u25B8'}</span>
       </div>
 
-      <button
-        className="btn btn-ghost"
-        style={{ width: '100%', marginTop: 8, fontSize: 11 }}
-        onClick={handleReset}
-        disabled={!canApply}
-      >
-        Reset Network
-      </button>
+      {expanded && (
+        <>
+          {!canApply && (
+            <div style={{
+              fontSize: 10,
+              color: 'var(--accent-amber)',
+              padding: '4px 8px',
+              background: 'rgba(255, 170, 34, 0.06)',
+              borderRadius: 6,
+              marginBottom: 8,
+              textAlign: 'center',
+            }}>
+              Connect to server for live drug testing
+            </div>
+          )}
+
+          {notification && (
+            <div style={{
+              fontSize: 10,
+              color: 'var(--accent-cyan)',
+              padding: '4px 8px',
+              background: 'rgba(0, 212, 255, 0.06)',
+              borderRadius: 6,
+              marginBottom: 8,
+            }}>
+              {notification}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {DRUGS.map((drug) => (
+              <div key={drug.name} className="drug-card" style={{ borderLeftColor: drug.color }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {drug.name}
+                      {appliedDrug === drug.name && (
+                        <span style={{ fontSize: 9, color: drug.color, marginLeft: 6 }}>ACTIVE</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 9, color: 'var(--text-label)', marginTop: 1 }}>
+                      {drug.mechanism}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.3 }}>
+                  {drug.effect}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                  <span style={{ fontSize: 9, color: 'var(--text-label)', whiteSpace: 'nowrap' }}>
+                    {getDose(drug.name).toFixed(1)}x
+                  </span>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="3.0"
+                    step="0.1"
+                    value={getDose(drug.name)}
+                    onChange={(e) => setDose(drug.name, parseFloat(e.target.value))}
+                    style={{
+                      flex: 1,
+                      height: 3,
+                      accentColor: drug.color,
+                      cursor: 'pointer',
+                    }}
+                  />
+                  <button
+                    className="drug-apply-btn"
+                    style={{ background: canApply ? drug.color : 'rgba(255,255,255,0.05)' }}
+                    disabled={!canApply}
+                    onClick={() => applyDrug(drug)}
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            className="btn btn-ghost"
+            style={{ width: '100%', marginTop: 8, fontSize: 11 }}
+            onClick={handleReset}
+            disabled={!canApply}
+          >
+            Reset Network
+          </button>
+        </>
+      )}
     </div>
   );
 }

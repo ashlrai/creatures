@@ -7,11 +7,11 @@ const MAX_SEGMENTS = 88;
 const SEG_RADIUS = 0.013;
 const SEG_HALF_LEN = 0.035;
 
-// Rich teal palette — LOW emissive at rest, HIGH when active
-const REST_COLOR = new THREE.Color(0.05, 0.25, 0.35);
+// Rich teal palette — ZERO emissive at rest so bloom doesn't wash out, HIGH when active
+const REST_COLOR = new THREE.Color(0.06, 0.25, 0.35);
 const ACTIVE_COLOR = new THREE.Color(0.1, 0.6, 0.85);
 const HOT_COLOR = new THREE.Color(0.3, 0.85, 1.0);
-const REST_EMISSIVE = new THREE.Color(0.005, 0.015, 0.025);
+const REST_EMISSIVE = new THREE.Color(0, 0, 0);
 const ACTIVE_EMISSIVE = new THREE.Color(0.06, 0.35, 0.55);
 const HOT_EMISSIVE = new THREE.Color(0.15, 0.5, 0.7);
 
@@ -56,8 +56,7 @@ export function WormBody() {
         emissiveIntensity: 1,
         roughness: 0.45,
         metalness: 0.1,
-        transparent: true,
-        opacity: 0.88,
+        opacity: 0.92,
       })
     ),
     []
@@ -157,7 +156,7 @@ export function WormBody() {
       if (isPoked) {
         mat.color.setRGB(0.3 + pokeFade * 0.5, 0.6 + pokeFade * 0.3, 0.7 + pokeFade * 0.3);
         mat.emissive.setRGB(0.08 * pokeFade, 0.35 * pokeFade, 0.55 * pokeFade);
-      } else if (totalActivity > 0.05) {
+      } else if (totalActivity > 0.1) {
         // Color: teal -> cyan -> bright cyan-white
         const c = totalActivity < 0.5
           ? REST_COLOR.clone().lerp(ACTIVE_COLOR, totalActivity * 2)
@@ -172,13 +171,8 @@ export function WormBody() {
         mat.emissiveIntensity = 1.0 + totalActivity * 1.5;
       } else {
         mat.color.copy(REST_COLOR);
-        mat.emissive.copy(REST_EMISSIVE);
-        mat.emissiveIntensity = 1.0;
-        // Subtle life pulse — very low emissive so bloom does NOT catch it
-        const pulse = Math.sin(t * 1.5 + i * 0.3) * 0.003;
-        mat.emissive.r += pulse;
-        mat.emissive.g += pulse * 2;
-        mat.emissive.b += pulse * 3;
+        mat.emissive.copy(REST_EMISSIVE); // zero emissive — bloom won't catch resting segments
+        mat.emissiveIntensity = 0;
       }
     }
 

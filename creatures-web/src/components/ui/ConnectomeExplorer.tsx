@@ -39,7 +39,7 @@ const TYPE_COLORS: Record<string, string> = {
   motor: '#ff4422',
 };
 
-const BG_COLOR = '#05050d';
+const BG_COLOR = '#030308';
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -131,19 +131,40 @@ export function ConnectomeExplorer() {
     const maxX = sorted[sorted.length - 1]?.x ?? 1;
     const rangeX = maxX - minX || 1;
 
-    const margin = 20;
-    const usableH = canvasH - margin * 2;
-    const usableW = canvasW - margin * 2;
+    const marginY = 24;
+    const marginX = 12;
+    const usableH = canvasH - marginY * 2;
+    const usableW = canvasW - marginX * 2;
+
+    // X band by neuron type (fraction of usableW)
+    const typeBands: Record<string, [number, number]> = {
+      sensory: [0.08, 0.35],   // far left
+      inter:   [0.30, 0.70],   // center
+      motor:   [0.60, 0.92],   // far right
+    };
+
+    // Seeded pseudo-random for deterministic jitter
+    const seededRand = (seed: number) => {
+      let x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+      return x - Math.floor(x);
+    };
 
     const layout = new Map<string, { cx: number; cy: number }>();
-    for (const node of sorted) {
+    for (let idx = 0; idx < sorted.length; idx++) {
+      const node = sorted[idx];
       // Y = position along body axis (head top, tail bottom)
       const tBody = (node.x - minX) / rangeX;
-      const cy = margin + tBody * usableH;
+      const cy = marginY + tBody * usableH + (seededRand(idx * 3 + 1) - 0.5) * 8;
 
-      // X = z-axis (left/right separation) with jitter
-      const zNorm = node.z; // small range around 0
-      const cx = usableW / 2 + margin + zNorm * usableW * 40;
+      // X = type-based band with jitter from z-axis and random offset
+      const band = typeBands[node.type] ?? [0.3, 0.7];
+      const bandCenter = (band[0] + band[1]) / 2;
+      const bandWidth = band[1] - band[0];
+      // Use z-position for lateral offset within band, plus jitter
+      const zOffset = node.z * 200; // normalize small z values
+      const jitter = (seededRand(idx * 7 + 3) - 0.5) * 0.6;
+      const tBand = Math.max(0, Math.min(1, 0.5 + zOffset + jitter));
+      const cx = marginX + (bandCenter + (tBand - 0.5) * bandWidth) * usableW;
 
       layout.set(node.id, { cx, cy });
     }
@@ -230,8 +251,8 @@ export function ConnectomeExplorer() {
       const isNeighbor = selectedNeighbors?.has(node.id) ?? false;
       const isHovered = node.id === hoveredNeuron;
 
-      // Radius: 3-6px based on firing rate
-      const radius = 3 + t * 3;
+      // Radius: 4-8px based on firing rate
+      const radius = 4 + t * 4;
 
       // Dim non-related neurons when something is selected
       let alpha = 1;
