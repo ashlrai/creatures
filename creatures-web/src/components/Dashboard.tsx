@@ -45,6 +45,8 @@ export function Dashboard({ onPoke, onPause, onResume, onStart, onLesion, onStim
   const frame = useSimulationStore((s) => s.frame);
   const experiment = useSimulationStore((s) => s.experiment);
   const history = useSimulationStore((s) => s.frameHistory);
+  const loading = useSimulationStore((s) => s.loading);
+  const error = useSimulationStore((s) => s.error);
   const [lesionInput, setLesionInput] = useState('');
   const [stimInput, setStimInput] = useState('');
 
@@ -148,20 +150,36 @@ export function Dashboard({ onPoke, onPause, onResume, onStart, onLesion, onStim
           <div style={{ fontSize: 11, fontWeight: 600, opacity: 0.6 }}>CONTROLS</div>
 
           {!experiment ? (
-            <>
-              <button
-                onClick={() => onStart('c_elegans')}
-                style={{ ...buttonStyle, background: '#4CAF50', color: 'white' }}
-              >
-                C. elegans (299 neurons)
-              </button>
-              <button
-                onClick={() => onStart('drosophila')}
-                style={{ ...buttonStyle, background: '#FF9800', color: 'white' }}
-              >
-                Fruit Fly (1000 neurons)
-              </button>
-            </>
+            loading ? (
+              <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                <div style={{
+                  width: 24, height: 24, border: '3px solid rgba(255,255,255,0.1)',
+                  borderTopColor: '#4CAF50', borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite',
+                  margin: '0 auto 8px',
+                }} />
+                <div style={{ fontSize: 12, opacity: 0.6 }}>Building neural network...</div>
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              </div>
+            ) : (
+              <>
+                {error && (
+                  <div style={{ fontSize: 11, color: '#F44336', marginBottom: 6 }}>{error}</div>
+                )}
+                <button
+                  onClick={() => onStart('c_elegans')}
+                  style={{ ...buttonStyle, background: '#4CAF50', color: 'white' }}
+                >
+                  C. elegans (299 neurons)
+                </button>
+                <button
+                  onClick={() => onStart('drosophila')}
+                  style={{ ...buttonStyle, background: '#FF9800', color: 'white' }}
+                >
+                  Fruit Fly (1000 neurons)
+                </button>
+              </>
+            )
           ) : (
             <>
               <div style={{ display: 'flex', gap: 6 }}>
