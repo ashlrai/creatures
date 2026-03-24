@@ -253,15 +253,13 @@ class PharmacologyEngine:
             n_affected = int(mask.sum())
 
         # Apply current injection to target neurons
+        # Recompute from scratch (like weights) to prevent compounding
         n_injected = 0
         if effective_current != 0.0 and target_neuron_ids:
             for nid in target_neuron_ids:
-                self._injected_currents[nid] = (
-                    self._injected_currents.get(nid, 0.0) + effective_current
-                )
+                self._injected_currents[nid] = effective_current
                 n_injected += 1
 
-            # Apply accumulated currents
             self.engine.set_input_currents(self._injected_currents)
 
         self._applied_drugs.append((drug_name, dose))

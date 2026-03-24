@@ -83,9 +83,11 @@ def _load_fly_mjcf() -> mujoco.MjModel:
     tmp.write(xml)
     tmp.flush()
 
-    model = mujoco.MjModel.from_xml_path(tmp.name)
-    # Clean up temp file — MuJoCo copies data at load time
-    os.unlink(tmp.name)
+    try:
+        model = mujoco.MjModel.from_xml_path(tmp.name)
+    finally:
+        # Clean up temp file — MuJoCo copies data at load time
+        os.unlink(tmp.name)
     logger.info(
         f"Loaded NeuroMechFly: {model.nbody} bodies, {model.njnt} joints, "
         f"{model.nu} actuators"

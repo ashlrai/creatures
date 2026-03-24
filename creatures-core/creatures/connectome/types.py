@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Self
@@ -71,7 +72,7 @@ class Connectome:
     synapses: list[Synapse]
     metadata: dict = field(default_factory=dict)
 
-    @property
+    @functools.cached_property
     def neuron_ids(self) -> list[str]:
         """Sorted list of all neuron IDs."""
         return sorted(self.neurons.keys())
@@ -84,7 +85,7 @@ class Connectome:
     def n_synapses(self) -> int:
         return len(self.synapses)
 
-    @property
+    @functools.cached_property
     def neuron_id_to_index(self) -> dict[str, int]:
         """Map from neuron ID to matrix index."""
         return {nid: i for i, nid in enumerate(self.neuron_ids)}

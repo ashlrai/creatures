@@ -12,6 +12,7 @@ each joint (lateral undulation for forward/backward crawling).
 from __future__ import annotations
 
 import logging
+import os
 import re
 import tempfile
 from pathlib import Path
@@ -252,9 +253,12 @@ class WormBody(BodyModel):
         tmp = tempfile.NamedTemporaryFile(suffix=".xml", delete=False, mode="w")
         tmp.write(mjcf)
         tmp.flush()
-        self._mjcf_path = tmp.name
+        tmp_path = tmp.name
 
-        self._model = mujoco.MjModel.from_xml_path(self._mjcf_path)
+        try:
+            self._model = mujoco.MjModel.from_xml_path(tmp_path)
+        finally:
+            os.unlink(tmp_path)
         self._model.opt.timestep = self._config.dt / 1000.0  # ms → seconds
         self._data = mujoco.MjData(self._model)
 
