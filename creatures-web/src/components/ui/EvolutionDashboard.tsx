@@ -72,6 +72,9 @@ export function EvolutionDashboard({ showConnectomeComparison, onToggleConnectom
         reportContent = await res.text();
       } else {
         // Demo mode: fetch sample report from API, or generate locally
+        // Capture store state NOW before async operations
+        const storeHistory = useEvolutionStore.getState().fitnessHistory;
+        const storeRun = useEvolutionStore.getState().currentRun;
         try {
           const res = await fetch('/api/export/demo/report');
           if (res.ok) {
@@ -80,9 +83,9 @@ export function EvolutionDashboard({ showConnectomeComparison, onToggleConnectom
             throw new Error('Demo endpoint unavailable');
           }
         } catch {
-          // Generate a minimal report client-side from store data
-          const history = useEvolutionStore.getState().fitnessHistory;
-          const run = useEvolutionStore.getState().currentRun;
+          // Generate a minimal report client-side from pre-captured store data
+          const history = storeHistory;
+          const run = storeRun;
           const gen = run?.generation ?? 0;
           const best = run?.best_fitness ?? 0;
           const mean = run?.mean_fitness ?? 0;

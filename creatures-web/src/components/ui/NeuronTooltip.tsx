@@ -23,7 +23,6 @@ const TYPE_COLORS: Record<string, string> = {
  */
 export function NeuronTooltip() {
   const hoveredNeuron = useSimulationStore((s) => s.hoveredNeuron);
-  const frame = useSimulationStore((s) => s.frame);
   const [genes, setGenes] = useState<string[] | null>(null);
 
   // Fetch / resolve gene data when hovered neuron changes

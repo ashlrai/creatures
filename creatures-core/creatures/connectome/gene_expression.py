@@ -774,9 +774,6 @@ def _try_load_wormneuroatlas() -> bool:
         return _wna_atlas is not None
     _wna_loaded = True
     try:
-        import ssl
-        # Work around SSL certificate verification failures on macOS
-        ssl._create_default_https_context = ssl._create_unverified_context  # noqa: SLF001
         import wormneuroatlas as wna  # type: ignore[import-untyped]
         _wna_atlas = wna.NeuroAtlas()
         logger.info("WormNeuroAtlas loaded successfully — live data available")
