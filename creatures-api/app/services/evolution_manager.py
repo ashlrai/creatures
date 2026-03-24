@@ -14,6 +14,7 @@ from creatures.connectome.openworm import load as load_celegans
 from creatures.evolution.fitness import FitnessConfig, evaluate_genome_fast
 from creatures.evolution.genome import Genome
 from creatures.evolution.population import GenerationStats, Population, PopulationConfig
+from creatures.god.narrator import EvolutionNarrator, WorldLog
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,8 @@ class EvolutionRun:
         self.population: Population | None = None
         self.error: str | None = None
         self.god_reports: list[dict] = []
+        self.world_log: WorldLog = WorldLog()
+        self.narrator: EvolutionNarrator = EvolutionNarrator()
 
     def to_info(self) -> dict:
         return {
@@ -224,6 +227,26 @@ class EvolutionManager:
                     "elapsed_seconds": run.elapsed_seconds,
                 }
 
+                # Narrate this generation
+                organism = run.config.get("organism", "c_elegans")
+                prev_gen_stats = run.history[-1] if run.history else None
+                narrative_events = run.narrator.narrate_generation(
+                    stats={
+                        "generation": stats.generation,
+                        "best_fitness": stats.best_fitness,
+                        "mean_fitness": stats.mean_fitness,
+                        "std_fitness": stats.std_fitness,
+                        "n_species": stats.n_species,
+                        "population_size": run.population_size,
+                    },
+                    prev_stats=prev_gen_stats,
+                    organism=organism,
+                )
+                for ev in narrative_events:
+                    run.world_log.add_event(ev)
+                if narrative_events:
+                    stats_dict["narrative_events"] = [e.to_dict() for e in narrative_events]
+
                 # God Agent: observe and potentially intervene
                 god_agents = getattr(self, "_god_agents", {})
                 god = god_agents.get(run_id)
@@ -262,6 +285,14 @@ class EvolutionManager:
                         run.god_reports.append(god_event)
                         stats_dict["god_intervention"] = god_event
                         self._notify_subscribers(run_id, god_event)
+
+                        # Narrate the intervention
+                        if applied:
+                            run.narrator.narrate_intervention(intervention, organism=organism)
+                            # The narrator logs to its own world_log; copy latest event to run's world_log
+                            if run.narrator.world_log.events:
+                                intervention_ev = run.narrator.world_log.events[-1]
+                                run.world_log.add_event(intervention_ev)
 
                 run.history.append(stats_dict)
 

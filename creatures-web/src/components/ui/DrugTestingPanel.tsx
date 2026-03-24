@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSimulationStore } from '../../stores/simulationStore';
+import { DoseResponseChart } from './DoseResponseChart';
 
 // ── Drug definitions ─────────────────────────────────────────────────────────
 
@@ -57,6 +58,15 @@ const GABA_NEURONS = [
   'VD1', 'VD2', 'VD3', 'VD4', 'VD5', 'VD6', 'VD7', 'VD8', 'VD9', 'VD10', 'VD11', 'VD12', 'VD13',
   'AVL', 'DVA', 'DVB', 'DVC', 'RIAL', 'RIAR', 'RIS', 'RIVL', 'RIVR', 'RMED', 'RMEL', 'RMER', 'RMEV', 'RID', 'BDUL', 'BDUR',
 ];
+
+// ── Pharmacokinetic parameters for dose-response curves ─────────────────────
+
+const DRUG_PK: Record<string, { ec50: number; hill: number }> = {
+  Picrotoxin: { ec50: 0.5, hill: 1.8 },
+  Aldicarb: { ec50: 0.8, hill: 1.2 },
+  Levamisole: { ec50: 0.3, hill: 2.0 },
+  Nembutal: { ec50: 1.2, hill: 1.3 },
+};
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -225,6 +235,16 @@ export function DrugTestingPanel({ isDemo, expanded: controlledExpanded, onToggl
                 <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.3 }}>
                   {drug.effect}
                 </div>
+                {DRUG_PK[drug.name] && (
+                  <div style={{ marginTop: 6, borderRadius: 4, overflow: 'hidden', background: 'rgba(0,0,0,0.2)' }}>
+                    <DoseResponseChart
+                      drugName={drug.name}
+                      ec50={DRUG_PK[drug.name].ec50}
+                      hillCoefficient={DRUG_PK[drug.name].hill}
+                      maxDose={3.0}
+                    />
+                  </div>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
                   <span style={{ fontSize: 9, color: 'var(--text-label)', whiteSpace: 'nowrap' }}>
                     {getDose(drug.name).toFixed(1)}x

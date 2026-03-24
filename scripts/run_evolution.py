@@ -32,6 +32,7 @@ for p in (_project_root, _core_root):
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
+from creatures.god.narrator import EvolutionNarrator, WorldLog
 from creatures.evolution.analytics import analyze_drift, summarize_evolution
 from creatures.evolution.config import EvolutionConfig
 from creatures.evolution.fitness import (
@@ -270,6 +271,10 @@ def main(argv: list[str] | None = None) -> int:
         god_mode_str = "AI (xAI Grok)" if god_config.api_key else "Heuristic fallback"
         print(f"God Agent active: {god_mode_str} mode\n")
 
+    # --- Narrator setup ---
+    narrator = EvolutionNarrator()
+    world_log = WorldLog()
+
     # --- Initialize population ---
     logger.info("Initializing population of %d...", args.population)
     population.initialize()
@@ -320,6 +325,26 @@ def main(argv: list[str] | None = None) -> int:
               f"{len(population.species):>7} {cur_synapses:>10} "
               f"{topo_str:>6} {gen_elapsed:>5.1f}s")
 
+        # Narrate this generation
+        prev_gen_stats = fitness_history[-1] if fitness_history else None
+        events = narrator.narrate_generation(
+            stats={
+                "generation": gen,
+                "best_fitness": best_fitness,
+                "mean_fitness": mean_fitness,
+                "std_fitness": std_fitness,
+                "n_species": len(population.species),
+                "population_size": args.population,
+                "prev_best": prev_gen_stats.get("best_fitness", 0) if prev_gen_stats else 0,
+                "prev_mean": prev_gen_stats.get("mean_fitness", 0) if prev_gen_stats else 0,
+            },
+            prev_stats=prev_gen_stats,
+            organism=args.organism,
+        )
+        for event in events:
+            world_log.add_event(event)
+            print(f"  {event.icon} {event.title}")
+
         # God Agent: observe every generation, intervene at interval
         if god_agent is not None:
             god_agent.observe(
@@ -353,6 +378,14 @@ def main(argv: list[str] | None = None) -> int:
                 if applied:
                     for desc in applied:
                         print(f"  [GOD] {desc}")
+                    # Narrate the intervention
+                    intervention_text = narrator.narrate_intervention(intervention, organism=args.organism)
+                    # The narrator internally logs a WorldEvent to narrator.world_log;
+                    # also add it to our external world_log
+                    if narrator.world_log.events:
+                        latest_ev = narrator.world_log.events[-1]
+                        world_log.add_event(latest_ev)
+                        print(f"  {latest_ev.icon} {latest_ev.title}")
                 else:
                     analysis = intervention.get("analysis", "No analysis")
                     print(f"  [GOD] {analysis}")
@@ -483,6 +516,7 @@ def main(argv: list[str] | None = None) -> int:
             "n_synapses": final_best.n_synapses,
             "hdf5_path": str(best_h5_path),
         },
+        "world_log": world_log.to_dict_list(),
         "god_report": {
             "mode": "ai" if (god_config and god_config.api_key) else "fallback",
             "n_observations": len(god_agent.observations) if god_agent else 0,

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useEvolutionStore } from '../../stores/evolutionStore';
 import type { GodReport } from '../../types/evolution';
+import { NarrativeFeed, type NarrativeEvent } from './NarrativeFeed';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
@@ -14,6 +15,54 @@ export function GodAgentPanel() {
 
   const latestReport = godReports.length > 0 ? godReports[godReports.length - 1] : null;
   const isActive = loading || godReports.length > 0;
+
+  // Generate narrative events from god reports
+  const narrativeEvents: NarrativeEvent[] = useMemo(() => {
+    const EVENT_TEMPLATES: Array<{
+      event_type: string;
+      icon: string;
+      titleFn: (r: GodReport, i: number) => string;
+      descFn: (r: GodReport) => string;
+    }> = [
+      {
+        event_type: 'breakthrough',
+        icon: '\u{1F9EC}',
+        titleFn: (_r, i) => `Fitness Breakthrough at Checkpoint ${i + 1}`,
+        descFn: (r) => r.analysis.slice(0, 120) + (r.analysis.length > 120 ? '...' : ''),
+      },
+      {
+        event_type: 'intervention',
+        icon: '\u{1F52C}',
+        titleFn: (r) => `God Intervenes: ${r.interventions[0]?.action ?? 'analysis'} ${r.interventions[0]?.type ?? ''}`.trim(),
+        descFn: (r) => r.interventions[0]?.reasoning ?? r.analysis.slice(0, 100),
+      },
+      {
+        event_type: 'plateau',
+        icon: '\u{1F4CA}',
+        titleFn: () => 'Fitness Plateau Detected',
+        descFn: (r) => r.hypothesis ?? r.analysis.slice(0, 100),
+      },
+      {
+        event_type: 'speciation',
+        icon: '\u{1F33F}',
+        titleFn: (_r, i) => `Population Divergence Event #${i + 1}`,
+        descFn: (r) => r.analysis.slice(0, 120) + (r.analysis.length > 120 ? '...' : ''),
+      },
+    ];
+
+    return godReports.map((report, idx) => {
+      const template = EVENT_TEMPLATES[idx % EVENT_TEMPLATES.length];
+      return {
+        icon: template.icon,
+        event_type: report.fitness_trend === 'plateauing' ? 'plateau'
+          : report.fitness_trend === 'declining' ? 'extinction'
+          : template.event_type,
+        title: template.titleFn(report, idx),
+        description: template.descFn(report),
+        generation: report.generation ?? (currentRun?.generation ?? idx),
+      };
+    });
+  }, [godReports, currentRun?.generation]);
 
   const askGod = async () => {
     const runId = currentRun?.id ?? 'demo';
@@ -156,6 +205,14 @@ export function GodAgentPanel() {
           'Ask God'
         )}
       </button>
+
+      {/* Narrative Feed */}
+      <div style={{ marginTop: 10 }}>
+        <div className="god-section-label" style={{ marginBottom: 6 }}>
+          Narrative Log
+        </div>
+        <NarrativeFeed events={narrativeEvents} />
+      </div>
     </div>
   );
 }

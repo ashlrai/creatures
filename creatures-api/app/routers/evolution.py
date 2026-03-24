@@ -90,6 +90,16 @@ async def start_run(run_id: str):
         raise HTTPException(409, str(e))
 
 
+@router.get("/runs/{run_id}/events")
+async def get_world_log(run_id: str):
+    """Get narrative world_log events for an evolution run."""
+    mgr = _mgr()
+    run = mgr.get_run(run_id)
+    if run is None:
+        raise HTTPException(404, f"Run {run_id} not found")
+    return run.world_log.to_dict_list()
+
+
 @router.post("/runs/{run_id}/pause")
 async def pause_run(run_id: str):
     """Pause an evolution run."""
