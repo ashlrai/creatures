@@ -158,29 +158,40 @@ export default function App() {
   // Derive current organism from experiment or saved value
   const currentOrganism = experiment?.organism ?? savedOrganism;
 
+  // Organism-aware constants
+  const isFly = currentOrganism === 'drosophila';
+  const pokeSegments = isFly
+    ? { tail: 'Abdomen', head: 'Thorax', all: ['Thorax', 'Head', 'Abdomen'] }
+    : { tail: 'seg_8', head: 'seg_2', all: ['seg_2', 'seg_5', 'seg_8', 'seg_10'] };
+  const pokeLabels = isFly
+    ? { tail: 'Poke Abdomen', head: 'Poke Thorax' }
+    : { tail: 'Poke Tail', head: 'Poke Head' };
+  const neuronDefaults = isFly
+    ? { lesion: 'DN', stim: 'DN' }
+    : { lesion: 'AVAL', stim: 'PLML' };
+  const organismLabel = isFly ? 'fly' : 'worm';
+
   // Auto-start demo on page load — no welcome screen, immediate wow factor
   useEffect(() => {
     if (autoStarted.current) return;
     autoStarted.current = true;
     startDemo(savedOrganism).then(() => {
-      // Auto-poke so users see neural cascade immediately
       const store = useSimulationStore.getState();
-      store.setPoke('seg_8');
-      // Show persistent interaction hint
+      store.setPoke(savedOrganism === 'drosophila' ? 'Thorax' : 'seg_8');
       setShowHint(true);
     });
   }, [startDemo]);
 
-  // Fix 2: Auto-poke periodically in demo mode to keep the worm visually active
+  // Auto-poke periodically in demo mode to keep the organism visually active
   useEffect(() => {
     if (!isDemo || !experiment) return;
+    const segments = pokeSegments.all;
     const interval = setInterval(() => {
-      const segments = ['seg_2', 'seg_5', 'seg_8', 'seg_10'];
       const seg = segments[Math.floor(Math.random() * segments.length)];
       useSimulationStore.getState().setPoke(seg);
     }, 8000);
     return () => clearInterval(interval);
-  }, [isDemo, experiment]);
+  }, [isDemo, experiment, currentOrganism]);
 
   // Dismiss persistent hint on first user interaction
   const markInteracted = useCallback(() => {
@@ -274,7 +285,7 @@ export default function App() {
 
   const handlePoke = useCallback((segment: string) => {
     poke(segment);
-    notify(`Poke ${segment === 'seg_8' ? 'tail' : 'head'} — touch neurons activated`);
+    notify(`Poke ${segment} — sensory neurons activated`);
   }, [poke]);
 
   const handleStim = useCallback((ids: string[]) => {
@@ -292,10 +303,10 @@ export default function App() {
       if (key === 'p' || key === ' ') {
         e.preventDefault();
         markInteracted();
-        handlePoke('seg_8');
+        handlePoke(pokeSegments.tail);
       } else if (key === 'h') {
         markInteracted();
-        handlePoke('seg_2');
+        handlePoke(pokeSegments.head);
       } else if (key === 'e') {
         markInteracted();
         toggleEvolutionMode();
@@ -401,8 +412,8 @@ export default function App() {
               <div className="glass">
                 <div className="glass-label">Interaction</div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => { markInteracted(); handlePoke('seg_8'); }}>Poke Tail</button>
-                  <button className="btn btn-amber" style={{ flex: 1 }} onClick={() => { markInteracted(); handlePoke('seg_2'); }}>Poke Head</button>
+                  <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => { markInteracted(); handlePoke(pokeSegments.tail); }}>{pokeLabels.tail}</button>
+                  <button className="btn btn-amber" style={{ flex: 1 }} onClick={() => { markInteracted(); handlePoke(pokeSegments.head); }}>{pokeLabels.head}</button>
                 </div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                   <button className="btn btn-ghost" style={{ flex: 1 }} onClick={pause}>Pause</button>
@@ -413,12 +424,12 @@ export default function App() {
                 <div className="glass-label">Neuron Surgery</div>
                 <div style={{ fontSize: 10, color: 'var(--text-label)', marginBottom: 4 }}>Lesion neuron</div>
                 <div style={{ display: 'flex', gap: 4 }}>
-                  <input className="input" placeholder="AVAL" value={lesionInput} onChange={(e) => setLesionInput(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter' && lesionInput) { handleLesion(lesionInput); setLesionInput(''); }}} />
+                  <input className="input" placeholder={neuronDefaults.lesion} value={lesionInput} onChange={(e) => setLesionInput(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter' && lesionInput) { handleLesion(lesionInput); setLesionInput(''); }}} />
                   <button className="btn btn-danger" onClick={() => { if (lesionInput) { handleLesion(lesionInput); setLesionInput(''); }}}>Cut</button>
                 </div>
                 <div style={{ fontSize: 10, color: 'var(--text-label)', marginTop: 8, marginBottom: 4 }}>Stimulate neuron</div>
                 <div style={{ display: 'flex', gap: 4 }}>
-                  <input className="input" placeholder="PLML" value={stimInput} onChange={(e) => setStimInput(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter' && stimInput) { handleStim([stimInput]); setStimInput(''); }}} />
+                  <input className="input" placeholder={neuronDefaults.stim} value={stimInput} onChange={(e) => setStimInput(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter' && stimInput) { handleStim([stimInput]); setStimInput(''); }}} />
                   <button className="btn btn-primary" onClick={() => { if (stimInput) { handleStim([stimInput]); setStimInput(''); }}}>Zap</button>
                 </div>
               </div>
@@ -469,7 +480,7 @@ export default function App() {
       {/* Persistent interaction hint — disappears on first interaction */}
       {showHint && !hasInteracted && (
         <div className="interaction-hint-persistent" onClick={markInteracted}>
-          Touch the worm &bull; Lesion neurons &bull; Test drugs &bull; Switch to Evolution mode
+          Touch the {organismLabel} &bull; Lesion neurons &bull; Test drugs &bull; Switch to Evolution mode
         </div>
       )}
 

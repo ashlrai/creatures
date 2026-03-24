@@ -7,13 +7,13 @@ const MAX_SEGMENTS = 88;
 const SEG_RADIUS = 0.013;
 const SEG_HALF_LEN = 0.035;
 
-// Rich teal palette — ZERO emissive at rest so bloom doesn't wash out, HIGH when active
-const REST_COLOR = new THREE.Color(0.06, 0.25, 0.35);
-const ACTIVE_COLOR = new THREE.Color(0.1, 0.6, 0.85);
-const HOT_COLOR = new THREE.Color(0.3, 0.85, 1.0);
-const REST_EMISSIVE = new THREE.Color(0, 0, 0);
+// Rich teal palette — subtle emissive at rest for visibility, bright when active
+const REST_COLOR = new THREE.Color(0.08, 0.30, 0.42);
+const ACTIVE_COLOR = new THREE.Color(0.12, 0.65, 0.90);
+const HOT_COLOR = new THREE.Color(0.35, 0.90, 1.0);
+const REST_EMISSIVE = new THREE.Color(0.015, 0.06, 0.09);
 const ACTIVE_EMISSIVE = new THREE.Color(0.06, 0.35, 0.55);
-const HOT_EMISSIVE = new THREE.Color(0.15, 0.5, 0.7);
+const HOT_EMISSIVE = new THREE.Color(0.18, 0.55, 0.75);
 
 export function WormBody() {
   const frame = useSimulationStore((s) => s.frame);
@@ -37,13 +37,13 @@ export function WormBody() {
 
   const spineMaterial = useMemo(
     () => new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0.04, 0.18, 0.28),
-      emissive: new THREE.Color(0.003, 0.01, 0.02),
+      color: new THREE.Color(0.06, 0.22, 0.32),
+      emissive: new THREE.Color(0.008, 0.03, 0.05),
       emissiveIntensity: 1,
       roughness: 0.6,
       metalness: 0.1,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.45,
     }),
     []
   );
@@ -174,8 +174,8 @@ export function WormBody() {
         mat.emissiveIntensity = 1.0 + totalActivity * 1.5;
       } else {
         mat.color.copy(REST_COLOR);
-        mat.emissive.copy(REST_EMISSIVE); // zero emissive — bloom won't catch resting segments
-        mat.emissiveIntensity = 0;
+        mat.emissive.copy(REST_EMISSIVE);
+        mat.emissiveIntensity = 0.8;
       }
     }
 
