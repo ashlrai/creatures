@@ -7,6 +7,7 @@ import { EvolutionDashboard } from './components/ui/EvolutionDashboard';
 import { FitnessGraph } from './components/ui/FitnessGraph';
 import { GodAgentPanel } from './components/ui/GodAgentPanel';
 import { ArenaView } from './components/evolution/ArenaView';
+import { ConnectomeComparison } from './components/evolution/ConnectomeComparison';
 import { GenerationTimeline } from './components/evolution/GenerationTimeline';
 import { useSimulation } from './hooks/useSimulation';
 import { useDemoMode } from './hooks/useDemoMode';
@@ -66,6 +67,9 @@ export default function App() {
   const [stimInput, setStimInput] = useState('');
   const [notification, setNotification] = useState<string | null>(null);
   const [showHint, setShowHint] = useState(false);
+  const [showConnectomeComparison, setShowConnectomeComparison] = useState(false);
+  const [hasInteracted, setHasInteracted] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const autoStarted = useRef(false);
 
   // Auto-start demo on page load — no welcome screen, immediate wow factor
@@ -73,14 +77,32 @@ export default function App() {
     if (autoStarted.current) return;
     autoStarted.current = true;
     startDemo().then(() => {
-      // Auto-poke so users see neural cascade from frame 1
+      // Auto-poke so users see neural cascade immediately
       const store = useSimulationStore.getState();
       store.setPoke('seg_8');
-      // Show interaction hint briefly
+      // Show persistent interaction hint
       setShowHint(true);
-      setTimeout(() => setShowHint(false), 3000);
     });
   }, [startDemo]);
+
+  // Fix 2: Auto-poke periodically in demo mode to keep the worm visually active
+  useEffect(() => {
+    if (!isDemo || !experiment) return;
+    const interval = setInterval(() => {
+      const segments = ['seg_2', 'seg_5', 'seg_8', 'seg_10'];
+      const seg = segments[Math.floor(Math.random() * segments.length)];
+      useSimulationStore.getState().setPoke(seg);
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [isDemo, experiment]);
+
+  // Dismiss persistent hint on first user interaction
+  const markInteracted = useCallback(() => {
+    if (!hasInteracted) {
+      setHasInteracted(true);
+      setShowHint(false);
+    }
+  }, [hasInteracted]);
 
   // Bridge custom events from child components to WebSocket
   useEffect(() => {
@@ -130,6 +152,33 @@ export default function App() {
     stimulate(ids, 30);
     notify(`Stimulating ${ids.join(', ')} — 30mV current`);
   }, [stimulate]);
+
+  // Fix 4: Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      const key = e.key.toLowerCase();
+      if (key === 'p' || key === ' ') {
+        e.preventDefault();
+        markInteracted();
+        handlePoke('seg_8');
+      } else if (key === 'h') {
+        markInteracted();
+        handlePoke('seg_2');
+      } else if (key === 'e') {
+        markInteracted();
+        toggleEvolutionMode();
+      } else if (key === '?') {
+        setShowShortcuts((s) => !s);
+      } else if (key === 'escape') {
+        setShowShortcuts(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [markInteracted, handlePoke, toggleEvolutionMode]);
 
   return (
     <div className="app-root">
@@ -195,7 +244,10 @@ export default function App() {
         <div className="sidebar">
           {isEvolutionMode ? (
             <>
-              <EvolutionDashboard />
+              <EvolutionDashboard
+                showConnectomeComparison={showConnectomeComparison}
+                onToggleConnectomeComparison={() => setShowConnectomeComparison((v) => !v)}
+              />
               <GodAgentPanel />
             </>
           ) : experiment ? (
@@ -214,8 +266,8 @@ export default function App() {
               <div className="glass">
                 <div className="glass-label">Interaction</div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => handlePoke('seg_8')}>Poke Tail</button>
-                  <button className="btn btn-amber" style={{ flex: 1 }} onClick={() => handlePoke('seg_2')}>Poke Head</button>
+                  <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => { markInteracted(); handlePoke('seg_8'); }}>Poke Tail</button>
+                  <button className="btn btn-amber" style={{ flex: 1 }} onClick={() => { markInteracted(); handlePoke('seg_2'); }}>Poke Head</button>
                 </div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                   <button className="btn btn-ghost" style={{ flex: 1 }} onClick={pause}>Pause</button>
@@ -249,7 +301,11 @@ export default function App() {
           {isEvolutionMode ? (
             <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
               <div style={{ flex: 1, minHeight: 0 }}>
-                <ArenaView />
+                {showConnectomeComparison ? (
+                  <ConnectomeComparison onClose={() => setShowConnectomeComparison(false)} />
+                ) : (
+                  <ArenaView />
+                )}
               </div>
             </div>
           ) : (
@@ -274,10 +330,24 @@ export default function App() {
         </div>
       </div>
 
-      {/* Interaction hint — fades out after 3 seconds */}
-      {showHint && (
-        <div className="interaction-hint">
-          Click the worm to interact
+      {/* Persistent interaction hint — disappears on first interaction */}
+      {showHint && !hasInteracted && (
+        <div className="interaction-hint-persistent" onClick={markInteracted}>
+          Touch the worm &bull; Lesion neurons &bull; Test drugs &bull; Switch to Evolution mode
+        </div>
+      )}
+
+      {/* Keyboard shortcuts overlay */}
+      {showShortcuts && (
+        <div className="shortcuts-overlay" onClick={() => setShowShortcuts(false)}>
+          <div className="shortcuts-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="shortcuts-title">Keyboard Shortcuts</div>
+            <div className="shortcuts-row"><kbd>Space</kbd> or <kbd>P</kbd><span>Poke tail</span></div>
+            <div className="shortcuts-row"><kbd>H</kbd><span>Poke head</span></div>
+            <div className="shortcuts-row"><kbd>E</kbd><span>Toggle Evolution mode</span></div>
+            <div className="shortcuts-row"><kbd>?</kbd><span>Show / hide shortcuts</span></div>
+            <div className="shortcuts-row"><kbd>Esc</kbd><span>Close this panel</span></div>
+          </div>
         </div>
       )}
 

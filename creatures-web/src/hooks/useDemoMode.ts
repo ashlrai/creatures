@@ -57,7 +57,7 @@ export function useDemoMode() {
       store.setConnected(true);
       store.setLoading(false);
       setIsDemo(true);
-      frameIdx.current = 0;
+      frameIdx.current = 30; // Skip first 30 quiet frames — start where neural activity begins
 
       if (intervalRef.current) clearInterval(intervalRef.current);
 

@@ -4,7 +4,12 @@ import { useEvolution } from '../../hooks/useEvolution';
 import { FitnessGraph } from './FitnessGraph';
 import type { GodReport } from '../../types/evolution';
 
-export function EvolutionDashboard() {
+interface EvolutionDashboardProps {
+  showConnectomeComparison?: boolean;
+  onToggleConnectomeComparison?: () => void;
+}
+
+export function EvolutionDashboard({ showConnectomeComparison, onToggleConnectomeComparison }: EvolutionDashboardProps) {
   const currentRun = useEvolutionStore((s) => s.currentRun);
   const fitnessHistory = useEvolutionStore((s) => s.fitnessHistory);
   const latestStats = useEvolutionStore((s) => s.latestStats);
@@ -246,6 +251,20 @@ export function EvolutionDashboard() {
           )}
         </div>
       </div>
+
+      {/* Compare Connectomes */}
+      {onToggleConnectomeComparison && (
+        <div className="glass">
+          <div className="glass-label">Analysis</div>
+          <button
+            className={`btn ${showConnectomeComparison ? 'btn-amber' : 'btn-primary'}`}
+            style={{ width: '100%', fontSize: 11 }}
+            onClick={onToggleConnectomeComparison}
+          >
+            {showConnectomeComparison ? 'Hide Comparison' : 'Compare Connectomes'}
+          </button>
+        </div>
+      )}
 
       {/* Export */}
       {(status === 'completed' || status === 'paused' || generation > 0) && (
