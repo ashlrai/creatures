@@ -2,9 +2,12 @@ import { useCallback, useState, Component, type ReactNode } from 'react';
 import { Scene } from './components/Scene';
 import { NeuralActivityDisplay } from './components/ui/NeuralActivityDisplay';
 import { Waveform } from './components/ui/Waveform';
+import { EvolutionDashboard } from './components/ui/EvolutionDashboard';
+import { FitnessGraph } from './components/ui/FitnessGraph';
 import { useSimulation } from './hooks/useSimulation';
 import { useDemoMode } from './hooks/useDemoMode';
 import { useSimulationStore } from './stores/simulationStore';
+import { useEvolutionStore } from './stores/evolutionStore';
 
 // Error boundary for the 3D scene — if WebGL crashes, show fallback
 class SceneErrorBoundary extends Component<
@@ -47,6 +50,9 @@ export default function App() {
     connected, experiment,
   } = useSimulation();
   const { startDemo, isDemo } = useDemoMode();
+  const isEvolutionMode = useEvolutionStore((s) => s.isEvolutionMode);
+  const toggleEvolutionMode = useEvolutionStore((s) => s.toggleEvolutionMode);
+  const fitnessHistory = useEvolutionStore((s) => s.fitnessHistory);
   const frame = useSimulationStore((s) => s.frame);
   const loading = useSimulationStore((s) => s.loading);
   const error = useSimulationStore((s) => s.error);
@@ -108,6 +114,20 @@ export default function App() {
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
+          <div className="mode-switch">
+            <button
+              className={`mode-switch-btn${!isEvolutionMode ? ' active' : ''}`}
+              onClick={() => { if (isEvolutionMode) toggleEvolutionMode(); }}
+            >
+              Simulation
+            </button>
+            <button
+              className={`mode-switch-btn${isEvolutionMode ? ' active' : ''}`}
+              onClick={() => { if (!isEvolutionMode) toggleEvolutionMode(); }}
+            >
+              Evolution
+            </button>
+          </div>
           {connected && (
             <>
               <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', boxShadow: '0 0 8px var(--accent-green)' }} />
@@ -122,7 +142,9 @@ export default function App() {
       <div className="app-content">
         {/* Left sidebar */}
         <div className="sidebar">
-          {experiment ? (
+          {isEvolutionMode ? (
+            <EvolutionDashboard />
+          ) : experiment ? (
             <>
               <div className="glass">
                 <div className="glass-label">Neural Activity</div>
@@ -176,7 +198,16 @@ export default function App() {
 
         {/* Right sidebar */}
         <div className="sidebar sidebar-right">
-          {experiment && <NeuralActivityDisplay />}
+          {isEvolutionMode ? (
+            <div className="glass" style={{ padding: 8, flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <div className="glass-label">Fitness Over Generations</div>
+              <div style={{ flex: 1, minHeight: 300 }}>
+                <FitnessGraph history={fitnessHistory} width={256} height={420} />
+              </div>
+            </div>
+          ) : (
+            experiment && <NeuralActivityDisplay />
+          )}
         </div>
       </div>
 
