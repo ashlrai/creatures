@@ -6,7 +6,7 @@ from brian2 import mV
 
 from creatures.connectome.types import Connectome
 from creatures.neural.brian2_engine import Brian2Engine
-from creatures.neural.pharmacology import DRUG_LIBRARY, PharmacologyEngine
+from creatures.neural.pharmacology import DRUG_LIBRARY, PharmacologyEngine, _hill_response
 
 
 @pytest.fixture()
@@ -58,11 +58,21 @@ class TestPicrotoxin:
         assert result["drug"] == "Picrotoxin"
         assert result["dose"] == 1.0
 
-    def test_picrotoxin_zeroes_gaba_weights(
+    def test_picrotoxin_reduces_gaba_weights(
         self, pharma: PharmacologyEngine, connectome: Connectome, engine: Brian2Engine
     ):
-        """After picrotoxin, all synapses from GABA neurons should be zero."""
+        """After picrotoxin (dose=1.0), GABA synapse weights should be strongly reduced.
+
+        With Hill equation (ec50=0.5, n=1.8), dose=1.0 gives response ~0.78,
+        so effective_scale ~0.22 (not exactly 0 as with linear scaling).
+        """
+        original_weights = np.array(engine._synapses.w / mV).copy()
         pharma.apply_drug("picrotoxin")
+
+        # Compute expected scale via Hill equation
+        drug = DRUG_LIBRARY["picrotoxin"]
+        response = _hill_response(1.0, drug.ec50, drug.hill_coefficient)
+        expected_scale = 1.0 - response * (1.0 - drug.weight_scale)
 
         # Identify GABA presynaptic neuron indices
         gaba_indices = set()
@@ -75,13 +85,15 @@ class TestPicrotoxin:
         if not gaba_indices:
             pytest.skip("No GABA neurons found in connectome")
 
-        # Check that all synapses from GABA neurons have zero weight
+        # Check that GABA synapses are scaled by the Hill-equation effective_scale
         pre_arr = np.array(engine._synapses.i)
         weights = np.array(engine._synapses.w / mV)
         for syn_idx in range(len(pre_arr)):
             if int(pre_arr[syn_idx]) in gaba_indices:
-                assert weights[syn_idx] == pytest.approx(0.0, abs=1e-10), (
-                    f"GABA synapse at index {syn_idx} not zeroed after picrotoxin"
+                expected = original_weights[syn_idx] * expected_scale
+                assert weights[syn_idx] == pytest.approx(expected, abs=1e-6), (
+                    f"GABA synapse at index {syn_idx}: expected {expected}, "
+                    f"got {weights[syn_idx]}"
                 )
 
     def test_picrotoxin_affects_synapses(self, pharma: PharmacologyEngine):
@@ -95,10 +107,19 @@ class TestPicrotoxin:
 class TestAldicarb:
     """Aldicarb should double ACh synaptic weights."""
 
-    def test_aldicarb_doubles_ach_weights(
+    def test_aldicarb_enhances_ach_weights(
         self, pharma: PharmacologyEngine, connectome: Connectome, engine: Brian2Engine
     ):
-        """After aldicarb, ACh synapse weights should be doubled."""
+        """After aldicarb (dose=1.0), ACh synapse weights should be enhanced.
+
+        With Hill equation (ec50=0.8, n=1.2), dose=1.0 gives response ~0.57,
+        so effective_scale ~1.57 (not exactly 2.0 as with linear scaling).
+        """
+        # Compute expected scale via Hill equation
+        drug = DRUG_LIBRARY["aldicarb"]
+        response = _hill_response(1.0, drug.ec50, drug.hill_coefficient)
+        expected_scale = 1.0 + response * (drug.weight_scale - 1.0)
+
         # Record pre-drug weights for ACh synapses
         ach_indices = set()
         for nid, neuron in connectome.neurons.items():
@@ -118,7 +139,7 @@ class TestAldicarb:
         new_weights = np.array(engine._synapses.w / mV)
         for syn_idx in range(len(pre_arr)):
             if int(pre_arr[syn_idx]) in ach_indices:
-                expected = original_weights[syn_idx] * 2.0
+                expected = original_weights[syn_idx] * expected_scale
                 assert new_weights[syn_idx] == pytest.approx(expected, rel=1e-6), (
                     f"ACh synapse {syn_idx}: expected {expected}, got {new_weights[syn_idx]}"
                 )
@@ -126,7 +147,11 @@ class TestAldicarb:
     def test_aldicarb_affects_synapses(self, pharma: PharmacologyEngine):
         result = pharma.apply_drug("aldicarb")
         assert result["synapses_affected"] > 0
-        assert result["weight_scale_applied"] == pytest.approx(2.0)
+        # Hill equation: dose=1.0, ec50=0.8, n=1.2 -> response ~0.57
+        # effective_scale = 1.0 + 0.57 * (2.0 - 1.0) ~= 1.57
+        drug = DRUG_LIBRARY["aldicarb"]
+        expected_scale = 1.0 + _hill_response(1.0, drug.ec50, drug.hill_coefficient) * (drug.weight_scale - 1.0)
+        assert result["weight_scale_applied"] == pytest.approx(expected_scale, rel=1e-4)
 
 
 # ── Reset ─────────────────────────────────────────────────────────────

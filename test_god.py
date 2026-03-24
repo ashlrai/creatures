@@ -110,33 +110,40 @@ def test_narrator():
     """Test the EvolutionNarrator produces sensible descriptions."""
     narrator = EvolutionNarrator()
 
-    # Test generation narration
-    msg0 = narrator.narrate_generation({"generation": 0, "population_size": 50})
-    assert "Life begins" in msg0
-    print(f"\n  Gen 0: {msg0}")
+    # Test generation narration — now returns list[WorldEvent]
+    events0 = narrator.narrate_generation({"generation": 0, "population_size": 50})
+    assert len(events0) >= 1
+    assert events0[0].event_type == "origin"
+    assert "Life begins" in events0[0].description
+    print(f"\n  Gen 0: {events0[0].icon} {events0[0].description}")
 
-    msg_breakthrough = narrator.narrate_generation({
-        "generation": 5,
-        "best_fitness": 3.0,
-        "prev_best": 1.5,
-        "mean_fitness": 1.2,
-        "n_species": 4,
-    })
-    assert "breakthrough" in msg_breakthrough.lower()
-    print(f"  Gen 5: {msg_breakthrough}")
+    # Breakthrough: fitness jumps >5%
+    events_bt = narrator.narrate_generation(
+        stats={"generation": 5, "best_fitness": 3.0, "mean_fitness": 1.2, "n_species": 4},
+        prev_stats={"generation": 4, "best_fitness": 1.5, "mean_fitness": 1.0, "n_species": 2},
+    )
+    types_bt = [e.event_type for e in events_bt]
+    assert "breakthrough" in types_bt, f"Expected breakthrough, got {types_bt}"
+    assert "speciation" in types_bt, f"Expected speciation, got {types_bt}"
+    for e in events_bt:
+        print(f"  Gen 5: {e.icon} [{e.event_type}] {e.title}")
 
-    msg_plateau = narrator.narrate_generation({
-        "generation": 10,
-        "best_fitness": 1.5,
-        "prev_best": 1.5,
-        "mean_fitness": 0.8,
-        "prev_mean": 0.9,
-        "n_species": 2,
-    })
-    assert "plateau" in msg_plateau.lower()
-    print(f"  Gen 10: {msg_plateau}")
+    # Plateau: feed identical stats repeatedly
+    narrator2 = EvolutionNarrator()
+    narrator2.narrate_generation({"generation": 0, "population_size": 20})
+    plateau_found = False
+    for g in range(1, 10):
+        evts = narrator2.narrate_generation(
+            stats={"generation": g, "best_fitness": 1.5, "mean_fitness": 0.8, "n_species": 2},
+            prev_stats={"generation": g - 1, "best_fitness": 1.5, "mean_fitness": 0.8, "n_species": 2},
+        )
+        if any(e.event_type == "plateau" for e in evts):
+            plateau_found = True
+            print(f"  Gen {g}: plateau detected")
+            break
+    assert plateau_found, "Plateau should have been detected after 5+ stagnant generations"
 
-    # Test intervention narration
+    # Test intervention narration (backward-compatible string return)
     intervention = {
         "interventions": [
             {"type": "evolution", "action": "increase_mutation"},
@@ -151,6 +158,13 @@ def test_narrator():
     silent = narrator.narrate_intervention({"interventions": []})
     assert "silently" in silent.lower()
     print(f"  No action: {silent}")
+
+    # WorldLog accumulates events
+    log = narrator.world_log
+    assert len(log) > 0, "WorldLog should have events"
+    dicts = log.to_dict_list()
+    assert all("event_type" in d and "description" in d for d in dicts)
+    print(f"\n  WorldLog: {len(log)} events accumulated")
 
 
 def test_report():

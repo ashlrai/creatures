@@ -103,6 +103,8 @@ class DrugInfo(BaseModel):
     target_type: str | None
     weight_scale: float
     current_injection: float
+    ec50: float = 1.0
+    hill_coefficient: float = 1.5
     description: str
 
 
@@ -115,3 +117,38 @@ class DrugApplyResult(BaseModel):
     neurons_injected: int
     weight_scale_applied: float
     description: str
+
+
+class DoseResponsePoint(BaseModel):
+    """A single point on a dose-response curve."""
+
+    dose: float
+    response: float
+    effective_scale: float
+
+
+class DoseResponseCurve(BaseModel):
+    """Full dose-response curve for a drug, computed via Hill equation."""
+
+    drug: str
+    ec50: float
+    hill_coefficient: float
+    curve: list[DoseResponsePoint]
+
+
+class BatchScreenRequest(BaseModel):
+    """Request to screen multiple drugs at multiple doses."""
+
+    drugs: list[str]
+    doses: list[float] = Field(default=[0.25, 0.5, 1.0, 1.5, 2.0])
+
+
+class BatchScreenResult(BaseModel):
+    """A single result from a batch drug screen."""
+
+    drug: str
+    dose: float
+    response: float
+    effective_scale: float
+    synapses_affected: int
+    predicted_effect: str

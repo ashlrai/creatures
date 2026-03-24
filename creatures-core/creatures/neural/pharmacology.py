@@ -38,6 +38,8 @@ class DrugEffect:
     target_type: str | None  # neuron type to affect (e.g., "motor", "sensory")
     weight_scale: float = 1.0  # multiply matching synapse weights by this
     current_injection: float = 0.0  # inject current (mV) into target neurons
+    ec50: float = 1.0  # dose producing 50% of max effect
+    hill_coefficient: float = 1.5  # steepness of dose-response curve
     description: str = ""
 
 
@@ -48,6 +50,8 @@ DRUG_LIBRARY: dict[str, DrugEffect] = {
         target_nt="GABA",
         target_type=None,
         weight_scale=0.0,  # blocks all GABA synapses
+        ec50=0.5,
+        hill_coefficient=1.8,  # sharp threshold
         description=(
             "GABA_A receptor antagonist. Blocks inhibitory GABAergic "
             "transmission. In C. elegans, causes dorsal-ventral motor "
@@ -59,6 +63,8 @@ DRUG_LIBRARY: dict[str, DrugEffect] = {
         target_nt="ACh",
         target_type=None,
         weight_scale=2.0,  # doubles cholinergic transmission
+        ec50=0.8,
+        hill_coefficient=1.2,  # gradual
         description=(
             "Acetylcholinesterase inhibitor. Enhances cholinergic signaling "
             "by preventing ACh breakdown at synapses. Causes progressive "
@@ -71,6 +77,8 @@ DRUG_LIBRARY: dict[str, DrugEffect] = {
         target_type=None,
         weight_scale=1.5,  # partial agonist effect
         current_injection=5.0,  # also directly activates ACh receptors
+        ec50=0.3,
+        hill_coefficient=2.0,  # very steep
         description=(
             "Nicotinic ACh receptor agonist. Causes muscle hypercontraction "
             "and paralysis in C. elegans. Used as anthelmintic."
@@ -81,6 +89,8 @@ DRUG_LIBRARY: dict[str, DrugEffect] = {
         target_nt="GABA",
         target_type=None,
         weight_scale=2.5,  # enhances GABA transmission
+        ec50=0.6,
+        hill_coefficient=1.5,
         description=(
             "GABA_A receptor agonist. Enhances inhibitory transmission. "
             "Causes flaccid paralysis in C. elegans due to excessive "
@@ -93,6 +103,8 @@ DRUG_LIBRARY: dict[str, DrugEffect] = {
         target_type=None,
         weight_scale=2.0,
         current_injection=3.0,
+        ec50=1.0,
+        hill_coefficient=1.0,  # linear-ish
         description=(
             "Exogenous dopamine application. Causes 'basal slowing response' "
             "in C. elegans -- reduced locomotion speed, mimicking the "
@@ -105,6 +117,8 @@ DRUG_LIBRARY: dict[str, DrugEffect] = {
         target_type=None,
         weight_scale=2.0,
         current_injection=3.0,
+        ec50=0.8,
+        hill_coefficient=1.0,
         description=(
             "Exogenous serotonin (5-HT). Inhibits locomotion and stimulates "
             "egg-laying in C. elegans. Mimics food-associated signals "
@@ -116,6 +130,8 @@ DRUG_LIBRARY: dict[str, DrugEffect] = {
         target_nt="glutamate",
         target_type=None,
         weight_scale=3.0,  # potentiates glutamate-gated Cl- channels
+        ec50=0.2,
+        hill_coefficient=2.5,  # extremely steep -- potent
         description=(
             "Glutamate-gated chloride channel agonist. In C. elegans, "
             "causes irreversible paralysis by enhancing inhibitory "
@@ -128,6 +144,8 @@ DRUG_LIBRARY: dict[str, DrugEffect] = {
         target_type=None,
         weight_scale=0.7,  # broadly reduces synaptic transmission
         current_injection=-3.0,  # hyperpolarizes neurons
+        ec50=1.2,
+        hill_coefficient=1.3,
         description=(
             "L-type calcium channel blocker. Reduces synaptic transmission "
             "globally and decreases locomotion speed. Affects egg-laying "
@@ -135,6 +153,31 @@ DRUG_LIBRARY: dict[str, DrugEffect] = {
         ),
     ),
 }
+
+
+def _hill_response(dose: float, ec50: float, hill_n: float) -> float:
+    """Compute normalized response (0-1) using the Hill equation.
+
+    The Hill equation models the sigmoidal relationship between drug
+    concentration and biological response:
+
+        response = dose^n / (EC50^n + dose^n)
+
+    where EC50 is the dose producing 50% of max effect and n (the Hill
+    coefficient) controls the steepness of the curve.
+
+    Args:
+        dose: Drug concentration (arbitrary units, typically 0-2).
+        ec50: Half-maximal effective concentration.
+        hill_n: Hill coefficient (steepness). n=1 is Michaelis-Menten,
+                n>1 gives cooperative (steep) curves, n<1 gives shallow curves.
+
+    Returns:
+        Normalized response in [0, 1].
+    """
+    if dose <= 0:
+        return 0.0
+    return dose**hill_n / (ec50**hill_n + dose**hill_n)
 
 
 class PharmacologyEngine:
@@ -167,10 +210,9 @@ class PharmacologyEngine:
 
         Args:
             drug_name: Key from DRUG_LIBRARY (e.g., "picrotoxin").
-            dose: Dose multiplier (0.0-2.0). 1.0 = standard dose.
-                  0.5 = half dose, 2.0 = double dose.
-                  Effect scales linearly with dose for weight_scale,
-                  and linearly for current_injection.
+            dose: Dose level (0.0-2.0+). Effect follows a sigmoidal
+                  Hill equation curve: response = dose^n / (EC50^n + dose^n).
+                  At dose=EC50, response is 50% of maximum effect.
 
         Returns:
             Dictionary with:
@@ -199,16 +241,19 @@ class PharmacologyEngine:
         # when multiple drugs are applied sequentially
         base_weights = self._original_weights.copy()
 
-        # Compute dose-adjusted parameters
-        # weight_scale interpolates: dose=0 -> 1.0 (no effect), dose=1 -> drug.weight_scale
+        # Compute dose-adjusted parameters using the Hill equation
+        # Hill equation gives a sigmoidal dose-response: response in [0, 1]
+        # At dose=EC50, response=0.5 (half-maximal effect)
+        response = _hill_response(dose, drug.ec50, drug.hill_coefficient)
+
         if drug.weight_scale < 1.0:
             # For antagonists (scale < 1): interpolate from 1.0 down
-            effective_scale = 1.0 - dose * (1.0 - drug.weight_scale)
+            effective_scale = 1.0 - response * (1.0 - drug.weight_scale)
         else:
             # For agonists (scale > 1): interpolate from 1.0 up
-            effective_scale = 1.0 + dose * (drug.weight_scale - 1.0)
+            effective_scale = 1.0 + response * (drug.weight_scale - 1.0)
 
-        effective_current = drug.current_injection * dose
+        effective_current = drug.current_injection * response
 
         # Build NT lookup: which presynaptic neurons use the target NT?
         target_pre_indices = set()
@@ -307,6 +352,8 @@ class PharmacologyEngine:
             "target_type": drug.target_type,
             "weight_scale": drug.weight_scale,
             "current_injection": drug.current_injection,
+            "ec50": drug.ec50,
+            "hill_coefficient": drug.hill_coefficient,
             "description": drug.description,
         }
 
