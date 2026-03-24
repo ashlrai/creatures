@@ -3,11 +3,18 @@
 Measures how well a genome-encoded neural network drives the worm body.
 Fitness = weighted combination of distance traveled, neural activity,
 and efficiency.
+
+Three tiers:
+  - evaluate_genome_fast()   : topology + weight analysis, <0.01s
+  - evaluate_genome_medium() : short Brian2 sim (100ms), ~5-10s
+  - evaluate_genome()        : full Brian2 + MuJoCo sim, ~200s+
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
+from collections import deque
 from dataclasses import dataclass
 
 import numpy as np
@@ -128,16 +135,165 @@ def evaluate_genome(genome: Genome, config: FitnessConfig | None = None) -> floa
     return fitness
 
 
+def evaluate_genome_medium(genome: Genome, config: FitnessConfig | None = None) -> float:
+    """Medium-speed fitness: run Brian2 for 100ms with a standard stimulus.
+
+    Injects current into tail sensory neurons and measures motor neuron
+    response. Avoids the MuJoCo body entirely -- pure neural evaluation.
+
+    Takes ~5-10 seconds per genome. Gives biologically meaningful scores
+    without the full 224s coupled simulation.
+
+    Scoring (0-100 scale):
+      - Time to first motor spike (faster = better, up to 25 pts)
+      - Number of active motor neurons (more = better, up to 25 pts)
+      - Firing rate variance across motors (diverse = better, up to 20 pts)
+      - Total neural activity level (moderate is best, up to 15 pts)
+      - Sensory-to-motor propagation (signal reaches motors, up to 15 pts)
+    """
+    from creatures.connectome.types import NeuronType
+    from creatures.neural.brian2_engine import Brian2Engine
+
+    config = config or FitnessConfig()
+
+    connectome = genome.to_connectome()
+
+    # Build neural engine
+    engine = Brian2Engine()
+    engine.build(connectome)
+
+    n_neurons = genome.n_neurons
+    if n_neurons == 0:
+        genome.fitness = 0.0
+        return 0.0
+
+    # Identify sensory and motor neurons
+    sensory_ids = [
+        nid for nid in genome.neuron_ids
+        if genome.neuron_types.get(nid) == NeuronType.SENSORY
+    ]
+    motor_ids = [
+        nid for nid in genome.neuron_ids
+        if genome.neuron_types.get(nid) == NeuronType.MOTOR
+    ]
+
+    if not motor_ids:
+        genome.fitness = 0.0
+        return 0.0
+
+    # Inject stimulus into tail sensory neurons (simulate a poke)
+    # Pick last 20% of sensory neurons as "tail" sensory
+    n_tail = max(1, len(sensory_ids) // 5)
+    tail_sensory = sensory_ids[-n_tail:]
+    stim_currents = {nid: 30.0 for nid in tail_sensory}
+    engine.set_input_currents(stim_currents)
+
+    # Run for 100ms in 10ms steps, tracking motor neuron activity
+    sim_duration_ms = 100.0
+    step_ms = 10.0
+    n_steps = int(sim_duration_ms / step_ms)
+
+    motor_idx_set = {engine._id_to_idx[nid] for nid in motor_ids if nid in engine._id_to_idx}
+    first_motor_spike_ms = None
+    motor_spike_counts = {nid: 0 for nid in motor_ids}
+    total_spikes_per_step = []
+
+    for step_i in range(n_steps):
+        # Turn off stimulus after 30ms
+        if step_i * step_ms >= 30.0:
+            engine.set_input_currents({})
+
+        state = engine.step(step_ms)
+
+        # Track motor spikes
+        motor_spikes_this_step = [
+            idx for idx in state.spikes if idx in motor_idx_set
+        ]
+        total_spikes_per_step.append(len(state.spikes))
+
+        if motor_spikes_this_step and first_motor_spike_ms is None:
+            first_motor_spike_ms = (step_i + 1) * step_ms
+
+        # Count per-motor-neuron spikes
+        for idx in motor_spikes_this_step:
+            nid = engine.neuron_ids[idx]
+            if nid in motor_spike_counts:
+                motor_spike_counts[nid] += 1
+
+    # --- Score components ---
+
+    # 1. Time to first motor spike (25 pts): faster is better
+    if first_motor_spike_ms is not None:
+        # 10ms = perfect, 100ms = 0
+        latency_score = max(0.0, 1.0 - (first_motor_spike_ms - 10.0) / 90.0)
+    else:
+        latency_score = 0.0
+
+    # 2. Number of active motor neurons (25 pts)
+    active_motors = sum(1 for c in motor_spike_counts.values() if c > 0)
+    motor_activation_score = active_motors / max(len(motor_ids), 1)
+
+    # 3. Firing rate variance across motors (20 pts): diverse activation patterns
+    motor_rates = np.array([float(c) for c in motor_spike_counts.values()])
+    if active_motors > 1:
+        rate_cv = float(np.std(motor_rates) / max(np.mean(motor_rates), 0.01))
+        # Coefficient of variation ~0.5-1.5 is ideal
+        variance_score = float(np.clip(rate_cv / 1.5, 0, 1))
+    else:
+        variance_score = 0.0
+
+    # 4. Overall neural activity (15 pts): moderate is best
+    mean_spikes_per_step = float(np.mean(total_spikes_per_step))
+    ideal_activity = n_neurons * 0.08  # ~8% active per step
+    if mean_spikes_per_step < 0.1:
+        activity_score = 0.0
+    else:
+        activity_score = float(np.exp(
+            -0.5 * ((mean_spikes_per_step - ideal_activity) / max(ideal_activity * 0.5, 1)) ** 2
+        ))
+
+    # 5. Sensory-to-motor propagation (15 pts): did the signal reach motors?
+    # Check if motor activity increased after stimulus
+    if n_steps >= 4:
+        early_motor = sum(total_spikes_per_step[:2])
+        late_motor = sum(total_spikes_per_step[2:5])
+        propagation_score = 1.0 if late_motor > early_motor else 0.3
+    else:
+        propagation_score = 0.5
+
+    fitness = (
+        latency_score * 25.0
+        + motor_activation_score * 25.0
+        + variance_score * 20.0
+        + activity_score * 15.0
+        + propagation_score * 15.0
+    )
+
+    genome.fitness = fitness
+    logger.debug(
+        f"Genome {genome.id} [medium]: latency={latency_score:.2f}, "
+        f"motors={motor_activation_score:.2f}, variance={variance_score:.2f}, "
+        f"activity={activity_score:.2f}, propagation={propagation_score:.2f}, "
+        f"fitness={fitness:.1f}"
+    )
+    return fitness
+
+
 def evaluate_genome_fast(genome: Genome, config: FitnessConfig | None = None) -> float:
-    """Fast fitness proxy that avoids Brian2/MuJoCo for rapid evolution testing.
+    """Fast fitness proxy using topology, weights, and path analysis.
 
-    Scores based on connectome topology:
-    - Reward for connected motor neurons (can drive movement)
-    - Reward for sensory→motor paths (can respond to stimuli)
-    - Penalize disconnected or overly sparse networks
-    - Reward weight diversity (avoids degenerate all-same-weight solutions)
+    Scores based on connectome structure with enough variation for
+    evolution to differentiate genomes. Takes <0.01s per genome.
 
-    This is useful for testing evolution mechanics without slow simulation.
+    Scoring breakdown (0-100 scale):
+      - Connectivity density           (10 pts)
+      - Motor neuron input coverage     (15 pts)
+      - Sensory neuron output coverage  (10 pts)
+      - Weight-based metrics            (15 pts)
+      - Sensory-to-motor path count     (20 pts)
+      - Community/modularity structure  (10 pts)
+      - Excitatory/inhibitory balance   (10 pts)
+      - Weight-derived differentiation  (10 pts)
     """
     from creatures.connectome.types import NeuronType
 
@@ -150,74 +306,187 @@ def evaluate_genome_fast(genome: Genome, config: FitnessConfig | None = None) ->
         genome.fitness = 0.0
         return 0.0
 
-    # 1. Connectivity score: reward density up to a point
-    density = n_synapses / (n_neurons * n_neurons)
-    connectivity_score = min(density * 10, 1.0)  # cap at 1.0
+    weights = genome.weights
+    pre = genome.pre_indices
+    post = genome.post_indices
 
-    # 2. Motor neuron connectivity: count motor neurons with inputs
+    # --- Classify neurons ---
     motor_ids = {
         nid for nid, nt in genome.neuron_types.items()
         if nt == NeuronType.MOTOR
     }
-    motor_indices = {
-        i for i, nid in enumerate(genome.neuron_ids) if nid in motor_ids
-    }
-    # Count motor neurons that receive at least one synapse
-    post_set = set(genome.post_indices.tolist())
-    connected_motors = len(motor_indices & post_set)
-    motor_score = connected_motors / max(len(motor_indices), 1)
-
-    # 3. Weight diversity: std of absolute weights
-    if n_synapses > 1:
-        weight_std = float(np.std(np.abs(genome.weights)))
-        diversity_score = min(weight_std, 2.0) / 2.0
-    else:
-        diversity_score = 0.0
-
-    # 4. Sensory neuron connectivity: sensory neurons with outputs
     sensory_ids = {
         nid for nid, nt in genome.neuron_types.items()
         if nt == NeuronType.SENSORY
     }
+    motor_indices = {
+        i for i, nid in enumerate(genome.neuron_ids) if nid in motor_ids
+    }
     sensory_indices = {
         i for i, nid in enumerate(genome.neuron_ids) if nid in sensory_ids
     }
-    pre_set = set(genome.pre_indices.tolist())
+    pre_set = set(pre.tolist())
+    post_set = set(post.tolist())
+
+    # --- 1. Connectivity density (10 pts) ---
+    max_possible = n_neurons * (n_neurons - 1) if n_neurons > 1 else 1
+    density = n_synapses / max_possible
+    # Sweet spot: 1-10% density
+    density_score = float(np.clip(density * 20, 0, 1))  # peaks at 5%
+
+    # --- 2. Motor neuron input coverage (15 pts) ---
+    connected_motors = len(motor_indices & post_set)
+    motor_score = connected_motors / max(len(motor_indices), 1)
+
+    # --- 3. Sensory neuron output coverage (10 pts) ---
     connected_sensory = len(sensory_indices & pre_set)
     sensory_score = connected_sensory / max(len(sensory_indices), 1)
 
-    # 5. Path existence bonus: check if any sensory can reach motor
-    # (Simple 2-hop check via adjacency)
-    edges = set(zip(genome.pre_indices.tolist(), genome.post_indices.tolist()))
-    # Find intermediates reachable from sensory neurons
-    reachable_from_sensory = set()
-    for pre, post in edges:
-        if pre in sensory_indices:
-            reachable_from_sensory.add(post)
-    # Check if any of those can reach motor neurons
-    path_exists = False
-    for pre, post in edges:
-        if pre in reachable_from_sensory and post in motor_indices:
-            path_exists = True
-            break
-    # Direct sensory→motor also counts
-    for pre, post in edges:
-        if pre in sensory_indices and post in motor_indices:
-            path_exists = True
-            break
-    path_score = 1.0 if path_exists else 0.0
+    # --- 4. Weight-based metrics (15 pts) ---
+    abs_weights = np.abs(weights)
+    mean_abs_w = float(np.mean(abs_weights))
+    weight_std = float(np.std(abs_weights))
+    # Reward moderate weights (not too small, not too extreme)
+    # Ideal mean weight ~1-3
+    weight_magnitude_score = float(np.exp(-0.5 * ((mean_abs_w - 2.0) / 2.0) ** 2))
+    # Reward weight diversity
+    weight_diversity_score = float(np.clip(weight_std / 2.0, 0, 1))
+    weight_score = weight_magnitude_score * 0.5 + weight_diversity_score * 0.5
 
-    # Weighted combination
+    # --- 5. Sensory-to-motor path count (20 pts) ---
+    # BFS up to 4 hops from sensory to motor neurons
+    # Build adjacency list
+    adj: dict[int, list[int]] = {}
+    for i in range(n_synapses):
+        p = int(pre[i])
+        q = int(post[i])
+        if p not in adj:
+            adj[p] = []
+        adj[p].append(q)
+
+    # BFS from all sensory neurons, count how many motor neurons are reachable
+    reachable_motors = set()
+    sensory_motor_paths = 0
+    max_hops = 4
+
+    for s_idx in sensory_indices:
+        visited = {s_idx}
+        frontier = deque([(s_idx, 0)])
+        while frontier:
+            node, depth = frontier.popleft()
+            if depth >= max_hops:
+                continue
+            for neighbor in adj.get(node, []):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    if neighbor in motor_indices:
+                        reachable_motors.add(neighbor)
+                        sensory_motor_paths += 1
+                    frontier.append((neighbor, depth + 1))
+
+    # Score: fraction of motor neurons reachable from sensory neurons
+    path_coverage = len(reachable_motors) / max(len(motor_indices), 1)
+    # Also reward having multiple paths (redundancy)
+    path_redundancy = float(np.clip(sensory_motor_paths / max(len(motor_indices) * 2, 1), 0, 1))
+    path_score = path_coverage * 0.7 + path_redundancy * 0.3
+
+    # --- 6. Community/modularity structure (10 pts) ---
+    # Simple modularity proxy: measure clustering coefficient
+    # For each neuron, what fraction of its neighbors are connected to each other?
+    # Sample up to 50 neurons for speed
+    sample_size = min(50, n_neurons)
+    sampled_nodes = list(range(n_neurons))[:sample_size]
+
+    neighbor_sets: dict[int, set[int]] = {}
+    for i in range(n_synapses):
+        p = int(pre[i])
+        q = int(post[i])
+        if p not in neighbor_sets:
+            neighbor_sets[p] = set()
+        neighbor_sets[p].add(q)
+        if q not in neighbor_sets:
+            neighbor_sets[q] = set()
+        neighbor_sets[q].add(p)
+
+    clustering_coeffs = []
+    for node in sampled_nodes:
+        neighbors = neighbor_sets.get(node, set())
+        k = len(neighbors)
+        if k < 2:
+            continue
+        # Count edges among neighbors
+        neighbor_list = list(neighbors)
+        n_links = 0
+        for i_n in range(len(neighbor_list)):
+            for j_n in range(i_n + 1, len(neighbor_list)):
+                n1, n2 = neighbor_list[i_n], neighbor_list[j_n]
+                if n2 in neighbor_sets.get(n1, set()):
+                    n_links += 1
+        max_links = k * (k - 1) / 2
+        clustering_coeffs.append(n_links / max_links)
+
+    # Good networks have moderate clustering (0.1 - 0.4)
+    if clustering_coeffs:
+        mean_clustering = float(np.mean(clustering_coeffs))
+        # Ideal clustering ~0.2
+        modularity_score = float(np.exp(-2.0 * (mean_clustering - 0.2) ** 2))
+    else:
+        modularity_score = 0.0
+
+    # --- 7. Excitatory/inhibitory balance (10 pts) ---
+    n_excitatory = int(np.sum(weights > 0))
+    n_inhibitory = int(np.sum(weights < 0))
+    total_signed = n_excitatory + n_inhibitory
+    if total_signed > 0:
+        ei_ratio = n_excitatory / total_signed
+        # Biological ideal: ~80% excitatory, 20% inhibitory (Dale's rule)
+        ei_score = float(np.exp(-5.0 * (ei_ratio - 0.8) ** 2))
+    else:
+        ei_score = 0.0
+
+    # --- 8. Weight-derived differentiation noise (10 pts) ---
+    # Deterministic but genome-specific: use a hash of weights as seed
+    # This ensures mutated genomes get different scores even if topology is same
+    weight_hash = hashlib.md5(weights.tobytes()).hexdigest()
+    noise_seed = int(weight_hash[:8], 16) % (2**31)
+    noise_rng = np.random.default_rng(noise_seed)
+
+    # Base differentiation from weight statistics
+    weight_skew = float(np.mean(weights))  # mean signed weight
+    weight_kurtosis = float(np.mean((weights - np.mean(weights)) ** 4) /
+                           max(np.std(weights) ** 4, 1e-10)) if n_synapses > 1 else 0.0
+
+    # Combine into a smooth, weight-dependent score
+    diff_base = float(np.clip(
+        0.5 + 0.2 * np.tanh(weight_skew) + 0.1 * np.tanh(weight_kurtosis - 3.0),
+        0.0, 1.0
+    ))
+    # Add small deterministic noise (amplitude 0.1) based on weight content
+    diff_noise = float(noise_rng.normal(0, 0.1))
+    differentiation_score = float(np.clip(diff_base + diff_noise, 0.0, 1.0))
+
+    # --- Weighted combination ---
     fitness = (
-        connectivity_score * 0.15
-        + motor_score * 0.30
-        + diversity_score * 0.10
-        + sensory_score * 0.15
-        + path_score * 0.30
+        density_score * 10.0
+        + motor_score * 15.0
+        + sensory_score * 10.0
+        + weight_score * 15.0
+        + path_score * 20.0
+        + modularity_score * 10.0
+        + ei_score * 10.0
+        + differentiation_score * 10.0
     )
 
-    # Scale to make numbers more readable
-    fitness *= 100.0
-
     genome.fitness = fitness
+    genome.metadata["fitness_breakdown"] = {
+        "density": round(density_score * 10, 2),
+        "motor": round(motor_score * 15, 2),
+        "sensory": round(sensory_score * 10, 2),
+        "weight": round(weight_score * 15, 2),
+        "path": round(path_score * 20, 2),
+        "modularity": round(modularity_score * 10, 2),
+        "ei_balance": round(ei_score * 10, 2),
+        "differentiation": round(differentiation_score * 10, 2),
+    }
+
     return fitness

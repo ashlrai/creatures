@@ -8,7 +8,8 @@ or full Brian2+MuJoCo simulation for fitness evaluation.
 
 Usage:
     python scripts/run_evolution.py --fast --generations 5 --population 10
-    python scripts/run_evolution.py --generations 50 --population 30 --seed 42
+    python scripts/run_evolution.py --fitness medium --generations 50 --population 30
+    python scripts/run_evolution.py --fitness full --generations 10 --population 5
 """
 
 from __future__ import annotations
@@ -34,7 +35,12 @@ for p in (_project_root, _core_root):
 from creatures.connectome.openworm import load as load_connectome
 from creatures.evolution.analytics import analyze_drift, summarize_evolution
 from creatures.evolution.config import EvolutionConfig
-from creatures.evolution.fitness import FitnessConfig, evaluate_genome, evaluate_genome_fast
+from creatures.evolution.fitness import (
+    FitnessConfig,
+    evaluate_genome,
+    evaluate_genome_fast,
+    evaluate_genome_medium,
+)
 from creatures.evolution.genome import Genome
 from creatures.evolution.mutation import MutationConfig
 from creatures.evolution.population import GenerationStats, Population, PopulationConfig
@@ -66,10 +72,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=30,
         help="Population size (default: 30)",
     )
+    # New --fitness flag replaces --fast
+    parser.add_argument(
+        "--fitness",
+        choices=["fast", "medium", "full"],
+        default=None,
+        help="Fitness evaluation mode: fast (~0.01s/genome), medium (~5-10s/genome), full (~200s+/genome)",
+    )
+    # Keep --fast for backward compatibility
     parser.add_argument(
         "--fast",
         action="store_true",
-        help="Use fast topology-based fitness proxy (~0.001s/genome) instead of full simulation (~224s/genome)",
+        help="Shortcut for --fitness fast (backward compat)",
     )
     parser.add_argument(
         "--seed",
@@ -133,28 +147,45 @@ def setup_logging(verbose: bool) -> None:
     logging.getLogger("numba").setLevel(logging.WARNING)
 
 
+def resolve_fitness_mode(args: argparse.Namespace) -> str:
+    """Resolve the fitness mode from --fitness and --fast flags."""
+    if args.fitness is not None:
+        return args.fitness
+    if args.fast:
+        return "fast"
+    return "fast"  # default to fast for interactive use
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     setup_logging(args.verbose)
+
+    fitness_mode = resolve_fitness_mode(args)
 
     run_id = str(uuid.uuid4())[:8]
     output_dir = Path(args.output_dir) / f"run_{run_id}"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    mode = "FAST (topology proxy)" if args.fast else "FULL (Brian2+MuJoCo)"
-    print(f"\n{'=' * 60}")
+    mode_labels = {
+        "fast": "FAST (topology + weight analysis, <0.01s/genome)",
+        "medium": "MEDIUM (Brian2 100ms neural sim, ~5-10s/genome)",
+        "full": "FULL (Brian2 + MuJoCo coupled sim, ~200s+/genome)",
+    }
+    mode_str = mode_labels[fitness_mode]
+
+    print(f"\n{'=' * 65}")
     print(f"  Creatures Evolution Pipeline")
-    print(f"{'=' * 60}")
+    print(f"{'=' * 65}")
     print(f"  Run ID:       {run_id}")
     print(f"  Organism:     {args.organism}")
     print(f"  Generations:  {args.generations}")
     print(f"  Population:   {args.population}")
-    print(f"  Fitness mode: {mode}")
+    print(f"  Fitness mode: {mode_str}")
     print(f"  Seed:         {args.seed}")
     print(f"  Output:       {output_dir}")
     if args.god:
         print(f"  God Agent:    ENABLED (interval={args.god_interval})")
-    print(f"{'=' * 60}\n")
+    print(f"{'=' * 65}\n")
 
     # --- Load connectome ---
     logger.info("Loading %s connectome...", args.organism)
@@ -182,8 +213,10 @@ def main(argv: list[str] | None = None) -> int:
     population = Population(pop_config, seed_genome, mutation_config)
 
     # --- Choose fitness function ---
-    if args.fast:
+    if fitness_mode == "fast":
         eval_fn = lambda g: evaluate_genome_fast(g)
+    elif fitness_mode == "medium":
+        eval_fn = lambda g: evaluate_genome_medium(g)
     else:
         fitness_config = FitnessConfig()
         eval_fn = lambda g: evaluate_genome(g, fitness_config)
@@ -195,7 +228,7 @@ def main(argv: list[str] | None = None) -> int:
         "organism": args.organism,
         "generations": args.generations,
         "population": args.population,
-        "fast": args.fast,
+        "fitness_mode": fitness_mode,
         "seed": args.seed,
         "elitism": pop_config.elitism,
         "crossover_rate": pop_config.crossover_rate,
@@ -225,25 +258,43 @@ def main(argv: list[str] | None = None) -> int:
     best_genomes_per_gen: list[Genome] = []
     total_start = time.time()
 
+    # Print header for generation table
+    print(f"{'Gen':>5} {'Best':>8} {'Mean':>8} {'Worst':>8} {'Std':>7} "
+          f"{'Species':>7} {'Synapses':>10} {'TopChg':>6} {'Time':>6}")
+    print("-" * 78)
+
+    prev_best_synapses = None
+
     for gen in range(args.generations):
         gen_start = time.time()
 
         # Evaluate
         population.evaluate(eval_fn)
 
-        # Collect stats before advancing (advance_generation computes stats internally)
+        # Collect stats before advancing
         fitnesses = np.array([g.fitness for g in population.genomes])
         best_fitness = float(np.max(fitnesses))
         mean_fitness = float(np.mean(fitnesses))
+        worst_fitness = float(np.min(fitnesses))
         std_fitness = float(np.std(fitnesses))
         best_genome = population.best_genome()
 
+        # Track topology changes
+        cur_synapses = int(np.mean([g.n_synapses for g in population.genomes]))
+        if prev_best_synapses is not None:
+            topo_change = cur_synapses - prev_best_synapses
+            topo_str = f"{topo_change:+d}"
+        else:
+            topo_str = "--"
+        prev_best_synapses = cur_synapses
+
         gen_elapsed = time.time() - gen_start
 
-        # Print progress
-        print(f"Gen {gen + 1}/{args.generations} | "
-              f"best={best_fitness:.1f} mean={mean_fitness:.1f} std={std_fitness:.1f} | "
-              f"{gen_elapsed:.1f}s")
+        # Print progress row
+        print(f"{gen + 1:>5} {best_fitness:>8.1f} {mean_fitness:>8.1f} "
+              f"{worst_fitness:>8.1f} {std_fitness:>7.2f} "
+              f"{len(population.species):>7} {cur_synapses:>10} "
+              f"{topo_str:>6} {gen_elapsed:>5.1f}s")
 
         # God Agent: observe every generation, intervene at interval
         if god_agent is not None:
@@ -296,6 +347,7 @@ def main(argv: list[str] | None = None) -> int:
             "generation": gen,
             "best_fitness": best_fitness,
             "mean_fitness": mean_fitness,
+            "worst_fitness": worst_fitness,
             "std_fitness": std_fitness,
             "n_species": len(population.species),
             "elapsed_seconds": gen_elapsed,
@@ -313,7 +365,8 @@ def main(argv: list[str] | None = None) -> int:
     total_elapsed = time.time() - total_start
 
     # --- Post-evolution analysis ---
-    print(f"\nEvolution completed in {total_elapsed:.1f}s")
+    print(f"\n{'=' * 78}")
+    print(f"Evolution completed in {total_elapsed:.1f}s")
     print("Running analysis...\n")
 
     # Save best genome as HDF5
@@ -337,12 +390,21 @@ def main(argv: list[str] | None = None) -> int:
     final_fitness = fitness_history[-1]["best_fitness"]
     improvement_pct = ((final_fitness - initial_fitness) / max(abs(initial_fitness), 1e-6)) * 100
 
-    print(f"{'=' * 40}")
-    print(f"  Evolution Complete")
-    print(f"{'=' * 40}")
+    print(f"{'=' * 45}")
+    print(f"  Evolution Summary")
+    print(f"{'=' * 45}")
+    print(f"  Fitness mode:           {fitness_mode}")
     print(f"  Generations:            {args.generations}")
+    print(f"  Population:             {args.population}")
     print(f"  Total time:             {total_elapsed:.1f}s")
-    print(f"  Fitness:                {initial_fitness:.1f} -> {final_fitness:.1f} ({improvement_pct:+.1f}%)")
+    print(f"  Avg time/generation:    {total_elapsed / args.generations:.2f}s")
+    print(f"  ")
+    print(f"  Initial best fitness:   {initial_fitness:.2f}")
+    print(f"  Final best fitness:     {final_fitness:.2f}")
+    print(f"  Improvement:            {improvement_pct:+.1f}%")
+    print(f"  Final mean fitness:     {fitness_history[-1]['mean_fitness']:.2f}")
+    print(f"  Final std fitness:      {fitness_history[-1]['std_fitness']:.2f}")
+    print(f"  ")
     print(f"  Connections preserved:  {drift.preserved_fraction * 100:.1f}%")
     print(f"  Connections modified:   {drift.modified_weight_fraction * 100:.1f}%")
     print(f"  Novel connections:      {drift.novel_synapses}")
@@ -360,7 +422,7 @@ def main(argv: list[str] | None = None) -> int:
         if god_agent.history:
             last = god_agent.history[-1]
             print(f"  Last analysis:          {last.get('analysis', 'N/A')[:60]}")
-    print(f"{'=' * 40}\n")
+    print(f"{'=' * 45}\n")
 
     # Save fitness history as JSON
     history_path = output_dir / "fitness_history.json"

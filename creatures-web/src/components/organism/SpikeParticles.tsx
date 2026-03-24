@@ -5,14 +5,14 @@ import { useSimulationStore } from '../../stores/simulationStore';
 
 /**
  * Particle burst effects at neuron spike locations.
- * When a neuron fires, a small burst of colored particles appears
- * at its 3D position and fades over 300ms.
+ * When a neuron fires, a burst of colored particles appears
+ * at its 3D position and fades over 500ms with upward drift.
  *
  * Color by neuron type: sensory=green, inter=cyan, motor=red
  */
 
-const MAX_PARTICLES = 400;
-const PARTICLE_LIFETIME = 0.3; // seconds
+const MAX_PARTICLES = 600;
+const PARTICLE_LIFETIME = 0.5; // 500ms for longer visible trails
 
 interface Particle {
   position: THREE.Vector3;
@@ -23,10 +23,10 @@ interface Particle {
 }
 
 const TYPE_BURST_COLORS: Record<string, THREE.Color> = {
-  sensory: new THREE.Color(0.2, 1.0, 0.5),
-  inter: new THREE.Color(0.3, 0.6, 1.0),
-  motor: new THREE.Color(1.0, 0.3, 0.2),
-  unknown: new THREE.Color(0.5, 0.5, 0.6),
+  sensory: new THREE.Color(0.3, 1.2, 0.6),  // brighter green
+  inter: new THREE.Color(0.4, 0.8, 1.5),    // brighter cyan
+  motor: new THREE.Color(1.4, 0.4, 0.25),   // brighter red-orange
+  unknown: new THREE.Color(0.6, 0.6, 0.8),
 };
 
 export function SpikeParticles() {
@@ -88,7 +88,7 @@ export function SpikeParticles() {
     // Spawn particles for new spikes
     const currentSpikes = new Set(frame.spikes);
     for (const spikeIdx of currentSpikes) {
-      if (lastSpikes.current.has(spikeIdx)) continue; // already handled
+      if (lastSpikes.current.has(spikeIdx)) continue;
 
       const pos = neuronData.positions[spikeIdx];
       if (!pos) continue;
@@ -96,15 +96,15 @@ export function SpikeParticles() {
       const type = neuronData.types[spikeIdx] || 'unknown';
       const burstColor = TYPE_BURST_COLORS[type] || TYPE_BURST_COLORS.unknown;
 
-      // Spawn 2-3 particles per spike
-      const count = 2 + Math.floor(Math.random() * 2);
+      // Spawn 3-4 particles per spike for more visible bursts
+      const count = 3 + Math.floor(Math.random() * 2);
       for (let j = 0; j < count; j++) {
         const p = particles.current[nextParticle.current % MAX_PARTICLES];
         p.position.set(pos[0], pos[1], pos[2]);
         p.velocity.set(
-          (Math.random() - 0.5) * 0.02,
-          Math.random() * 0.015 + 0.005,
-          (Math.random() - 0.5) * 0.02,
+          (Math.random() - 0.5) * 0.025,
+          Math.random() * 0.02 + 0.01,   // upward drift bias
+          (Math.random() - 0.5) * 0.025,
         );
         p.color.copy(burstColor);
         p.age = 0;
@@ -116,7 +116,6 @@ export function SpikeParticles() {
 
     // Update particles
     const geo = pointsRef.current.geometry;
-    let visibleCount = 0;
 
     for (let i = 0; i < MAX_PARTICLES; i++) {
       const p = particles.current[i];
@@ -132,24 +131,27 @@ export function SpikeParticles() {
         continue;
       }
 
-      // Move
+      // Move with upward drift and very slight gravity
       p.position.add(p.velocity.clone().multiplyScalar(delta));
-      p.velocity.y -= delta * 0.01; // slight gravity
+      p.velocity.y += delta * 0.005; // net upward drift (organic feel)
+      p.velocity.x *= 0.98; // slight horizontal damping
+      p.velocity.z *= 0.98;
 
-      // Fade
+      // Fade curve: bright flash then gradual fade
       const life = 1 - p.age / PARTICLE_LIFETIME;
-      const fade = life * life; // quadratic fade
+      const fade = life * Math.sqrt(life); // slower fade than quadratic
 
       positionArray[i * 3] = p.position.x;
       positionArray[i * 3 + 1] = p.position.y;
       positionArray[i * 3 + 2] = p.position.z;
 
-      colorArray[i * 3] = p.color.r * fade;
-      colorArray[i * 3 + 1] = p.color.g * fade;
-      colorArray[i * 3 + 2] = p.color.b * fade;
+      // Brighter colors — these are the visual "fireworks"
+      colorArray[i * 3] = p.color.r * fade * 1.5;
+      colorArray[i * 3 + 1] = p.color.g * fade * 1.5;
+      colorArray[i * 3 + 2] = p.color.b * fade * 1.5;
 
-      sizeArray[i] = 0.004 * fade;
-      visibleCount++;
+      // Larger particles
+      sizeArray[i] = 0.008 * fade;
     }
 
     geo.attributes.position.needsUpdate = true;
@@ -168,10 +170,10 @@ export function SpikeParticles() {
         vertexColors
         sizeAttenuation
         transparent
-        opacity={0.9}
+        opacity={0.95}
         blending={THREE.AdditiveBlending}
         depthWrite={false}
-        size={0.004}
+        size={0.008}
       />
     </points>
   );

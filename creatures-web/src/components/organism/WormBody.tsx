@@ -7,20 +7,44 @@ const MAX_SEGMENTS = 88;
 const SEG_RADIUS = 0.013;
 const SEG_HALF_LEN = 0.035;
 
-// Dark teal at rest, bright cyan when active
-const REST_COLOR = new THREE.Color(0.08, 0.22, 0.3);
-const ACTIVE_COLOR = new THREE.Color(0.15, 0.55, 0.8);
-const HOT_COLOR = new THREE.Color(0.4, 0.8, 0.95);
-const REST_EMISSIVE = new THREE.Color(0.015, 0.04, 0.06);
-const ACTIVE_EMISSIVE = new THREE.Color(0.05, 0.2, 0.35);
+// Rich teal palette — LOW emissive at rest, HIGH when active
+const REST_COLOR = new THREE.Color(0.05, 0.25, 0.35);
+const ACTIVE_COLOR = new THREE.Color(0.1, 0.6, 0.85);
+const HOT_COLOR = new THREE.Color(0.3, 0.85, 1.0);
+const REST_EMISSIVE = new THREE.Color(0.005, 0.015, 0.025);
+const ACTIVE_EMISSIVE = new THREE.Color(0.06, 0.35, 0.55);
+const HOT_EMISSIVE = new THREE.Color(0.15, 0.5, 0.7);
 
 export function WormBody() {
   const frame = useSimulationStore((s) => s.frame);
   const lastPoke = useSimulationStore((s) => s.lastPoke);
   const meshRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const spineRef = useRef<THREE.Mesh>(null);
 
   const geometry = useMemo(
     () => new THREE.CapsuleGeometry(SEG_RADIUS, SEG_HALF_LEN * 2, 8, 16),
+    []
+  );
+
+  // Spine tube geometry — will be updated each frame
+  const spineGeometry = useMemo(() => {
+    // Start with a straight line; updated dynamically
+    const curve = new THREE.CatmullRomCurve3(
+      Array.from({ length: 12 }, (_, i) => new THREE.Vector3(i * SEG_HALF_LEN * 2.3, SEG_RADIUS, 0))
+    );
+    return new THREE.TubeGeometry(curve, 64, SEG_RADIUS * 0.5, 8, false);
+  }, []);
+
+  const spineMaterial = useMemo(
+    () => new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0.04, 0.18, 0.28),
+      emissive: new THREE.Color(0.003, 0.01, 0.02),
+      emissiveIntensity: 1,
+      roughness: 0.6,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 0.35,
+    }),
     []
   );
 
@@ -30,13 +54,18 @@ export function WormBody() {
         color: REST_COLOR.clone(),
         emissive: REST_EMISSIVE.clone(),
         emissiveIntensity: 1,
-        roughness: 0.5,
-        metalness: 0.15,
+        roughness: 0.45,
+        metalness: 0.1,
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.88,
       })
     ),
     []
+  );
+
+  // Track smoothed positions for spine
+  const smoothPositions = useRef<THREE.Vector3[]>(
+    Array.from({ length: MAX_SEGMENTS }, () => new THREE.Vector3())
   );
 
   useFrame(({ clock }) => {
@@ -46,33 +75,47 @@ export function WormBody() {
     const positions = frame.body_positions;
     const n = Math.min(positions.length, MAX_SEGMENTS);
     const rates = frame.firing_rates ?? [];
+    const spikes = new Set(frame.spikes ?? []);
     const nNeurons = rates.length;
     const neuronsPerSeg = nNeurons > 0 ? Math.ceil(nNeurons / n) : 1;
 
     const pokeIdx = lastPoke ? parseInt(lastPoke.segment.replace('seg_', ''), 10) : -1;
     const pokeFade = lastPoke ? Math.max(0, 1 - (Date.now() - lastPoke.time) / 600) : 0;
 
+    const spinePoints: THREE.Vector3[] = [];
+
     for (let i = 0; i < n; i++) {
       const mesh = meshRefs.current[i];
       if (!mesh || !positions[i]) continue;
 
       const [x, y, z] = positions[i];
-      mesh.position.set(x, z, -y);
+      const targetPos = new THREE.Vector3(x, z, -y);
+
+      // Smooth position to prevent tail fly-apart
+      smoothPositions.current[i].lerp(targetPos, 0.3);
+      mesh.position.copy(smoothPositions.current[i]);
       mesh.visible = true;
 
-      // Subtle breathing
-      const breath = 1.0 + Math.sin(t * 2.0 + i * 0.4) * 0.015;
-      mesh.scale.set(breath, 1, breath);
+      spinePoints.push(smoothPositions.current[i].clone());
+
+      // Breathing: multi-frequency for organic feel
+      const breathSlow = Math.sin(t * 1.5 + i * 0.35) * 0.012;
+      const breathFast = Math.sin(t * 3.2 + i * 0.7) * 0.005;
+      const breathScale = 1.0 + breathSlow + breathFast;
+      // Taper at head and tail
+      const bodyFrac = i / Math.max(n - 1, 1);
+      const taper = 1.0 - 0.15 * Math.pow(Math.abs(bodyFrac - 0.4) / 0.6, 2);
+      mesh.scale.set(breathScale * taper, 1, breathScale * taper);
 
       // Orient along body axis — smoothed with slerp to prevent jitter
       if (i < n - 1 && positions[i + 1]) {
-        const [nx, ny, nz] = positions[i + 1];
-        const fwd = new THREE.Vector3(nx - x, nz - z, -(ny - y));
+        const next = smoothPositions.current[i + 1] || targetPos;
+        const fwd = new THREE.Vector3().subVectors(next, smoothPositions.current[i]);
 
         // Average with previous direction for smoother tangent
-        if (i > 0 && positions[i - 1]) {
-          const [px, py, pz] = positions[i - 1];
-          const back = new THREE.Vector3(x - px, z - pz, -(y - py));
+        if (i > 0) {
+          const prev = smoothPositions.current[i - 1];
+          const back = new THREE.Vector3().subVectors(smoothPositions.current[i], prev);
           if (back.length() > 0.0001) {
             back.normalize();
             fwd.normalize();
@@ -84,16 +127,18 @@ export function WormBody() {
           fwd.normalize();
           const up = new THREE.Vector3(0, 1, 0);
           const targetQuat = new THREE.Quaternion().setFromUnitVectors(up, fwd);
-          mesh.quaternion.slerp(targetQuat, 0.25); // smooth interpolation
+          mesh.quaternion.slerp(targetQuat, 0.2);
         }
       }
 
-      // Compute activity
+      // Compute activity from firing rates + muscle activations
       const segStart = i * neuronsPerSeg;
       const segEnd = Math.min(segStart + neuronsPerSeg, nNeurons);
       let maxRate = 0;
+      let hasSpike = false;
       for (let j = segStart; j < segEnd; j++) {
         maxRate = Math.max(maxRate, rates[j]);
+        if (spikes.has(j)) hasSpike = true;
       }
       for (const [key, val] of Object.entries(frame.muscle_activations)) {
         if (key.includes(`_${i}`) || key.includes(`_${Math.max(0, i - 1)}`)) {
@@ -102,28 +147,63 @@ export function WormBody() {
       }
 
       const activity = Math.min(maxRate / 120, 1);
+      // Spike flash: immediate bright boost that decays
+      const spikeBoost = hasSpike ? 0.4 : 0;
+      const totalActivity = Math.min(activity + spikeBoost, 1);
       const mat = materials[i];
 
       const isPoked = i === pokeIdx && pokeFade > 0;
 
       if (isPoked) {
-        mat.color.setRGB(0.4 + pokeFade * 0.6, 0.6 + pokeFade * 0.4, 0.7 + pokeFade * 0.3);
-        mat.emissive.setRGB(0.1 * pokeFade, 0.3 * pokeFade, 0.5 * pokeFade);
-      } else if (activity > 0.05) {
-        const c = activity < 0.5
-          ? REST_COLOR.clone().lerp(ACTIVE_COLOR, activity * 2)
-          : ACTIVE_COLOR.clone().lerp(HOT_COLOR, (activity - 0.5) * 2);
+        mat.color.setRGB(0.3 + pokeFade * 0.5, 0.6 + pokeFade * 0.3, 0.7 + pokeFade * 0.3);
+        mat.emissive.setRGB(0.08 * pokeFade, 0.35 * pokeFade, 0.55 * pokeFade);
+      } else if (totalActivity > 0.05) {
+        // Color: teal -> cyan -> bright cyan-white
+        const c = totalActivity < 0.5
+          ? REST_COLOR.clone().lerp(ACTIVE_COLOR, totalActivity * 2)
+          : ACTIVE_COLOR.clone().lerp(HOT_COLOR, (totalActivity - 0.5) * 2);
         mat.color.copy(c);
-        mat.emissive.lerpColors(REST_EMISSIVE, ACTIVE_EMISSIVE, activity);
+
+        // Emissive: only HIGH when active — this is what bloom catches
+        const e = totalActivity < 0.5
+          ? REST_EMISSIVE.clone().lerp(ACTIVE_EMISSIVE, totalActivity * 2)
+          : ACTIVE_EMISSIVE.clone().lerp(HOT_EMISSIVE, (totalActivity - 0.5) * 2);
+        mat.emissive.copy(e);
+        mat.emissiveIntensity = 1.0 + totalActivity * 1.5;
       } else {
         mat.color.copy(REST_COLOR);
         mat.emissive.copy(REST_EMISSIVE);
-        // Subtle pulse
-        const pulse = Math.sin(t * 1.5 + i * 0.3) * 0.005;
+        mat.emissiveIntensity = 1.0;
+        // Subtle life pulse — very low emissive so bloom does NOT catch it
+        const pulse = Math.sin(t * 1.5 + i * 0.3) * 0.003;
         mat.emissive.r += pulse;
         mat.emissive.g += pulse * 2;
         mat.emissive.b += pulse * 3;
       }
+    }
+
+    // Update spine tube geometry
+    if (spineRef.current && spinePoints.length >= 2) {
+      const curve = new THREE.CatmullRomCurve3(spinePoints);
+      const newGeo = new THREE.TubeGeometry(curve, Math.max(spinePoints.length * 2, 16), SEG_RADIUS * 0.45, 6, false);
+      spineRef.current.geometry.dispose();
+      spineRef.current.geometry = newGeo;
+
+      // Tint spine based on average activity
+      let avgActivity = 0;
+      for (let i = 0; i < n; i++) {
+        const segStart = i * neuronsPerSeg;
+        const segEnd = Math.min(segStart + neuronsPerSeg, nNeurons);
+        for (let j = segStart; j < segEnd; j++) {
+          avgActivity += rates[j] || 0;
+        }
+      }
+      avgActivity = Math.min((avgActivity / Math.max(nNeurons, 1)) / 100, 1);
+      spineMaterial.emissive.setRGB(
+        0.003 + avgActivity * 0.03,
+        0.01 + avgActivity * 0.08,
+        0.02 + avgActivity * 0.12,
+      );
     }
 
     for (let i = n; i < MAX_SEGMENTS; i++) {
@@ -144,6 +224,10 @@ export function WormBody() {
 
   return (
     <group>
+      {/* Continuous spine tube connecting segments */}
+      <mesh ref={spineRef} geometry={spineGeometry} material={spineMaterial} />
+
+      {/* Individual body segments */}
       {Array.from({ length: segCount }, (_, i) => (
         <mesh
           key={i}

@@ -18,12 +18,12 @@ from creatures.evolution.genome import Genome
 class MutationConfig:
     # Weight mutations (most common)
     weight_perturb_rate: float = 0.8
-    weight_perturb_sigma: float = 0.1
+    weight_perturb_sigma: float = 0.3  # was 0.1; more exploration
     weight_replace_rate: float = 0.1
     weight_replace_range: tuple = (-5.0, 5.0)
 
-    # Topology mutations (rare)
-    add_synapse_rate: float = 0.05
+    # Topology mutations (more frequent for faster structural exploration)
+    add_synapse_rate: float = 0.1  # was 0.05; doubled for more variation
     remove_synapse_rate: float = 0.02
     add_neuron_rate: float = 0.01
     remove_neuron_rate: float = 0.005
