@@ -6,6 +6,8 @@ import { Waveform } from './components/ui/Waveform';
 import { EvolutionDashboard } from './components/ui/EvolutionDashboard';
 import { FitnessGraph } from './components/ui/FitnessGraph';
 import { GodAgentPanel } from './components/ui/GodAgentPanel';
+import { ArenaView } from './components/evolution/ArenaView';
+import { GenerationTimeline } from './components/evolution/GenerationTimeline';
 import { useSimulation } from './hooks/useSimulation';
 import { useDemoMode } from './hooks/useDemoMode';
 import { useSimulationStore } from './stores/simulationStore';
@@ -242,11 +244,19 @@ export default function App() {
           )}
         </div>
 
-        {/* 3D Viewport */}
+        {/* 3D Viewport / Arena */}
         <div className="viewport">
-          <SceneErrorBoundary>
-            <Scene />
-          </SceneErrorBoundary>
+          {isEvolutionMode ? (
+            <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <ArenaView />
+              </div>
+            </div>
+          ) : (
+            <SceneErrorBoundary>
+              <Scene />
+            </SceneErrorBoundary>
+          )}
         </div>
 
         {/* Right sidebar */}
@@ -271,9 +281,13 @@ export default function App() {
         </div>
       )}
 
-      {/* Bottom waveform */}
+      {/* Bottom bar: waveform or generation timeline */}
       <div className="bottom-bar">
-        {experiment ? <Waveform /> : (
+        {isEvolutionMode ? (
+          <GenerationTimeline />
+        ) : experiment ? (
+          <Waveform />
+        ) : (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ fontSize: 11, color: 'var(--text-label)' }}>Neural oscilloscope — loading...</span>
           </div>
