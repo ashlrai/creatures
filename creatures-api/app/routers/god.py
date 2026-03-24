@@ -1,7 +1,8 @@
-"""God Agent endpoints — oversees evolution with high-level analysis and interventions."""
+"""God Agent endpoints — oversees evolution with analysis and interventions."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime
@@ -10,46 +11,27 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.services.evolution_manager import EvolutionManager
+
 router = APIRouter(prefix="/god", tags=["god-agent"])
 logger = logging.getLogger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# In-memory store (will be replaced by a real persistence layer later)
-# ---------------------------------------------------------------------------
-
-_status: dict[str, Any] = {
-    "active": False,
-    "last_intervention_at": None,
-    "total_interventions": 0,
-    "current_hypothesis": None,
-}
-
-_reports: dict[str, list[dict[str, Any]]] = {}  # run_id -> list of reports
+# Set by main.py lifespan
+manager: EvolutionManager | None = None
 
 
-# ---------------------------------------------------------------------------
-# Request / response models
-# ---------------------------------------------------------------------------
+def _mgr() -> EvolutionManager:
+    if manager is None:
+        raise RuntimeError("EvolutionManager not initialized")
+    return manager
+
 
 class AnalyzeRequest(BaseModel):
     run_id: str
-    prompt: str | None = None  # optional user question for the God Agent
+    prompt: str | None = None
 
 
-class InterventionAction(BaseModel):
-    type: str
-    action: str
-    parameters: dict[str, Any] = {}
-    reasoning: str = ""
-
-
-class InterveneRequest(BaseModel):
-    run_id: str
-    interventions: list[InterventionAction]
-
-
-class GodReport(BaseModel):
+class GodReportResponse(BaseModel):
     id: str
     run_id: str
     timestamp: str
@@ -67,99 +49,130 @@ class GodStatus(BaseModel):
     current_hypothesis: str | None
 
 
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
-
-@router.post("/analyze", response_model=GodReport)
+@router.post("/analyze", response_model=GodReportResponse)
 async def analyze(req: AnalyzeRequest):
-    """Manually trigger God Agent analysis on a running evolution.
+    """Trigger God Agent analysis on a running evolution.
 
-    In a full implementation this would call an LLM to inspect the
-    evolutionary run's fitness curve, population diversity, and genome
-    statistics, then return a structured report with optional
-    intervention suggestions.  For now we return a deterministic stub
-    so the frontend can be developed against a stable contract.
+    Uses the real God Agent instance from the evolution run if available,
+    falls back to a deterministic stub otherwise.
     """
+    mgr = _mgr()
+    run = mgr.get_run(req.run_id)
+
+    if run is None:
+        raise HTTPException(404, f"Run {req.run_id} not found")
+
     report_id = str(uuid.uuid4())[:8]
     now = datetime.utcnow().isoformat() + "Z"
 
-    report: dict[str, Any] = {
+    # Try to use the real God Agent from the evolution run
+    if hasattr(run, 'god_agent') and run.god_agent is not None:
+        god = run.god_agent
+        # Feed latest stats if available
+        if hasattr(run, 'history') and run.history:
+            latest = run.history[-1]
+            god.observe(
+                latest,
+                {'size': run.population_size, 'n_species': latest.get('n_species', 1)},
+                {'generation': run.generation},
+            )
+
+        result = await god.analyze_and_intervene()
+
+        # The result might be a dict or a dataclass
+        if isinstance(result, dict):
+            analysis = result.get('analysis', 'No analysis available')
+            trend = result.get('fitness_trend', 'unknown')
+            interventions = result.get('interventions', [])
+            hypothesis = result.get('hypothesis', 'No hypothesis')
+            report_text = result.get('report', analysis)
+        else:
+            analysis = getattr(result, 'analysis', 'No analysis available')
+            trend = getattr(result, 'fitness_trend', 'unknown')
+            interventions = getattr(result, 'interventions', [])
+            hypothesis = getattr(result, 'hypothesis', 'No hypothesis')
+            report_text = getattr(result, 'report', analysis)
+
+        # Convert intervention objects to dicts if needed
+        intervention_dicts = []
+        for iv in interventions:
+            if isinstance(iv, dict):
+                intervention_dicts.append(iv)
+            else:
+                intervention_dicts.append({
+                    'type': getattr(iv, 'type', 'unknown'),
+                    'action': getattr(iv, 'action', ''),
+                    'parameters': getattr(iv, 'parameters', {}),
+                    'reasoning': getattr(iv, 'reasoning', ''),
+                })
+    else:
+        # Fallback: deterministic stub for frontend development
+        analysis = (
+            "Population shows moderate diversity with fitness plateauing. "
+            "The dominant genome has strong motor-sensory connectivity but "
+            "lacks novel inter-neuron pathways for complex behaviors."
+        )
+        trend = "plateauing"
+        intervention_dicts = [{
+            "type": "mutation_rate",
+            "action": "increase",
+            "parameters": {"factor": 1.5},
+            "reasoning": "Increase exploration to escape local optimum.",
+        }]
+        hypothesis = (
+            "Increasing mutation pressure will break the current fitness "
+            "plateau by introducing novel neural topologies."
+        )
+        report_text = f"God Agent stub report for run {req.run_id}"
+
+    report = {
         "id": report_id,
         "run_id": req.run_id,
         "timestamp": now,
-        "analysis": (
-            "Population shows moderate diversity with fitness plateauing over "
-            "the last 5 generations.  Speciation rate is healthy but the top "
-            "performer's genome has become dominant, reducing exploration."
-        ),
-        "fitness_trend": "plateauing",
-        "interventions": [
-            {
-                "type": "mutation_rate",
-                "action": "increase",
-                "parameters": {"factor": 1.5},
-                "reasoning": "Increase exploration to escape local optimum.",
-            }
-        ],
-        "hypothesis": (
-            "Increasing mutation pressure will break the current fitness "
-            "plateau by introducing novel neural topologies."
-        ),
-        "report": (
-            f"God Agent report #{report_id} — Run {req.run_id}\n"
-            f"Timestamp: {now}\n\n"
-            "Summary: fitness trend is plateauing.  Recommend increasing "
-            "mutation rate by 1.5x to promote exploration."
-        ),
+        "analysis": analysis,
+        "fitness_trend": trend,
+        "interventions": intervention_dicts,
+        "hypothesis": hypothesis,
+        "report": report_text,
     }
 
-    _reports.setdefault(req.run_id, []).append(report)
-    _status["active"] = True
-    _status["current_hypothesis"] = report["hypothesis"]
-
-    return GodReport(**report)
+    return GodReportResponse(**report)
 
 
-@router.get("/reports/{run_id}", response_model=list[GodReport])
+@router.get("/reports/{run_id}")
 async def get_reports(run_id: str):
     """Get all God Agent reports for a given evolution run."""
-    reports = _reports.get(run_id, [])
-    return [GodReport(**r) for r in reports]
+    mgr = _mgr()
+    run = mgr.get_run(run_id)
+    if run is None:
+        raise HTTPException(404, f"Run {run_id} not found")
+
+    # Get reports from the run's god_reports list
+    reports = getattr(run, 'god_reports', []) or []
+    return reports
 
 
-@router.post("/intervene")
-async def intervene(req: InterveneRequest):
-    """Manually apply specific interventions to a running evolution.
-
-    In production this would forward each intervention to the
-    EvolutionManager so it can adjust parameters mid-run.
-    """
-    now = datetime.utcnow().isoformat() + "Z"
-    applied: list[dict[str, Any]] = []
-
-    for action in req.interventions:
-        entry = {
-            "type": action.type,
-            "action": action.action,
-            "parameters": action.parameters,
-            "reasoning": action.reasoning,
-            "applied_at": now,
-        }
-        applied.append(entry)
-        logger.info("God Agent intervention applied: %s", entry)
-
-    _status["last_intervention_at"] = now
-    _status["total_interventions"] += len(applied)
-
-    return {
-        "status": "applied",
-        "count": len(applied),
-        "interventions": applied,
-    }
-
-
-@router.get("/status", response_model=GodStatus)
+@router.get("/status")
 async def get_status():
     """Get the current God Agent status."""
-    return GodStatus(**_status)
+    mgr = _mgr()
+    runs = mgr.list_runs()
+    active_runs = [r for r in runs if r.status == 'running']
+
+    has_god = any(hasattr(r, 'god_agent') and r.god_agent for r in active_runs)
+    total = sum(len(getattr(r, 'god_reports', []) or []) for r in runs)
+
+    latest_hypothesis = None
+    for r in reversed(runs):
+        reports = getattr(r, 'god_reports', []) or []
+        if reports:
+            last = reports[-1]
+            latest_hypothesis = last.get('hypothesis') if isinstance(last, dict) else getattr(last, 'hypothesis', None)
+            break
+
+    return {
+        "active": has_god,
+        "total_interventions": total,
+        "current_hypothesis": latest_hypothesis,
+        "active_runs": len(active_runs),
+    }

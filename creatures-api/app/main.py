@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI):
     evo_manager = EvolutionManager()
     evo_manager.set_loop(asyncio.get_running_loop())
     evolution.manager = evo_manager
+    god.manager = evo_manager
 
     yield
 
