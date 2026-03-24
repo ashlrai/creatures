@@ -15,6 +15,8 @@ import { useDemoMode } from './hooks/useDemoMode';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useHashRouter, type HashState } from './hooks/useHashRouter';
 import { NeuronTooltip } from './components/ui/NeuronTooltip';
+import { NeuronDetailPanel } from './components/ui/NeuronDetailPanel';
+import { NeuralMetrics } from './components/ui/NeuralMetrics';
 import { useSimulationStore } from './stores/simulationStore';
 import { useEvolutionStore } from './stores/evolutionStore';
 import { GlobalErrorBoundary } from './components/ErrorBoundary';
@@ -362,8 +364,9 @@ export default function App() {
     <div className="app-root">
       {notification && <div className="notify">{notification}</div>}
 
-      {/* Neuron hover tooltip — rendered outside Canvas for CSS positioning */}
+      {/* Neuron hover tooltip + detail panel — rendered outside Canvas */}
       <NeuronTooltip />
+      <NeuronDetailPanel />
 
       {/* Header */}
       <header className="app-header">
@@ -587,6 +590,7 @@ export default function App() {
                 </div>
               </div>
               <DrugTestingPanel isDemo={isDemo} expanded={drugPanelExpanded} onToggleExpanded={setDrugPanelExpanded} />
+              <NeuralMetrics />
             </>
           ) : (
             <>
