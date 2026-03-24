@@ -54,8 +54,9 @@ export function ConnectomeExplorer() {
   const [hoveredNeuron, setHoveredNeuron] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
-  // View transform state
+  // View transform state + version counter to trigger redraws
   const viewRef = useRef({ offsetX: 0, offsetY: 0, scale: 1 });
+  const [viewVersion, setViewVersion] = useState(0);
   const dragRef = useRef<{ startX: number; startY: number; startOX: number; startOY: number } | null>(null);
 
   // Precomputed layout positions (canvas coords)
@@ -246,7 +247,7 @@ export function ConnectomeExplorer() {
 
       const rate = rateMap.get(node.id) ?? 0;
       const t = Math.min(rate / 80, 1);
-      const baseColor = TYPE_COLORS[node.type] ?? '#666';
+      const baseColor = TYPE_COLORS[node.type] ?? '#666666';
       const isSelected = node.id === selectedNeuron;
       const isNeighbor = selectedNeighbors?.has(node.id) ?? false;
       const isHovered = node.id === hoveredNeuron;
@@ -306,7 +307,7 @@ export function ConnectomeExplorer() {
     ctx.fillStyle = 'rgba(140, 170, 200, 0.4)';
     ctx.font = '10px monospace';
     ctx.fillText(`${graph.nodes.length} neurons | ${graph.edges.length} synapses`, 6, h - 6);
-  }, [frame, graph, selectedNeuron, hoveredNeuron, computeLayout]);
+  }, [frame, graph, selectedNeuron, hoveredNeuron, computeLayout, viewVersion]);
 
   // ── Hit testing ──────────────────────────────────────────────────────────
 
@@ -356,6 +357,7 @@ export function ConnectomeExplorer() {
       const dy = e.clientY - dragRef.current.startY;
       viewRef.current.offsetX = dragRef.current.startOX + dx;
       viewRef.current.offsetY = dragRef.current.startOY + dy;
+      setViewVersion(v => v + 1);
       return;
     }
 
@@ -391,6 +393,7 @@ export function ConnectomeExplorer() {
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
     const newScale = Math.max(0.3, Math.min(5, viewRef.current.scale * delta));
     viewRef.current.scale = newScale;
+    setViewVersion(v => v + 1);
   }, []);
 
   // ── Stimulate / Lesion commands ──────────────────────────────────────────

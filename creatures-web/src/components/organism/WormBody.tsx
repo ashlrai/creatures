@@ -56,6 +56,7 @@ export function WormBody() {
         emissiveIntensity: 1,
         roughness: 0.45,
         metalness: 0.1,
+        transparent: true,
         opacity: 0.92,
       })
     ),
@@ -66,8 +67,10 @@ export function WormBody() {
   const smoothPositions = useRef<THREE.Vector3[]>(
     Array.from({ length: MAX_SEGMENTS }, () => new THREE.Vector3())
   );
+  const frameCount = useRef(0);
 
   useFrame(({ clock }) => {
+    frameCount.current++;
     if (!frame?.body_positions?.length) return;
 
     const t = clock.getElapsedTime();
@@ -176,8 +179,8 @@ export function WormBody() {
       }
     }
 
-    // Update spine tube geometry
-    if (spineRef.current && spinePoints.length >= 2) {
+    // Update spine tube geometry (throttled to every 5th frame to avoid GPU churn)
+    if (spineRef.current && spinePoints.length >= 2 && frameCount.current % 5 === 0) {
       const curve = new THREE.CatmullRomCurve3(spinePoints);
       const newGeo = new THREE.TubeGeometry(curve, Math.max(spinePoints.length * 2, 16), SEG_RADIUS * 0.45, 6, false);
       spineRef.current.geometry.dispose();
