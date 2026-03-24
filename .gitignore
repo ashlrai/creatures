@@ -41,3 +41,5 @@ creatures-web/dist/
 .env
 .env.local
 *.TXT
+node_modules/
+package-lock.json
