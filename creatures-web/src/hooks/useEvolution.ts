@@ -306,7 +306,10 @@ export function useEvolution() {
    */
   const start = useCallback(
     async (opts?: { organism?: string; population_size?: number; n_generations?: number }) => {
+      // Reset state but preserve evolution mode
+      const wasEvoMode = useEvolutionStore.getState().isEvolutionMode;
       reset();
+      if (wasEvoMode) useEvolutionStore.getState().toggleEvolutionMode();
       try {
         const run = await createRun(opts);
         await startRun(run.id);
