@@ -1,17 +1,23 @@
-# Creatures
+# Neurevo
 
-**Virtual organisms powered by real brain wiring.**
+**Evolving real brains. Understanding life.**
 
-Creatures is a platform that takes real biological connectome data, runs it as a spiking neural network, connects it to a physics-simulated body, and produces emergent behavior — all from the organism's actual wiring diagram.
+Neurevo is a neuroevolution platform that starts from real biological connectome data and evolves it — discovering how neural circuits adapt, which connections are essential, and what makes brains work. The first platform to do evolutionary optimization starting from REAL biological neural architectures.
 
-Poke a virtual worm and watch 299 real neurons cascade from touch sensors through interneurons to motor neurons, driving muscle contractions and physical movement. Scale up to a fruit fly with 3,200+ neurons from the FlyWire connectome driving a NeuroMechFly body.
+**[neurevo.dev](https://neurevo.dev)**
+
+Start with the actual C. elegans wiring diagram (299 neurons, 3,363 synapses). Evolve populations of organisms in 3D environments with food, obstacles, and chemical gradients. Watch natural selection reshape biological neural circuits over hundreds of generations. Use machine learning (CMA-ES, RL) to accelerate the process. Generate genuine scientific insight about neural circuit design principles.
 
 ---
 
 ## What This Does
 
 ```
-Real Connectome Data → Spiking Neural Network → Physics Body → Emergent Behavior
+Real Connectome → Spiking Neural Network → Physics Body → Emergent Behavior
+                           ↓
+              Evolution (Mutation + Selection + ML Acceleration)
+                           ↓
+              Scientific Insight (Which circuits matter? What's robust?)
 ```
 
 | Organism | Neurons | Synapses | Body | Status |

@@ -43,3 +43,4 @@ creatures-web/dist/
 *.TXT
 node_modules/
 package-lock.json
+evolution_results/

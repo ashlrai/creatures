@@ -1,0 +1,26 @@
+[
+  {
+    "generation": 0,
+    "best_fitness": 90.64255433384415,
+    "mean_fitness": 90.64255433384415,
+    "std_fitness": 0.0,
+    "n_species": 1,
+    "elapsed_seconds": 0.0025529861450195312
+  },
+  {
+    "generation": 1,
+    "best_fitness": 90.64255433384415,
+    "mean_fitness": 90.56067605507769,
+    "std_fitness": 0.16375655753291765,
+    "n_species": 1,
+    "elapsed_seconds": 0.0021278858184814453
+  },
+  {
+    "generation": 2,
+    "best_fitness": 90.64255433384415,
+    "mean_fitness": 90.64255433384415,
+    "std_fitness": 0.0,
+    "n_species": 1,
+    "elapsed_seconds": 0.002307891845703125
+  }
+]

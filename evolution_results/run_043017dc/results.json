@@ -1,0 +1,107 @@
+{
+  "run_id": "043017dc",
+  "organism": "c_elegans",
+  "config": {
+    "organism": "c_elegans",
+    "generations": 5,
+    "population": 10,
+    "fast": true,
+    "seed": 42,
+    "elitism": 3,
+    "crossover_rate": 0.3,
+    "mutation": {
+      "weight_perturb_rate": 0.8,
+      "weight_perturb_sigma": 0.1,
+      "weight_replace_rate": 0.1,
+      "weight_replace_range": [
+        -5.0,
+        5.0
+      ],
+      "add_synapse_rate": 0.05,
+      "remove_synapse_rate": 0.02,
+      "add_neuron_rate": 0.01,
+      "remove_neuron_rate": 0.005,
+      "max_neurons": 500,
+      "max_synapses": 10000,
+      "min_weight": -10.0,
+      "max_weight": 10.0,
+      "protect_sensory_motor": true
+    }
+  },
+  "total_elapsed_seconds": 1.422257900238037,
+  "summary": {
+    "n_generations": 5,
+    "initial_fitness": 90.64423216742543,
+    "final_fitness": 90.64423216742543,
+    "fitness_improvement": 0.0,
+    "fitness_improvement_pct": 0.0,
+    "connections_preserved": 1.0,
+    "connections_modified": 0.11125360692529657,
+    "novel_connections": 1,
+    "deleted_connections": 0,
+    "novel_neurons": 0,
+    "weight_drift": 106.27027031384542,
+    "template_neurons": 299,
+    "evolved_neurons": 299,
+    "template_synapses": 3363,
+    "evolved_synapses": 3364
+  },
+  "drift": {
+    "preserved_fraction": 1.0,
+    "modified_weight_fraction": 0.11125360692529657,
+    "novel_synapses": 1,
+    "deleted_synapses": 0,
+    "novel_neurons": 0,
+    "total_weight_change": 106.27027031384542
+  },
+  "fitness_history": [
+    {
+      "generation": 0,
+      "best_fitness": 90.64423216742543,
+      "mean_fitness": 90.64272211720228,
+      "std_fitness": 0.0005033500743849117,
+      "n_species": 1,
+      "elapsed_seconds": 0.008165836334228516
+    },
+    {
+      "generation": 1,
+      "best_fitness": 90.64423216742543,
+      "mean_fitness": 90.47963669310187,
+      "std_fitness": 0.20021898226251492,
+      "n_species": 1,
+      "elapsed_seconds": 0.012444257736206055
+    },
+    {
+      "generation": 2,
+      "best_fitness": 90.64423216742543,
+      "mean_fitness": 90.56168275522646,
+      "std_fitness": 0.16384248957549605,
+      "n_species": 1,
+      "elapsed_seconds": 0.008120059967041016
+    },
+    {
+      "generation": 3,
+      "best_fitness": 90.64423216742543,
+      "mean_fitness": 90.55466242580266,
+      "std_fitness": 0.1615212371891692,
+      "n_species": 1,
+      "elapsed_seconds": 0.005025148391723633
+    },
+    {
+      "generation": 4,
+      "best_fitness": 90.64423216742543,
+      "mean_fitness": 90.46244569130181,
+      "std_fitness": 0.19298959060013968,
+      "n_species": 1,
+      "elapsed_seconds": 0.004498004913330078
+    }
+  ],
+  "best_genome": {
+    "id": "5ddc3555",
+    "generation": 4,
+    "fitness": 90.64423216742543,
+    "n_neurons": 299,
+    "n_synapses": 3364,
+    "hdf5_path": "evolution_results/run_043017dc/best_genome.h5"
+  }
+}

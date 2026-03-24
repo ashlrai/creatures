@@ -1,82 +1,12 @@
-import { useCallback, useEffect, useRef } from 'react';
 import { useEvolutionStore } from '../../stores/evolutionStore';
+import { useEvolution } from '../../hooks/useEvolution';
 import { FitnessGraph } from './FitnessGraph';
-import type { GenerationStats } from '../../types/evolution';
-
-/**
- * Mock evolution data generator — simulates generations completing.
- * Will be replaced by real WebSocket events from the evolution API.
- */
-function useMockEvolution() {
-  const { currentRun, setRun, addGeneration } = useEvolutionStore();
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const start = useCallback(() => {
-    setRun({
-      id: `evo_${Date.now()}`,
-      status: 'running',
-      generation: 0,
-      n_generations: 100,
-      best_fitness: 0,
-      mean_fitness: 0,
-      population_size: 150,
-      organism: 'c_elegans',
-    });
-  }, [setRun]);
-
-  const pause = useCallback(() => {
-    if (currentRun) {
-      setRun({ ...currentRun, status: 'paused' });
-    }
-  }, [currentRun, setRun]);
-
-  const resume = useCallback(() => {
-    if (currentRun) {
-      setRun({ ...currentRun, status: 'running' });
-    }
-  }, [currentRun, setRun]);
-
-  useEffect(() => {
-    if (currentRun?.status === 'running') {
-      intervalRef.current = setInterval(() => {
-        const gen = useEvolutionStore.getState().currentRun?.generation ?? 0;
-        const nGens = useEvolutionStore.getState().currentRun?.n_generations ?? 100;
-        if (gen >= nGens) {
-          const run = useEvolutionStore.getState().currentRun;
-          if (run) setRun({ ...run, status: 'completed' });
-          return;
-        }
-
-        // Simulate improving fitness with noise
-        const progress = gen / nGens;
-        const bestFitness = 0.2 + progress * 0.7 + (Math.random() - 0.3) * 0.05;
-        const meanFitness = bestFitness * (0.5 + progress * 0.3) + (Math.random() - 0.5) * 0.03;
-
-        const stats: GenerationStats = {
-          generation: gen + 1,
-          best_fitness: Math.max(0, bestFitness),
-          mean_fitness: Math.max(0, meanFitness),
-          std_fitness: 0.1 - progress * 0.06,
-          n_species: Math.max(3, Math.round(12 - progress * 6 + Math.random() * 3)),
-          best_genome_id: `genome_${gen + 1}_best`,
-        };
-        addGeneration(stats);
-      }, 400);
-    }
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [currentRun?.status, setRun, addGeneration]);
-
-  return { start, pause, resume };
-}
 
 export function EvolutionDashboard() {
   const currentRun = useEvolutionStore((s) => s.currentRun);
   const fitnessHistory = useEvolutionStore((s) => s.fitnessHistory);
   const latestStats = useEvolutionStore((s) => s.latestStats);
-  const { start, pause, resume } = useMockEvolution();
+  const { start, pause, resume, backendAvailable } = useEvolution();
 
   const status = currentRun?.status ?? 'idle';
   const generation = currentRun?.generation ?? 0;
@@ -84,6 +14,13 @@ export function EvolutionDashboard() {
 
   return (
     <>
+      {/* Backend status banner — only shown when using mock data */}
+      {backendAvailable === false && status !== 'idle' && (
+        <div className="glass" style={{ padding: '6px 10px', fontSize: 10, color: 'var(--accent-amber)', textAlign: 'center' }}>
+          No backend — running local simulation
+        </div>
+      )}
+
       {/* Generation counter */}
       <div className="glass">
         <div className="glass-label">Evolution</div>
@@ -157,8 +94,8 @@ export function EvolutionDashboard() {
         <div className="glass-label">Controls</div>
         <div style={{ display: 'flex', gap: 6 }}>
           {status === 'idle' || status === 'completed' ? (
-            <button className="btn btn-primary" style={{ flex: 1 }} onClick={start}>
-              {status === 'completed' ? 'Restart' : 'Start'}
+            <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => start()}>
+              {status === 'completed' ? 'Restart' : 'Start Evolution'}
             </button>
           ) : status === 'running' ? (
             <button className="btn btn-amber" style={{ flex: 1 }} onClick={pause}>
@@ -169,7 +106,7 @@ export function EvolutionDashboard() {
               <button className="btn btn-primary" style={{ flex: 1 }} onClick={resume}>
                 Resume
               </button>
-              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={start}>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => start()}>
                 Restart
               </button>
             </>

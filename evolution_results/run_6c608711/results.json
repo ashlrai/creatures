@@ -1,0 +1,91 @@
+{
+  "run_id": "6c608711",
+  "organism": "c_elegans",
+  "config": {
+    "organism": "c_elegans",
+    "generations": 3,
+    "population": 5,
+    "fast": true,
+    "seed": 42,
+    "elitism": 3,
+    "crossover_rate": 0.3,
+    "mutation": {
+      "weight_perturb_rate": 0.8,
+      "weight_perturb_sigma": 0.1,
+      "weight_replace_rate": 0.1,
+      "weight_replace_range": [
+        -5.0,
+        5.0
+      ],
+      "add_synapse_rate": 0.05,
+      "remove_synapse_rate": 0.02,
+      "add_neuron_rate": 0.01,
+      "remove_neuron_rate": 0.005,
+      "max_neurons": 500,
+      "max_synapses": 10000,
+      "min_weight": -10.0,
+      "max_weight": 10.0,
+      "protect_sensory_motor": true
+    }
+  },
+  "total_elapsed_seconds": 0.22413206100463867,
+  "summary": {
+    "n_generations": 3,
+    "initial_fitness": 90.64255433384415,
+    "final_fitness": 90.64255433384415,
+    "fitness_improvement": 0.0,
+    "fitness_improvement_pct": 0.0,
+    "connections_preserved": 1.0,
+    "connections_modified": 0.10997114459762744,
+    "novel_connections": 0,
+    "deleted_connections": 0,
+    "novel_neurons": 0,
+    "weight_drift": 103.41665339411813,
+    "template_neurons": 299,
+    "evolved_neurons": 299,
+    "template_synapses": 3363,
+    "evolved_synapses": 3363
+  },
+  "drift": {
+    "preserved_fraction": 1.0,
+    "modified_weight_fraction": 0.10997114459762744,
+    "novel_synapses": 0,
+    "deleted_synapses": 0,
+    "novel_neurons": 0,
+    "total_weight_change": 103.41665339411813
+  },
+  "fitness_history": [
+    {
+      "generation": 0,
+      "best_fitness": 90.64255433384415,
+      "mean_fitness": 90.64255433384415,
+      "std_fitness": 0.0,
+      "n_species": 1,
+      "elapsed_seconds": 0.0025529861450195312
+    },
+    {
+      "generation": 1,
+      "best_fitness": 90.64255433384415,
+      "mean_fitness": 90.56067605507769,
+      "std_fitness": 0.16375655753291765,
+      "n_species": 1,
+      "elapsed_seconds": 0.0021278858184814453
+    },
+    {
+      "generation": 2,
+      "best_fitness": 90.64255433384415,
+      "mean_fitness": 90.64255433384415,
+      "std_fitness": 0.0,
+      "n_species": 1,
+      "elapsed_seconds": 0.002307891845703125
+    }
+  ],
+  "best_genome": {
+    "id": "4541d56a",
+    "generation": 2,
+    "fitness": 90.64255433384415,
+    "n_neurons": 299,
+    "n_synapses": 3363,
+    "hdf5_path": "evolution_results/run_6c608711/best_genome.h5"
+  }
+}

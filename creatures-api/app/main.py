@@ -12,7 +12,10 @@ from fastapi.middleware.cors import CORSMiddleware
 # Add creatures-core to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "creatures-core"))
 
+import asyncio
+
 from app.routers import evolution, experiments, morphology, neurons, ws
+from app.services.evolution_manager import EvolutionManager
 from app.services.simulation_manager import SimulationManager
 
 
@@ -23,6 +26,11 @@ async def lifespan(app: FastAPI):
     experiments.manager = manager
     neurons.manager = manager
     ws.manager = manager
+
+    evo_manager = EvolutionManager()
+    evo_manager.set_loop(asyncio.get_running_loop())
+    evolution.manager = evo_manager
+
     yield
 
 

@@ -4,18 +4,24 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from app.services.evolution_manager import EvolutionManager
+
 router = APIRouter(prefix="/evolution", tags=["evolution"])
 logger = logging.getLogger(__name__)
 
-# In-memory evolution state (replaced by proper manager later)
-_runs: dict[str, dict] = {}
-_subscribers: dict[str, list[asyncio.Queue]] = {}
+# Set by main.py lifespan
+manager: EvolutionManager | None = None
+
+
+def _mgr() -> EvolutionManager:
+    if manager is None:
+        raise RuntimeError("EvolutionManager not initialized")
+    return manager
 
 
 class EvolutionCreateRequest(BaseModel):
@@ -41,87 +47,71 @@ class EvolutionRunInfo(BaseModel):
 
 @router.post("/runs", response_model=EvolutionRunInfo)
 async def create_evolution_run(req: EvolutionCreateRequest):
-    """Create and start a new evolutionary run."""
-    import uuid
-    run_id = str(uuid.uuid4())[:8]
-
-    run = {
-        "id": run_id,
-        "organism": req.organism,
-        "status": "created",
-        "generation": 0,
-        "n_generations": req.n_generations,
-        "population_size": req.population_size,
-        "best_fitness": 0.0,
-        "mean_fitness": 0.0,
-        "elapsed_seconds": 0.0,
-        "config": req.model_dump(),
-        "history": [],
-    }
-    _runs[run_id] = run
-    _subscribers[run_id] = []
-
-    # TODO: Launch evolution in background process
-    # For now, return the created run
-    run["status"] = "ready"
-
-    return EvolutionRunInfo(**{k: v for k, v in run.items() if k in EvolutionRunInfo.model_fields})
+    """Create a new evolutionary run (loads connectome, initializes population)."""
+    run = _mgr().create_run(req.model_dump())
+    if run.status == "failed":
+        raise HTTPException(500, f"Failed to create run: {run.error}")
+    return EvolutionRunInfo(**run.to_info())
 
 
 @router.get("/runs", response_model=list[EvolutionRunInfo])
 async def list_runs():
     """List all evolution runs."""
-    return [
-        EvolutionRunInfo(**{k: v for k, v in r.items() if k in EvolutionRunInfo.model_fields})
-        for r in _runs.values()
-    ]
+    return [EvolutionRunInfo(**r.to_info()) for r in _mgr().list_runs()]
 
 
 @router.get("/runs/{run_id}", response_model=EvolutionRunInfo)
 async def get_run(run_id: str):
     """Get evolution run status."""
-    if run_id not in _runs:
+    run = _mgr().get_run(run_id)
+    if run is None:
         raise HTTPException(404, f"Run {run_id} not found")
-    r = _runs[run_id]
-    return EvolutionRunInfo(**{k: v for k, v in r.items() if k in EvolutionRunInfo.model_fields})
+    return EvolutionRunInfo(**run.to_info())
 
 
 @router.get("/runs/{run_id}/history")
 async def get_history(run_id: str):
     """Get fitness history for an evolution run."""
-    if run_id not in _runs:
+    try:
+        return _mgr().get_history(run_id)
+    except KeyError:
         raise HTTPException(404, f"Run {run_id} not found")
-    return _runs[run_id].get("history", [])
 
 
 @router.post("/runs/{run_id}/start")
 async def start_run(run_id: str):
     """Start or resume an evolution run."""
-    if run_id not in _runs:
+    try:
+        run = _mgr().start_run(run_id)
+        return {"status": run.status}
+    except KeyError:
         raise HTTPException(404, f"Run {run_id} not found")
-    _runs[run_id]["status"] = "running"
-    return {"status": "running"}
+    except ValueError as e:
+        raise HTTPException(409, str(e))
 
 
 @router.post("/runs/{run_id}/pause")
 async def pause_run(run_id: str):
     """Pause an evolution run."""
-    if run_id not in _runs:
+    try:
+        run = _mgr().pause_run(run_id)
+        return {"status": "pausing", "message": "Will pause after current generation"}
+    except KeyError:
         raise HTTPException(404, f"Run {run_id} not found")
-    _runs[run_id]["status"] = "paused"
-    return {"status": "paused"}
 
 
 @router.websocket("/ws/{run_id}")
 async def evolution_ws(websocket: WebSocket, run_id: str):
     """Stream evolution progress via WebSocket."""
-    if run_id not in _runs:
+    mgr = _mgr()
+    run = mgr.get_run(run_id)
+    if run is None:
         await websocket.close(code=1008, reason="Run not found")
         return
 
     await websocket.accept()
     queue: asyncio.Queue = asyncio.Queue(maxsize=50)
-    _subscribers.setdefault(run_id, []).append(queue)
+    mgr.subscribe(run_id, queue)
 
     try:
         while True:
@@ -130,5 +120,4 @@ async def evolution_ws(websocket: WebSocket, run_id: str):
     except WebSocketDisconnect:
         pass
     finally:
-        if run_id in _subscribers:
-            _subscribers[run_id] = [q for q in _subscribers[run_id] if q is not queue]
+        mgr.unsubscribe(run_id, queue)
