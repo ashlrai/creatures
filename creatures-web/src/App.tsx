@@ -1,6 +1,7 @@
-import { useCallback, useState, Component, type ReactNode } from 'react';
+import { useCallback, useState, useEffect, Component, type ReactNode } from 'react';
 import { Scene } from './components/Scene';
-import { NeuralActivityDisplay } from './components/ui/NeuralActivityDisplay';
+import { ConnectomeExplorer } from './components/ui/ConnectomeExplorer';
+import { DrugTestingPanel } from './components/ui/DrugTestingPanel';
 import { Waveform } from './components/ui/Waveform';
 import { EvolutionDashboard } from './components/ui/EvolutionDashboard';
 import { FitnessGraph } from './components/ui/FitnessGraph';
@@ -62,6 +63,16 @@ export default function App() {
   const [lesionInput, setLesionInput] = useState('');
   const [stimInput, setStimInput] = useState('');
   const [notification, setNotification] = useState<string | null>(null);
+
+  // Bridge custom events from child components to WebSocket
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail) sendCommand(detail);
+    };
+    window.addEventListener('neurevo-command', handler);
+    return () => window.removeEventListener('neurevo-command', handler);
+  }, [sendCommand]);
 
   const notify = (msg: string) => {
     setNotification(msg);
@@ -185,6 +196,7 @@ export default function App() {
                   <button className="btn btn-primary" onClick={() => { if (stimInput) { handleStim([stimInput]); setStimInput(''); }}}>Zap</button>
                 </div>
               </div>
+              <DrugTestingPanel isDemo={isDemo} />
             </>
           ) : (
             <div style={{ padding: 8, textAlign: 'center', opacity: 0.3, fontSize: 12 }}>
@@ -210,7 +222,7 @@ export default function App() {
               </div>
             </div>
           ) : (
-            experiment && <NeuralActivityDisplay />
+            experiment && <ConnectomeExplorer />
           )}
         </div>
       </div>

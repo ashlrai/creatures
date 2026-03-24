@@ -1,0 +1,545 @@
+import { useRef, useEffect, useState, useCallback } from 'react';
+import { useSimulationStore } from '../../stores/simulationStore';
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface ConnectomeNode {
+  id: string;
+  type: 'sensory' | 'inter' | 'motor';
+  nt: string | null;
+  x: number;
+  y: number;
+  z: number;
+}
+
+interface ConnectomeEdge {
+  pre: string;
+  post: string;
+  weight: number;
+  type: string;
+}
+
+interface ConnectomeGraph {
+  nodes: ConnectomeNode[];
+  edges: ConnectomeEdge[];
+  n_neurons: number;
+  n_edges: number;
+}
+
+interface NeuronTypeInfo {
+  type: string;
+  nt: string | null;
+}
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const TYPE_COLORS: Record<string, string> = {
+  sensory: '#22cc66',
+  inter: '#3388ff',
+  motor: '#ff4422',
+};
+
+const BG_COLOR = '#05050d';
+
+// ── Component ────────────────────────────────────────────────────────────────
+
+export function ConnectomeExplorer() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const frame = useSimulationStore((s) => s.frame);
+  const sendCommand = useSimulationStore((s) => s.experiment); // just for presence check
+
+  const [graph, setGraph] = useState<ConnectomeGraph | null>(null);
+  const [neuronTypes, setNeuronTypes] = useState<Record<string, NeuronTypeInfo>>({});
+  const [selectedNeuron, setSelectedNeuron] = useState<string | null>(null);
+  const [hoveredNeuron, setHoveredNeuron] = useState<string | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  // View transform state
+  const viewRef = useRef({ offsetX: 0, offsetY: 0, scale: 1 });
+  const dragRef = useRef<{ startX: number; startY: number; startOX: number; startOY: number } | null>(null);
+
+  // Precomputed layout positions (canvas coords)
+  const layoutRef = useRef<Map<string, { cx: number; cy: number }>>(new Map());
+  // Adjacency index
+  const adjRef = useRef<{ inDeg: Map<string, number>; outDeg: Map<string, number>; neighbors: Map<string, Set<string>> }>({
+    inDeg: new Map(), outDeg: new Map(), neighbors: new Map(),
+  });
+
+  // ── Data loading ─────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const base = import.meta.env.BASE_URL || '/';
+
+    const loadGraph = async () => {
+      try {
+        // Try API first, then static
+        let data: ConnectomeGraph;
+        try {
+          const res = await fetch('/api/morphology/connectome-graph');
+          if (!res.ok) throw new Error('api');
+          data = await res.json();
+        } catch {
+          const res = await fetch(`${base}connectome-graph.json`);
+          if (!res.ok) throw new Error('static');
+          data = await res.json();
+        }
+        setGraph(data);
+
+        // Build adjacency
+        const inDeg = new Map<string, number>();
+        const outDeg = new Map<string, number>();
+        const neighbors = new Map<string, Set<string>>();
+        for (const n of data.nodes) {
+          inDeg.set(n.id, 0);
+          outDeg.set(n.id, 0);
+          neighbors.set(n.id, new Set());
+        }
+        for (const e of data.edges) {
+          outDeg.set(e.pre, (outDeg.get(e.pre) ?? 0) + 1);
+          inDeg.set(e.post, (inDeg.get(e.post) ?? 0) + 1);
+          neighbors.get(e.pre)?.add(e.post);
+          neighbors.get(e.post)?.add(e.pre);
+        }
+        adjRef.current = { inDeg, outDeg, neighbors };
+      } catch (err) {
+        console.warn('ConnectomeExplorer: failed to load graph', err);
+      }
+    };
+
+    const loadTypes = async () => {
+      try {
+        const res = await fetch(`${base}neuron-types.json`);
+        if (res.ok) {
+          const data: Record<string, NeuronTypeInfo> = await res.json();
+          setNeuronTypes(data);
+        }
+      } catch {
+        // non-critical
+      }
+    };
+
+    loadGraph();
+    loadTypes();
+  }, []);
+
+  // ── Layout computation ───────────────────────────────────────────────────
+
+  const computeLayout = useCallback((nodes: ConnectomeNode[], canvasW: number, canvasH: number) => {
+    // Sort by x position (body axis: head=low x, tail=high x)
+    const sorted = [...nodes].sort((a, b) => a.x - b.x);
+    const minX = sorted[0]?.x ?? 0;
+    const maxX = sorted[sorted.length - 1]?.x ?? 1;
+    const rangeX = maxX - minX || 1;
+
+    const margin = 20;
+    const usableH = canvasH - margin * 2;
+    const usableW = canvasW - margin * 2;
+
+    const layout = new Map<string, { cx: number; cy: number }>();
+    for (const node of sorted) {
+      // Y = position along body axis (head top, tail bottom)
+      const tBody = (node.x - minX) / rangeX;
+      const cy = margin + tBody * usableH;
+
+      // X = z-axis (left/right separation) with jitter
+      const zNorm = node.z; // small range around 0
+      const cx = usableW / 2 + margin + zNorm * usableW * 40;
+
+      layout.set(node.id, { cx, cy });
+    }
+    layoutRef.current = layout;
+  }, []);
+
+  // ── Canvas rendering ─────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !graph) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // Recompute layout if needed
+    if (layoutRef.current.size === 0) {
+      computeLayout(graph.nodes, w, h);
+    }
+    const layout = layoutRef.current;
+    const view = viewRef.current;
+
+    // Clear
+    ctx.fillStyle = BG_COLOR;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.save();
+    ctx.translate(view.offsetX + w / 2, view.offsetY + h / 2);
+    ctx.scale(view.scale, view.scale);
+    ctx.translate(-w / 2, -h / 2);
+
+    // Firing rates lookup
+    const firingRates = frame?.firing_rates ?? [];
+    const rateMap = new Map<string, number>();
+    graph.nodes.forEach((n, i) => {
+      rateMap.set(n.id, firingRates[i] ?? 0);
+    });
+
+    // Selected neuron neighbors
+    const selectedNeighbors = selectedNeuron ? adjRef.current.neighbors.get(selectedNeuron) : null;
+
+    // Draw synapse lines (only between active neurons, or for selected neuron)
+    ctx.lineWidth = 0.5;
+    for (const edge of graph.edges) {
+      const prePos = layout.get(edge.pre);
+      const postPos = layout.get(edge.post);
+      if (!prePos || !postPos) continue;
+
+      const preRate = rateMap.get(edge.pre) ?? 0;
+      const postRate = rateMap.get(edge.post) ?? 0;
+
+      const isSelectedEdge = selectedNeuron && (edge.pre === selectedNeuron || edge.post === selectedNeuron);
+      const bothActive = preRate > 1 && postRate > 1;
+
+      if (!isSelectedEdge && !bothActive) continue;
+
+      if (isSelectedEdge) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.lineWidth = 1;
+      } else {
+        const alpha = Math.min(0.15, (preRate + postRate) / 200);
+        ctx.strokeStyle = `rgba(100, 150, 220, ${alpha})`;
+        ctx.lineWidth = 0.5;
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(prePos.cx, prePos.cy);
+      ctx.lineTo(postPos.cx, postPos.cy);
+      ctx.stroke();
+    }
+
+    // Draw neurons
+    for (const node of graph.nodes) {
+      const pos = layout.get(node.id);
+      if (!pos) continue;
+
+      const rate = rateMap.get(node.id) ?? 0;
+      const t = Math.min(rate / 80, 1);
+      const baseColor = TYPE_COLORS[node.type] ?? '#666';
+      const isSelected = node.id === selectedNeuron;
+      const isNeighbor = selectedNeighbors?.has(node.id) ?? false;
+      const isHovered = node.id === hoveredNeuron;
+
+      // Radius: 3-6px based on firing rate
+      const radius = 3 + t * 3;
+
+      // Dim non-related neurons when something is selected
+      let alpha = 1;
+      if (selectedNeuron && !isSelected && !isNeighbor) {
+        alpha = 0.2;
+      }
+
+      // Glow for active neurons
+      if (t > 0.2) {
+        ctx.save();
+        ctx.globalAlpha = t * 0.4 * alpha;
+        ctx.shadowColor = baseColor;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(pos.cx, pos.cy, radius * 1.8, 0, Math.PI * 2);
+        ctx.fillStyle = baseColor;
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Neuron circle
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.arc(pos.cx, pos.cy, radius, 0, Math.PI * 2);
+
+      if (t > 0.1) {
+        // Active: brighter version of type color
+        const brightness = 0.4 + t * 0.6;
+        ctx.fillStyle = adjustBrightness(baseColor, brightness);
+      } else {
+        // Quiet: dim
+        ctx.fillStyle = adjustBrightness(baseColor, 0.15);
+      }
+      ctx.fill();
+
+      // Selection ring
+      if (isSelected || isHovered) {
+        ctx.strokeStyle = isSelected ? '#ffffff' : 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = isSelected ? 2 : 1;
+        ctx.beginPath();
+        ctx.arc(pos.cx, pos.cy, radius + 3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.restore();
+
+    // Label in corner
+    ctx.fillStyle = 'rgba(140, 170, 200, 0.4)';
+    ctx.font = '10px monospace';
+    ctx.fillText(`${graph.nodes.length} neurons | ${graph.edges.length} synapses`, 6, h - 6);
+  }, [frame, graph, selectedNeuron, hoveredNeuron, computeLayout]);
+
+  // ── Hit testing ──────────────────────────────────────────────────────────
+
+  const hitTest = useCallback((clientX: number, clientY: number): string | null => {
+    const canvas = canvasRef.current;
+    if (!canvas || !graph) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const rawX = (clientX - rect.left) * scaleX;
+    const rawY = (clientY - rect.top) * scaleY;
+
+    const view = viewRef.current;
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // Reverse the view transform
+    const canvasX = (rawX - view.offsetX - w / 2) / view.scale + w / 2;
+    const canvasY = (rawY - view.offsetY - h / 2) / view.scale + h / 2;
+
+    const layout = layoutRef.current;
+    let closest: string | null = null;
+    let closestDist = 12; // hit radius in canvas px
+
+    for (const node of graph.nodes) {
+      const pos = layout.get(node.id);
+      if (!pos) continue;
+      const dx = canvasX - pos.cx;
+      const dy = canvasY - pos.cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = node.id;
+      }
+    }
+    return closest;
+  }, [graph]);
+
+  // ── Mouse handlers ───────────────────────────────────────────────────────
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    setMousePos({ x: e.clientX, y: e.clientY });
+
+    if (dragRef.current) {
+      const dx = e.clientX - dragRef.current.startX;
+      const dy = e.clientY - dragRef.current.startY;
+      viewRef.current.offsetX = dragRef.current.startOX + dx;
+      viewRef.current.offsetY = dragRef.current.startOY + dy;
+      return;
+    }
+
+    const hit = hitTest(e.clientX, e.clientY);
+    setHoveredNeuron(hit);
+  }, [hitTest]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startOX: viewRef.current.offsetX,
+      startOY: viewRef.current.offsetY,
+    };
+  }, []);
+
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    if (dragRef.current) {
+      const dx = Math.abs(e.clientX - dragRef.current.startX);
+      const dy = Math.abs(e.clientY - dragRef.current.startY);
+      dragRef.current = null;
+
+      // If barely moved, treat as click
+      if (dx < 3 && dy < 3) {
+        const hit = hitTest(e.clientX, e.clientY);
+        setSelectedNeuron((prev) => (prev === hit ? null : hit));
+      }
+    }
+  }, [hitTest]);
+
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newScale = Math.max(0.3, Math.min(5, viewRef.current.scale * delta));
+    viewRef.current.scale = newScale;
+  }, []);
+
+  // ── Stimulate / Lesion commands ──────────────────────────────────────────
+
+  const sendWsCommand = useCallback((cmd: Record<string, unknown>) => {
+    // Access the WebSocket via a custom event — App.tsx listens
+    window.dispatchEvent(new CustomEvent('neurevo-command', { detail: cmd }));
+  }, []);
+
+  const handleStimulate = useCallback(() => {
+    if (!selectedNeuron) return;
+    sendWsCommand({ type: 'stimulate', neuron_ids: [selectedNeuron], current: 30 });
+  }, [selectedNeuron, sendWsCommand]);
+
+  const handleLesion = useCallback(() => {
+    if (!selectedNeuron) return;
+    sendWsCommand({ type: 'lesion_neuron', neuron_id: selectedNeuron });
+  }, [selectedNeuron, sendWsCommand]);
+
+  // ── Resize observer for canvas dimensions ────────────────────────────────
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    if (!container || !canvas) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        const dpr = 1; // keep 1:1 for perf on canvas
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        // Recompute layout
+        if (graph) {
+          computeLayout(graph.nodes, canvas.width, canvas.height);
+        }
+      }
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [graph, computeLayout]);
+
+  // ── Derive selected neuron info ──────────────────────────────────────────
+
+  const selectedInfo = selectedNeuron ? (() => {
+    const node = graph?.nodes.find((n) => n.id === selectedNeuron);
+    const typeInfo = neuronTypes[selectedNeuron];
+    const rate = (() => {
+      if (!frame?.firing_rates || !graph) return 0;
+      const idx = graph.nodes.findIndex((n) => n.id === selectedNeuron);
+      return idx >= 0 ? frame.firing_rates[idx] ?? 0 : 0;
+    })();
+    const inDeg = adjRef.current.inDeg.get(selectedNeuron) ?? 0;
+    const outDeg = adjRef.current.outDeg.get(selectedNeuron) ?? 0;
+    return {
+      name: selectedNeuron,
+      type: node?.type ?? typeInfo?.type ?? 'unknown',
+      nt: node?.nt ?? typeInfo?.nt ?? 'unknown',
+      rate,
+      inDeg,
+      outDeg,
+    };
+  })() : null;
+
+  // ── Tooltip info ─────────────────────────────────────────────────────────
+
+  const tooltipInfo = hoveredNeuron && hoveredNeuron !== selectedNeuron ? (() => {
+    const node = graph?.nodes.find((n) => n.id === hoveredNeuron);
+    const typeInfo = neuronTypes[hoveredNeuron];
+    const rate = (() => {
+      if (!frame?.firing_rates || !graph) return 0;
+      const idx = graph.nodes.findIndex((n) => n.id === hoveredNeuron);
+      return idx >= 0 ? frame.firing_rates[idx] ?? 0 : 0;
+    })();
+    return {
+      name: hoveredNeuron,
+      type: node?.type ?? typeInfo?.type ?? 'unknown',
+      nt: node?.nt ?? typeInfo?.nt ?? 'unknown',
+      rate,
+    };
+  })() : null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
+      {/* Canvas area */}
+      <div
+        ref={containerRef}
+        className="glass"
+        style={{ flex: 1, padding: 0, overflow: 'hidden', position: 'relative', minHeight: 200, cursor: dragRef.current ? 'grabbing' : 'crosshair' }}
+      >
+        <div className="glass-label" style={{ position: 'absolute', top: 8, left: 10, zIndex: 2 }}>
+          Connectome Explorer
+        </div>
+        <canvas
+          ref={canvasRef}
+          style={{ width: '100%', height: '100%', display: 'block' }}
+          onMouseMove={handleMouseMove}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={() => { setHoveredNeuron(null); dragRef.current = null; }}
+          onWheel={handleWheel}
+        />
+
+        {/* Tooltip */}
+        {tooltipInfo && (
+          <div
+            className="connectome-tooltip"
+            style={{
+              left: mousePos.x - (containerRef.current?.getBoundingClientRect().left ?? 0) + 12,
+              top: mousePos.y - (containerRef.current?.getBoundingClientRect().top ?? 0) - 10,
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 12 }}>{tooltipInfo.name}</div>
+            <div style={{ fontSize: 10, color: TYPE_COLORS[tooltipInfo.type] ?? '#888' }}>
+              {tooltipInfo.type} | {tooltipInfo.nt ?? 'unknown'}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-label)' }}>
+              Firing: {tooltipInfo.rate.toFixed(1)} Hz
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Selected neuron detail */}
+      {selectedInfo && (
+        <div className="neuron-detail">
+          <div style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
+            {selectedInfo.name}
+          </div>
+          <div style={{ fontSize: 11, color: TYPE_COLORS[selectedInfo.type] ?? '#888', marginTop: 2 }}>
+            {selectedInfo.type} | {selectedInfo.nt}
+          </div>
+          <div className="stat-row" style={{ marginTop: 6 }}>
+            <span className="stat-label">Firing rate</span>
+            <span className="stat-value stat-cyan" style={{ fontSize: 13 }}>
+              {selectedInfo.rate.toFixed(1)} Hz
+            </span>
+          </div>
+          <div className="stat-row">
+            <span className="stat-label">In-degree</span>
+            <span className="stat-value" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              {selectedInfo.inDeg}
+            </span>
+          </div>
+          <div className="stat-row">
+            <span className="stat-label">Out-degree</span>
+            <span className="stat-value" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              {selectedInfo.outDeg}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button className="btn btn-primary" style={{ flex: 1, fontSize: 11 }} onClick={handleStimulate}>
+              Stimulate
+            </button>
+            <button className="btn btn-danger" style={{ flex: 1, fontSize: 11 }} onClick={handleLesion}>
+              Lesion
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function adjustBrightness(hex: string, factor: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgb(${Math.round(r * factor)}, ${Math.round(g * factor)}, ${Math.round(b * factor)})`;
+}

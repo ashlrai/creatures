@@ -527,6 +527,63 @@ body {
   transform: none;
 }
 
+/* Drug testing panel */
+.drug-card {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid;
+  transition: border-color 0.2s, background 0.2s;
+}
+.drug-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.drug-apply-btn {
+  padding: 3px 10px;
+  border-radius: 5px;
+  border: none;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.15s;
+  white-space: nowrap;
+}
+.drug-apply-btn:hover:not(:disabled) {
+  opacity: 0.85;
+  transform: scale(1.05);
+}
+.drug-apply-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Connectome explorer */
+.connectome-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(6, 8, 18, 0.92);
+  border: 1px solid rgba(80, 130, 200, 0.15);
+  backdrop-filter: blur(12px);
+  border-radius: 6px;
+  padding: 6px 10px;
+  z-index: 10;
+  white-space: nowrap;
+}
+
+.neuron-detail {
+  background: rgba(10, 14, 26, 0.6);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  transition: border-color 0.2s;
+}
+.neuron-detail:hover {
+  border-color: var(--border-active);
+}
+
 /* Event notification */
 @keyframes notifySlide {
   from { transform: translateY(-20px); opacity: 0; }
