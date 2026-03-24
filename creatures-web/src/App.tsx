@@ -3,6 +3,7 @@ import { Scene } from './components/Scene';
 import { NeuralActivityDisplay } from './components/ui/NeuralActivityDisplay';
 import { Waveform } from './components/ui/Waveform';
 import { useSimulation } from './hooks/useSimulation';
+import { useDemoMode } from './hooks/useDemoMode';
 import { useSimulationStore } from './stores/simulationStore';
 
 export default function App() {
@@ -10,6 +11,7 @@ export default function App() {
     createExperiment, connect, poke, stimulate, pause, resume, sendCommand,
     connected, experiment,
   } = useSimulation();
+  const { startDemo, isDemo } = useDemoMode();
   const frame = useSimulationStore((s) => s.frame);
   const loading = useSimulationStore((s) => s.loading);
   const error = useSimulationStore((s) => s.error);
@@ -25,9 +27,14 @@ export default function App() {
   };
 
   const handleStart = useCallback(async (organism: string) => {
-    const exp = await createExperiment(organism);
-    connect(exp.id);
-  }, [createExperiment, connect]);
+    try {
+      const exp = await createExperiment(organism);
+      connect(exp.id);
+    } catch {
+      // API not available — fall back to demo mode
+      await startDemo();
+    }
+  }, [createExperiment, connect, startDemo]);
 
   const handleLesion = useCallback((id: string) => {
     sendCommand({ type: 'lesion_neuron', neuron_id: id });
