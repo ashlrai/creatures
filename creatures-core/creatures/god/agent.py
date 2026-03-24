@@ -203,6 +203,7 @@ genuine scientific insight about how neural circuits evolve and adapt."""
         gen = recent.get("generation", 0)
         best = recent.get("best_fitness", 0)
         mean = recent.get("mean_fitness", 0)
+        std = recent.get("std_fitness", 0)
 
         interventions = []
 
@@ -230,6 +231,46 @@ genuine scientific insight about how neural circuits evolve and adapt."""
                         "reasoning": "More food sources create new selection pressure",
                     }
                 )
+                # Increase selection pressure when stagnating
+                interventions.append(
+                    {
+                        "type": "selection",
+                        "action": "increase_selection_pressure",
+                        "parameters": {"tournament_size": 7},
+                        "reasoning": (
+                            "Larger tournaments increase selection pressure to "
+                            "break through fitness plateau"
+                        ),
+                    }
+                )
+
+        # Detect convergence (low diversity)
+        if std < 1.0 and len(self.observations) >= 3:
+            interventions.append(
+                {
+                    "type": "diversity",
+                    "action": "inject_migrants",
+                    "parameters": {"n_migrants": 5},
+                    "reasoning": (
+                        f"Population converged (std_fitness={std:.2f}). "
+                        "Injecting migrants to restore diversity."
+                    ),
+                }
+            )
+
+        # Detect organisms not exploring (low mean but ok best)
+        if best > 0 and mean < best * 0.3 and gen >= 5:
+            interventions.append(
+                {
+                    "type": "fitness",
+                    "action": "rebalance_fitness_weights",
+                    "parameters": {"w_distance": 2.0, "w_efficiency": 0.2},
+                    "reasoning": (
+                        "Most organisms inactive — boosting distance reward "
+                        "and reducing efficiency penalty to encourage exploration"
+                    ),
+                }
+            )
 
         # Every 20 generations, shake things up
         if gen > 0 and gen % 20 == 0:
@@ -245,7 +286,7 @@ genuine scientific insight about how neural circuits evolve and adapt."""
             )
 
         return {
-            "analysis": f"Generation {gen}: best={best:.2f}, mean={mean:.2f}",
+            "analysis": f"Generation {gen}: best={best:.2f}, mean={mean:.2f}, std={std:.2f}",
             "fitness_trend": "stagnating" if len(interventions) > 0 else "stable",
             "interventions": interventions,
             "hypothesis": (
@@ -254,7 +295,7 @@ genuine scientific insight about how neural circuits evolve and adapt."""
             ),
             "report": (
                 f"After {gen} generations, organisms achieve fitness {best:.2f}. "
-                f"Population diversity: mean={mean:.2f}."
+                f"Population diversity: mean={mean:.2f}, std={std:.2f}."
             ),
         }
 
@@ -291,10 +332,40 @@ genuine scientific insight about how neural circuits evolve and adapt."""
                     )
 
             elif action_type == "fitness" and fitness_config is not None:
-                for key in ["w_distance", "w_food", "w_efficiency"]:
+                # Robust fitness weight tuning — handle all known keys
+                fitness_keys = [
+                    "w_distance", "w_food", "w_efficiency",
+                    "lifetime_ms", "poke_force",
+                ]
+                for key in fitness_keys:
                     if key in params:
                         setattr(fitness_config, key, params[key])
                         applied.append(f"Fitness {key} -> {params[key]}")
+
+            elif action_type == "diversity" and population is not None:
+                # Inject random migrants to break convergence
+                import numpy as np
+                from creatures.evolution.mutation import MutationConfig as _MC
+                from creatures.evolution.mutation import mutate as _mutate
+
+                n_migrants = params.get("n_migrants", 3)
+                rng = np.random.default_rng()
+                for _ in range(n_migrants):
+                    migrant = population.genomes[0].clone()
+                    heavy_mutation = _MC(
+                        weight_perturb_sigma=0.5,
+                        weight_perturb_rate=1.0,
+                    )
+                    migrant = _mutate(migrant, heavy_mutation, rng)
+                    population.genomes.append(migrant)
+                applied.append(f"Injected {n_migrants} random migrants")
+
+            elif action_type == "selection" and population is not None:
+                if "tournament_size" in params:
+                    population._config.tournament_size = params["tournament_size"]
+                    applied.append(
+                        f"Tournament size -> {params['tournament_size']}"
+                    )
 
             elif action_type == "environment" and arena is not None:
                 if action.get("action") == "add_food":

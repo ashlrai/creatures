@@ -47,6 +47,8 @@ export function ConnectomeExplorer() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const frame = useSimulationStore((s) => s.frame);
+  const experiment = useSimulationStore((s) => s.experiment);
+  const organism = experiment?.organism ?? 'c_elegans';
 
   const [graph, setGraph] = useState<ConnectomeGraph | null>(null);
   const [neuronTypes, setNeuronTypes] = useState<Record<string, NeuronTypeInfo>>({});
@@ -68,45 +70,133 @@ export function ConnectomeExplorer() {
 
   // ── Data loading ─────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    const base = import.meta.env.BASE_URL || '/';
+  /** Build adjacency index from a ConnectomeGraph */
+  const buildAdjacency = useCallback((data: ConnectomeGraph) => {
+    const inDeg = new Map<string, number>();
+    const outDeg = new Map<string, number>();
+    const neighbors = new Map<string, Set<string>>();
+    for (const n of data.nodes) {
+      inDeg.set(n.id, 0);
+      outDeg.set(n.id, 0);
+      neighbors.set(n.id, new Set());
+    }
+    for (const e of data.edges) {
+      outDeg.set(e.pre, (outDeg.get(e.pre) ?? 0) + 1);
+      inDeg.set(e.post, (inDeg.get(e.post) ?? 0) + 1);
+      neighbors.get(e.pre)?.add(e.post);
+      neighbors.get(e.post)?.add(e.pre);
+    }
+    adjRef.current = { inDeg, outDeg, neighbors };
+  }, []);
 
-    const loadGraph = async () => {
-      try {
-        // Try API first, then static
-        let data: ConnectomeGraph;
-        try {
-          const res = await fetch('/api/morphology/connectome-graph');
-          if (!res.ok) throw new Error('api');
-          data = await res.json();
-        } catch {
-          const res = await fetch(`${base}connectome-graph.json`);
-          if (!res.ok) throw new Error('static');
-          data = await res.json();
-        }
-        setGraph(data);
-
-        // Build adjacency
-        const inDeg = new Map<string, number>();
-        const outDeg = new Map<string, number>();
-        const neighbors = new Map<string, Set<string>>();
-        for (const n of data.nodes) {
-          inDeg.set(n.id, 0);
-          outDeg.set(n.id, 0);
-          neighbors.set(n.id, new Set());
-        }
-        for (const e of data.edges) {
-          outDeg.set(e.pre, (outDeg.get(e.pre) ?? 0) + 1);
-          inDeg.set(e.post, (inDeg.get(e.post) ?? 0) + 1);
-          neighbors.get(e.pre)?.add(e.post);
-          neighbors.get(e.post)?.add(e.pre);
-        }
-        adjRef.current = { inDeg, outDeg, neighbors };
-      } catch (err) {
-        console.warn('ConnectomeExplorer: failed to load graph', err);
-      }
+  /** Generate a synthetic Drosophila connectome graph */
+  const generateFlyGraph = useCallback((nNeurons: number, nSynapses: number) => {
+    // Seeded pseudo-random for deterministic generation
+    const seededRand = (seed: number) => {
+      let x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+      return x - Math.floor(x);
     };
 
+    const nodes: ConnectomeNode[] = [];
+    const neurotransmitters = ['ACh', 'GABA', 'Glu', 'DA', '5-HT'];
+
+    // ~10% sensory, ~70% interneuron, ~20% motor/descending
+    for (let i = 0; i < nNeurons; i++) {
+      const r = seededRand(i * 13 + 7);
+      let type: 'sensory' | 'inter' | 'motor';
+      if (r < 0.10) type = 'sensory';
+      else if (r < 0.80) type = 'inter';
+      else type = 'motor';
+
+      // Positional layout: sensory at top (low x), motor at bottom (high x)
+      let xBase: number;
+      if (type === 'sensory') xBase = seededRand(i * 3 + 1) * 0.25;
+      else if (type === 'inter') xBase = 0.2 + seededRand(i * 3 + 2) * 0.6;
+      else xBase = 0.7 + seededRand(i * 3 + 3) * 0.3;
+
+      nodes.push({
+        id: `FBN${String(i).padStart(5, '0')}`,
+        type,
+        nt: neurotransmitters[Math.floor(seededRand(i * 11 + 5) * neurotransmitters.length)],
+        x: xBase,
+        y: seededRand(i * 17 + 9) * 0.8 + 0.1,
+        z: (seededRand(i * 23 + 11) - 0.5) * 0.002,
+      });
+    }
+
+    // Generate random edges, biased toward feed-forward (sensory -> inter -> motor)
+    const typeOrder: Record<string, number> = { sensory: 0, inter: 1, motor: 2 };
+    const edges: ConnectomeEdge[] = [];
+    const edgeTypes = ['chemical', 'electrical'];
+    const maxAttempts = nSynapses * 3;
+    const edgeSet = new Set<string>();
+
+    for (let attempt = 0; attempt < maxAttempts && edges.length < nSynapses; attempt++) {
+      const preIdx = Math.floor(seededRand(attempt * 37 + 1) * nNeurons);
+      const postIdx = Math.floor(seededRand(attempt * 41 + 3) * nNeurons);
+      if (preIdx === postIdx) continue;
+
+      const key = `${preIdx}-${postIdx}`;
+      if (edgeSet.has(key)) continue;
+
+      // Bias toward feed-forward connections (70% chance)
+      const preOrder = typeOrder[nodes[preIdx].type] ?? 1;
+      const postOrder = typeOrder[nodes[postIdx].type] ?? 1;
+      if (preOrder > postOrder && seededRand(attempt * 53 + 7) < 0.7) continue;
+
+      edgeSet.add(key);
+      edges.push({
+        pre: nodes[preIdx].id,
+        post: nodes[postIdx].id,
+        weight: Math.floor(seededRand(attempt * 59 + 11) * 5) + 1,
+        type: edgeTypes[seededRand(attempt * 67 + 13) < 0.85 ? 0 : 1],
+      });
+    }
+
+    const data: ConnectomeGraph = { nodes, edges, n_neurons: nodes.length, n_edges: edges.length };
+    setGraph(data);
+    buildAdjacency(data);
+    // Reset layout so it recomputes on next render
+    layoutRef.current = new Map();
+    setSelectedNeuron(null);
+    setHoveredNeuron(null);
+  }, [buildAdjacency]);
+
+  /** Load C. elegans connectome from API or static file */
+  const loadCelegansGraph = useCallback(async () => {
+    const base = import.meta.env.BASE_URL || '/';
+    try {
+      let data: ConnectomeGraph;
+      try {
+        const res = await fetch('/api/morphology/connectome-graph');
+        if (!res.ok) throw new Error('api');
+        data = await res.json();
+      } catch {
+        const res = await fetch(`${base}connectome-graph.json`);
+        if (!res.ok) throw new Error('static');
+        data = await res.json();
+      }
+      setGraph(data);
+      buildAdjacency(data);
+      // Reset layout so it recomputes on next render
+      layoutRef.current = new Map();
+      setSelectedNeuron(null);
+      setHoveredNeuron(null);
+    } catch (err) {
+      console.warn('ConnectomeExplorer: failed to load C. elegans graph', err);
+    }
+  }, [buildAdjacency]);
+
+  useEffect(() => {
+    if (organism === 'drosophila') {
+      generateFlyGraph(experiment?.n_neurons ?? 500, experiment?.n_synapses ?? 10000);
+    } else {
+      loadCelegansGraph();
+    }
+  }, [organism, experiment?.n_neurons, experiment?.n_synapses, generateFlyGraph, loadCelegansGraph]);
+
+  useEffect(() => {
+    const base = import.meta.env.BASE_URL || '/';
     const loadTypes = async () => {
       try {
         const res = await fetch(`${base}neuron-types.json`);
@@ -118,8 +208,6 @@ export function ConnectomeExplorer() {
         // non-critical
       }
     };
-
-    loadGraph();
     loadTypes();
   }, []);
 
@@ -306,8 +394,8 @@ export function ConnectomeExplorer() {
     // Label in corner
     ctx.fillStyle = 'rgba(140, 170, 200, 0.4)';
     ctx.font = '10px monospace';
-    ctx.fillText(`${graph.nodes.length} neurons | ${graph.edges.length} synapses`, 6, h - 6);
-  }, [frame, graph, selectedNeuron, hoveredNeuron, computeLayout, viewVersion]);
+    ctx.fillText(`${experiment?.n_neurons ?? graph.nodes.length} neurons | ${experiment?.n_synapses ?? graph.edges.length} synapses`, 6, h - 6);
+  }, [frame, graph, selectedNeuron, hoveredNeuron, computeLayout, viewVersion, experiment]);
 
   // ── Hit testing ──────────────────────────────────────────────────────────
 
@@ -473,7 +561,7 @@ export function ConnectomeExplorer() {
         style={{ flex: 1, padding: 0, overflow: 'hidden', position: 'relative', minHeight: 200, cursor: dragRef.current ? 'grabbing' : 'crosshair' }}
       >
         <div className="glass-label" style={{ position: 'absolute', top: 8, left: 10, zIndex: 2 }}>
-          Connectome Explorer
+          Connectome Explorer — {organism === 'drosophila' ? 'Drosophila' : 'C. elegans'}
         </div>
         <canvas
           ref={canvasRef}

@@ -9,6 +9,7 @@ import { GodAgentPanel } from './components/ui/GodAgentPanel';
 import { ArenaView } from './components/evolution/ArenaView';
 import { ConnectomeComparison } from './components/evolution/ConnectomeComparison';
 import { GenerationTimeline } from './components/evolution/GenerationTimeline';
+import { EcosystemView } from './components/ecosystem/EcosystemView';
 import { useSimulation } from './hooks/useSimulation';
 import { useDemoMode } from './hooks/useDemoMode';
 import { useLocalStorage } from './hooks/useLocalStorage';
@@ -117,6 +118,7 @@ export default function App() {
   const connectionStatus = useSimulationStore((s) => s.connectionStatus);
   const reconnectAttempts = useSimulationStore((s) => s.reconnectAttempts);
 
+  const [appMode, setAppMode] = useState<'sim' | 'evo' | 'eco'>('sim');
   const [lesionInput, setLesionInput] = useState('');
   const [stimInput, setStimInput] = useState('');
   const [notification, setNotification] = useState<string | null>(null);
@@ -125,6 +127,9 @@ export default function App() {
   const [hasInteracted, setHasInteracted] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [ecosystemId, setEcosystemId] = useState<string | null>(null);
+  const [ecoStats, setEcoStats] = useState<{ c_elegans: number; drosophila: number; food: number } | null>(null);
+  const [ecoLoading, setEcoLoading] = useState(false);
   const autoStarted = useRef(false);
 
   // --- Local storage persistence ---
@@ -133,15 +138,28 @@ export default function App() {
   const [drugPanelExpanded, setDrugPanelExpanded] = useLocalStorage<boolean>('neurevo:drugPanelExpanded', false);
   const [savedGeneration, setSavedGeneration] = useLocalStorage<number>('neurevo:lastGeneration', 0);
 
+  // Sync appMode with evolution store for backward compatibility
+  useEffect(() => {
+    if (appMode === 'evo' && !isEvolutionMode) {
+      toggleEvolutionMode();
+    } else if (appMode !== 'evo' && isEvolutionMode) {
+      toggleEvolutionMode();
+    }
+  }, [appMode, isEvolutionMode, toggleEvolutionMode]);
+
   // Sync evolution mode from/to localStorage
   useEffect(() => {
-    setSavedMode(isEvolutionMode ? 'evo' : 'sim');
-  }, [isEvolutionMode, setSavedMode]);
+    setSavedMode(appMode === 'evo' ? 'evo' : 'sim');
+  }, [appMode, setSavedMode]);
 
-  // Restore evolution mode from localStorage on mount
+  // Restore mode from localStorage / hash on mount
   useEffect(() => {
-    if (savedMode === 'evo' && !isEvolutionMode) {
-      toggleEvolutionMode();
+    // Check hash first
+    const hash = window.location.hash.replace(/^#\/?/, '');
+    if (hash === 'eco') {
+      setAppMode('eco');
+    } else if (savedMode === 'evo') {
+      setAppMode('evo');
     }
     // Only on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -237,22 +255,30 @@ export default function App() {
   }, [createExperiment, connect, startDemo, setSavedOrganism]);
 
   // --- Hash-based URL routing ---
+  // Eco mode is handled outside the hash router since HashState only supports sim/evo
   const hashState = useMemo<HashState>(() => ({
-    mode: isEvolutionMode ? 'evo' : 'sim',
+    mode: appMode === 'evo' ? 'evo' : 'sim',
     organism: currentOrganism,
     compare: showConnectomeComparison,
-  }), [isEvolutionMode, currentOrganism, showConnectomeComparison]);
+  }), [appMode, currentOrganism, showConnectomeComparison]);
+
+  // Manually set hash for eco mode
+  useEffect(() => {
+    if (appMode === 'eco' && window.location.hash !== '#/eco') {
+      window.location.hash = '#/eco';
+    }
+  }, [appMode]);
 
   const handleHashChange = useCallback((state: HashState) => {
     // Sync mode
-    if (state.mode === 'evo' && !useEvolutionStore.getState().isEvolutionMode) {
-      toggleEvolutionMode();
-    } else if (state.mode === 'sim' && useEvolutionStore.getState().isEvolutionMode) {
-      toggleEvolutionMode();
+    if (state.mode === 'evo') {
+      setAppMode('evo');
+    } else {
+      setAppMode('sim');
     }
     // Sync connectome comparison
     setShowConnectomeComparison(state.compare);
-  }, [toggleEvolutionMode]);
+  }, []);
 
   // Handle organism change from hash separately to avoid stale closure
   const handleHashChangeWithOrganism = useCallback((state: HashState) => {
@@ -262,6 +288,18 @@ export default function App() {
       handleSwitchOrganism(state.organism);
     }
   }, [handleHashChange, savedOrganism, handleSwitchOrganism]);
+
+  // Listen for eco hash on popstate/hashchange
+  useEffect(() => {
+    const handler = () => {
+      const hash = window.location.hash.replace(/^#\/?/, '');
+      if (hash === 'eco') {
+        setAppMode('eco');
+      }
+    };
+    window.addEventListener('hashchange', handler);
+    return () => window.removeEventListener('hashchange', handler);
+  }, []);
 
   useHashRouter(hashState, handleHashChangeWithOrganism);
 
@@ -309,7 +347,7 @@ export default function App() {
         handlePoke(pokeSegments.head);
       } else if (key === 'e') {
         markInteracted();
-        toggleEvolutionMode();
+        setAppMode((m) => m === 'sim' ? 'evo' : m === 'evo' ? 'eco' : 'sim');
       } else if (key === '?') {
         setShowShortcuts((s) => !s);
       } else if (key === 'escape') {
@@ -359,16 +397,22 @@ export default function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
           <div className="mode-switch">
             <button
-              className={`mode-switch-btn${!isEvolutionMode ? ' active' : ''}`}
-              onClick={() => { if (isEvolutionMode) toggleEvolutionMode(); }}
+              className={`mode-switch-btn${appMode === 'sim' ? ' active' : ''}`}
+              onClick={() => setAppMode('sim')}
             >
               Simulation
             </button>
             <button
-              className={`mode-switch-btn${isEvolutionMode ? ' active' : ''}`}
-              onClick={() => { if (!isEvolutionMode) toggleEvolutionMode(); }}
+              className={`mode-switch-btn${appMode === 'evo' ? ' active' : ''}`}
+              onClick={() => setAppMode('evo')}
             >
               Evolution
+            </button>
+            <button
+              className={`mode-switch-btn${appMode === 'eco' ? ' active' : ''}`}
+              onClick={() => setAppMode('eco')}
+            >
+              Ecosystem
             </button>
           </div>
           <ConnectionIndicator status={connectionStatus} connected={connected} attempts={reconnectAttempts} />
@@ -388,7 +432,116 @@ export default function App() {
       <div className="app-content">
         {/* Left sidebar */}
         <div className="sidebar">
-          {isEvolutionMode ? (
+          {appMode === 'eco' ? (
+            <>
+              <div className="glass">
+                <div className="glass-label">Ecosystem Controls</div>
+                <button
+                  className="btn btn-primary"
+                  style={{ width: '100%', marginBottom: 8 }}
+                  disabled={ecoLoading}
+                  onClick={async () => {
+                    setEcoLoading(true);
+                    try {
+                      const res = await fetch('/api/ecosystem', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ populations: { c_elegans: 20, drosophila: 5 } }),
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        setEcosystemId(data.id ?? data.ecosystem_id ?? null);
+                        notify('Ecosystem created');
+                      } else {
+                        notify('Ecosystem API unavailable — using local sim');
+                      }
+                    } catch {
+                      notify('Ecosystem API unavailable — using local sim');
+                    } finally {
+                      setEcoLoading(false);
+                    }
+                  }}
+                >
+                  {ecoLoading ? 'Creating...' : 'Create Ecosystem'}
+                </button>
+                {ecosystemId && (
+                  <div style={{ fontSize: 10, color: 'var(--text-label)', marginBottom: 4 }}>
+                    ID: {ecosystemId.slice(0, 8)}...
+                  </div>
+                )}
+              </div>
+              <div className="glass">
+                <div className="glass-label">Population</div>
+                <div className="stat-row">
+                  <span className="stat-label">C. elegans</span>
+                  <span className="stat-value stat-cyan">{ecoStats?.c_elegans ?? 20}</span>
+                </div>
+                <div className="stat-row">
+                  <span className="stat-label">Drosophila</span>
+                  <span className="stat-value stat-amber">{ecoStats?.drosophila ?? 5}</span>
+                </div>
+                <div className="stat-row">
+                  <span className="stat-label">Food sources</span>
+                  <span className="stat-value stat-green">{ecoStats?.food ?? 12}</span>
+                </div>
+                <div className="stat-row">
+                  <span className="stat-label">Species</span>
+                  <span className="stat-value" style={{ color: 'var(--text-secondary)' }}>2</span>
+                </div>
+              </div>
+              <div className="glass">
+                <div className="glass-label">Environmental Events</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {([
+                    { type: 'food_scarcity', label: 'Food Scarcity', cls: 'btn-danger' },
+                    { type: 'predator_surge', label: 'Predator Surge', cls: 'btn-amber' },
+                    { type: 'mutation_burst', label: 'Mutation Burst', cls: 'btn-primary' },
+                    { type: 'climate_shift', label: 'Climate Shift', cls: 'btn-ghost' },
+                  ] as const).map(({ type, label, cls }) => (
+                    <button
+                      key={type}
+                      className={`btn ${cls}`}
+                      style={{ width: '100%' }}
+                      onClick={async () => {
+                        if (!ecosystemId) {
+                          notify(`${label} triggered (local)`);
+                          return;
+                        }
+                        try {
+                          const res = await fetch(`/api/ecosystem/${ecosystemId}/event`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ type }),
+                          });
+                          if (res.ok) {
+                            notify(`${label} event triggered`);
+                            // Refresh stats
+                            try {
+                              const sr = await fetch(`/api/ecosystem/${ecosystemId}/stats`);
+                              if (sr.ok) {
+                                const sd = await sr.json();
+                                setEcoStats({
+                                  c_elegans: sd.c_elegans_count ?? sd.c_elegans ?? 0,
+                                  drosophila: sd.drosophila_count ?? sd.drosophila ?? 0,
+                                  food: sd.total_food ?? sd.food ?? 0,
+                                });
+                              }
+                            } catch { /* ignore stats fetch failure */ }
+                          } else {
+                            notify(`${label} triggered (local)`);
+                          }
+                        } catch {
+                          notify(`${label} triggered (local)`);
+                        }
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : appMode === 'evo' ? (
             <>
               <EvolutionDashboard
                 showConnectomeComparison={showConnectomeComparison}
@@ -445,7 +598,9 @@ export default function App() {
 
         {/* 3D Viewport / Arena */}
         <div className="viewport">
-          {isEvolutionMode ? (
+          {appMode === 'eco' ? (
+            <EcosystemView />
+          ) : appMode === 'evo' ? (
             <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
               <div style={{ flex: 1, minHeight: 0 }}>
                 {showConnectomeComparison ? (
@@ -464,7 +619,16 @@ export default function App() {
 
         {/* Right sidebar */}
         <div className="sidebar sidebar-right">
-          {isEvolutionMode ? (
+          {appMode === 'eco' ? (
+            <div className="glass" style={{ padding: 8, flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <div className="glass-label">Ecosystem Info</div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                <p style={{ margin: '0 0 8px' }}>Multi-species environment with <span style={{ color: 'var(--accent-cyan)' }}>C. elegans</span> and <span style={{ color: 'var(--accent-amber)' }}>Drosophila</span> coexisting.</p>
+                <p style={{ margin: '0 0 8px' }}>Organisms forage for <span style={{ color: 'var(--accent-green)' }}>food sources</span>, compete for resources, and evolve over generations.</p>
+                <p style={{ margin: 0, color: 'var(--text-label)' }}>Use the event triggers in the left panel to perturb the ecosystem and observe emergent behaviors.</p>
+              </div>
+            </div>
+          ) : appMode === 'evo' ? (
             <div className="glass" style={{ padding: 8, flex: 1, display: 'flex', flexDirection: 'column' }}>
               <div className="glass-label">Fitness Over Generations</div>
               <div style={{ flex: 1, minHeight: 300 }}>
@@ -500,7 +664,11 @@ export default function App() {
 
       {/* Bottom bar: waveform or generation timeline */}
       <div className="bottom-bar">
-        {isEvolutionMode ? (
+        {appMode === 'eco' ? (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-label)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+            ECOSYSTEM LIVE — {(ecoStats?.c_elegans ?? 20) + (ecoStats?.drosophila ?? 5)} organisms
+          </div>
+        ) : appMode === 'evo' ? (
           <GenerationTimeline />
         ) : experiment ? (
           <Waveform />

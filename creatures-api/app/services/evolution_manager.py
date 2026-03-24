@@ -277,7 +277,8 @@ class EvolutionManager:
                             loop.close()
                         applied = god.apply_interventions(
                             intervention,
-                            mutation_config=getattr(population, "mutation_config", None),
+                            mutation_config=getattr(population, "_mutation_config", None),
+                            fitness_config=fitness_config,
                             population=population,
                         )
                         god_event: dict[str, Any] = {

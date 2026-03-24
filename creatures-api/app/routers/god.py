@@ -32,6 +32,13 @@ def _get(obj: Any, key: str, default: Any = None) -> Any:
     return getattr(obj, key, default)
 
 
+class InterventionRequest(BaseModel):
+    run_id: str
+    intervention_type: str  # "evolution", "fitness", "diversity", "selection"
+    action: str
+    parameters: dict = {}
+
+
 class AnalyzeRequest(BaseModel):
     run_id: str
     prompt: str | None = None
@@ -178,3 +185,61 @@ async def get_status():
         "current_hypothesis": latest_hypothesis,
         "active_runs": len(active_runs),
     }
+
+
+@router.post("/intervene")
+async def manual_intervene(req: InterventionRequest):
+    """Manually apply a God Agent intervention to a running evolution."""
+    mgr = _mgr()
+    run = mgr.get_run(req.run_id)
+    if run is None:
+        raise HTTPException(404, f"Run {req.run_id} not found")
+
+    # Find the God Agent for this run
+    god = getattr(run, "god_agent", None)
+    if god is None:
+        god_agents = getattr(mgr, "_god_agents", {})
+        god = god_agents.get(req.run_id)
+
+    if god is None:
+        raise HTTPException(400, "No God Agent for this run")
+
+    # Build intervention dict in the format apply_interventions expects
+    intervention = {
+        "interventions": [
+            {
+                "type": req.intervention_type,
+                "action": req.action,
+                "parameters": req.parameters,
+            }
+        ]
+    }
+
+    # Gather simulation objects for the intervention
+    population = getattr(run, "population", None)
+    mutation_config = getattr(population, "_mutation_config", None) if population else None
+
+    # Try to get fitness_config from the run's evolution thread context
+    fitness_config = getattr(run, "fitness_config", None)
+
+    applied = god.apply_interventions(
+        intervention,
+        mutation_config=mutation_config,
+        fitness_config=fitness_config,
+        population=population,
+    )
+
+    # Record the manual intervention
+    god_event = {
+        "type": "god_intervention",
+        "manual": True,
+        "generation": getattr(run, "generation", 0),
+        "analysis": f"Manual intervention: {req.action}",
+        "interventions": intervention["interventions"],
+        "applied": applied,
+    }
+    god_reports = getattr(run, "god_reports", None)
+    if god_reports is not None:
+        god_reports.append(god_event)
+
+    return {"applied": applied, "run_id": req.run_id}

@@ -59,6 +59,15 @@ const GABA_NEURONS = [
   'AVL', 'DVA', 'DVB', 'DVC', 'RIAL', 'RIAR', 'RIS', 'RIVL', 'RIVR', 'RMED', 'RMEL', 'RMER', 'RMEV', 'RID', 'BDUL', 'BDUR',
 ];
 
+// ── Drug name → REST API key mapping ─────────────────────────────────────────
+
+const DRUG_API_KEYS: Record<string, string> = {
+  'Picrotoxin': 'picrotoxin',
+  'Aldicarb': 'aldicarb',
+  'Levamisole': 'levamisole',
+  'Nembutal': 'nemadipine',  // Nembutal maps to Nemadipine in the API
+};
+
 // ── Pharmacokinetic parameters for dose-response curves ─────────────────────
 
 const DRUG_PK: Record<string, { ec50: number; hill: number }> = {
@@ -124,7 +133,23 @@ export function DrugTestingPanel({ isDemo, expanded: controlledExpanded, onToggl
     window.dispatchEvent(new CustomEvent('neurevo-command', { detail: cmd }));
   }, []);
 
-  const applyDrug = useCallback((drug: Drug) => {
+  const applyDrugRest = useCallback(async (drugKey: string, dose: number) => {
+    const simId = useSimulationStore.getState().experiment?.id;
+    if (!simId) return;
+
+    const res = await fetch(`/api/pharmacology/${simId}/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drug_name: drugKey, dose }),
+    });
+    if (res.ok) {
+      const result = await res.json();
+      notify(`${result.drug} applied (dose=${dose.toFixed(1)}): ${result.synapses_affected} synapses affected`);
+      setAppliedDrug(drugKey);
+    }
+  }, []);
+
+  const applyDrugWs = useCallback((drug: Drug) => {
     const dose = getDose(drug.name);
     const current = (drug.action.current ?? 15) * dose;
 
@@ -167,14 +192,32 @@ export function DrugTestingPanel({ isDemo, expanded: controlledExpanded, onToggl
     setAppliedDrug(drug.name);
   }, [doses, neuronTypes, motorNeurons, achNeurons, sendWsCommand]);
 
-  const handleReset = useCallback(() => {
-    // Send a reset command (best-effort -- depends on backend support)
-    sendWsCommand({ type: 'reset_network' });
-    setAppliedDrug(null);
-    notify('Network reset -- all drug effects cleared');
-  }, [sendWsCommand]);
+  const applyDrug = useCallback(async (drug: Drug) => {
+    const dose = getDose(drug.name);
+    const apiKey = DRUG_API_KEYS[drug.name];
 
-  const canApply = connected && !isDemo;
+    if (connected && apiKey) {
+      await applyDrugRest(apiKey, dose);
+      return;
+    }
+
+    // Fall back to WebSocket commands (demo mode or missing API key)
+    applyDrugWs(drug);
+  }, [connected, doses, applyDrugRest, applyDrugWs]);
+
+  const handleReset = useCallback(async () => {
+    const simId = useSimulationStore.getState().experiment?.id;
+    if (connected && simId) {
+      await fetch(`/api/pharmacology/${simId}/reset`, { method: 'DELETE' });
+      notify('All drug effects reset');
+    } else {
+      sendWsCommand({ type: 'reset_network' });
+      notify('Network reset');
+    }
+    setAppliedDrug(null);
+  }, [connected, sendWsCommand]);
+
+  const canApply = connected || isDemo;
 
   return (
     <div className="glass" style={{ padding: expanded ? undefined : '6px 12px' }}>
@@ -200,6 +243,20 @@ export function DrugTestingPanel({ isDemo, expanded: controlledExpanded, onToggl
               textAlign: 'center',
             }}>
               Connect to server for live drug testing
+            </div>
+          )}
+
+          {canApply && !connected && isDemo && (
+            <div style={{
+              fontSize: 10,
+              color: 'var(--accent-amber)',
+              padding: '4px 8px',
+              background: 'rgba(255, 170, 34, 0.06)',
+              borderRadius: 6,
+              marginBottom: 8,
+              textAlign: 'center',
+            }}>
+              Demo mode — drugs will use WebSocket commands
             </div>
           )}
 
