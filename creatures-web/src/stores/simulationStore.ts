@@ -1,6 +1,15 @@
 import { create } from 'zustand';
 import type { SimulationFrame, ExperimentInfo } from '../types/simulation';
 
+export interface HoveredNeuron {
+  id: string;
+  type: string;
+  nt: string | null;
+  firingRate: number;
+  mouseX: number;
+  mouseY: number;
+}
+
 interface SimulationState {
   experiment: ExperimentInfo | null;
   frame: SimulationFrame | null;
@@ -10,6 +19,7 @@ interface SimulationState {
   frameHistory: { t: number; n_active: number; displacement: number }[];
   initialCom: number[] | null;
   lastPoke: { segment: string; time: number } | null;
+  hoveredNeuron: HoveredNeuron | null;
 
   setExperiment: (exp: ExperimentInfo) => void;
   setFrame: (frame: SimulationFrame) => void;
@@ -17,6 +27,7 @@ interface SimulationState {
   setLoading: (l: boolean) => void;
   setError: (e: string | null) => void;
   setPoke: (segment: string) => void;
+  setHoveredNeuron: (neuron: HoveredNeuron | null) => void;
   reset: () => void;
 }
 
@@ -31,6 +42,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   frameHistory: [],
   initialCom: null,
   lastPoke: null,
+  hoveredNeuron: null,
 
   setExperiment: (exp) => set({ experiment: exp }),
 
@@ -52,9 +64,10 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   setLoading: (l) => set({ loading: l }),
   setError: (e) => set({ error: e }),
   setPoke: (segment) => set({ lastPoke: { segment, time: Date.now() } }),
+  setHoveredNeuron: (neuron) => set({ hoveredNeuron: neuron }),
 
   reset: () => set({
     experiment: null, frame: null, connected: false, loading: false,
-    error: null, frameHistory: [], initialCom: null, lastPoke: null,
+    error: null, frameHistory: [], initialCom: null, lastPoke: null, hoveredNeuron: null,
   }),
 }));

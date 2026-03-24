@@ -651,3 +651,20 @@ body {
   animation: notifySlide 0.3s ease-out;
   pointer-events: none;
 }
+
+/* Neuron hover tooltip — positioned over 3D viewport */
+.neuron-tooltip {
+  position: fixed;
+  background: rgba(6, 8, 18, 0.92);
+  border: 1px solid rgba(0, 180, 255, 0.2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: #e0e0e0;
+  pointer-events: none;
+  z-index: 1000;
+  backdrop-filter: blur(8px);
+  max-width: 200px;
+  line-height: 1.45;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}

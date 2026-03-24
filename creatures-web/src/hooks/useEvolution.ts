@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEvolutionStore } from '../stores/evolutionStore';
-import type { EvolutionRun, EvolutionWsMessage, GenerationStats } from '../types/evolution';
+import type { EvolutionRun, EvolutionWsMessage, GenerationStats, GodReport } from '../types/evolution';
 
 const API_BASE = '/api';
 const protocol =
@@ -116,11 +116,108 @@ export function useEvolution() {
     wsRef.current = null;
   }, []);
 
-  // ─── Mock fallback ────────────────────────────────────────────────
+  // ─── Mock fallback — realistic client-side evolution ──────────────
+
+  /**
+   * Pre-generate a realistic fitness curve for 100 generations.
+   * - Starts at ~83, rapid improvement to ~88 over first 20 gens
+   * - Plateau with occasional breakthroughs from 88 → 92 over next 80 gens
+   * - Realistic noise (std ~1.5–2.5), speciation events (1–5 species)
+   */
+  const generateMockCurve = useCallback(() => {
+    const nGens = 100;
+    const curve: GenerationStats[] = [];
+    let bestFitness = 83.0;
+    let synapseCount = 3363;
+
+    for (let g = 1; g <= nGens; g++) {
+      const progress = g / nGens;
+
+      // Fitness trajectory: rapid early gains, then plateau with breakthroughs
+      if (g <= 20) {
+        // Rapid improvement phase: 83 → 88
+        bestFitness += (0.25 + Math.random() * 0.15);
+      } else if (g === 42) {
+        // Breakthrough after God Agent environmental complexity increase
+        bestFitness += 0.6;
+      } else if (g === 76) {
+        // Major breakthrough — novel sensory-motor pathway
+        bestFitness += 1.2;
+      } else {
+        // Slow improvement with noise
+        bestFitness += (Math.random() - 0.35) * 0.15;
+      }
+
+      // Clamp to realistic range
+      bestFitness = Math.max(bestFitness, 83);
+      if (g <= 20) bestFitness = Math.min(bestFitness, 89);
+      else bestFitness = Math.min(bestFitness, 93);
+
+      // Mean trails best by 2-4 points
+      const gap = 2.5 + Math.random() * 1.5;
+      const meanFitness = bestFitness - gap;
+
+      // Std deviation: higher early, decreases as population converges
+      const stdFitness = 2.5 - progress * 1.0 + (Math.random() - 0.5) * 0.3;
+
+      // Speciation: starts at 3, peaks around gen 30-50, then consolidates
+      let nSpecies: number;
+      if (g < 10) nSpecies = 2 + Math.floor(Math.random() * 2);
+      else if (g < 30) nSpecies = 3 + Math.floor(Math.random() * 3);
+      else if (g < 60) nSpecies = 2 + Math.floor(Math.random() * 4);
+      else nSpecies = 1 + Math.floor(Math.random() * 3);
+      nSpecies = Math.max(1, Math.min(5, nSpecies));
+
+      // Synapse count grows slowly
+      synapseCount += Math.floor(Math.random() * 0.5);
+      if (g === 76) synapseCount += 8; // breakthrough adds connections
+
+      curve.push({
+        generation: g,
+        best_fitness: parseFloat(bestFitness.toFixed(3)),
+        mean_fitness: parseFloat(meanFitness.toFixed(3)),
+        std_fitness: parseFloat(Math.max(0.5, stdFitness).toFixed(3)),
+        n_species: nSpecies,
+        best_genome_id: `genome_${g}_best`,
+        elapsed_seconds: g * 0.5,
+      });
+    }
+    return { curve, finalSynapseCount: synapseCount };
+  }, []);
+
+  /**
+   * God Agent mock interventions — triggered at specific generations.
+   */
+  const godInterventions: Record<number, { analysis: string; interventions: GodReport['interventions']; mode: string }> = {
+    15: {
+      analysis: 'Fitness improvement rate declining after initial rapid gains. Population diversity is narrowing prematurely. Recommending increased mutation rate to maintain exploration of solution space.',
+      interventions: [
+        { action: 'increase_mutation_rate', reasoning: 'Early stagnation detected — fitness plateau at gen 12-15', description: 'Mutation rate increased from 0.03 to 0.08 to break local optima' },
+      ],
+      mode: 'adaptive',
+    },
+    40: {
+      analysis: 'Population converging on a single behavioral strategy (chemotaxis-dominant). Species count dropped to 2. Adding environmental complexity to reward diverse sensory integration.',
+      interventions: [
+        { action: 'add_environmental_complexity', reasoning: 'Premature convergence — only 2 species remaining', description: 'Added oscillating chemical gradients and thermal noise to environment' },
+        { action: 'inject_diversity', reasoning: 'Behavioral monoculture risk', description: 'Introduced 5 random migrants with novel connection topologies' },
+      ],
+      mode: 'interventionist',
+    },
+    75: {
+      analysis: 'Breakthrough detected: organism genome_76_best evolved a novel sensory-motor pathway connecting AWC chemosensory neurons directly to VB motor neurons, bypassing the standard interneuron relay. This shortcut improves reaction time by ~40ms. Fitness jumped from 89.2 to 91.4 in a single generation.',
+      interventions: [
+        { action: 'protect_innovation', reasoning: 'Novel neural pathway detected — preserving lineage', description: 'Marked top 3 genomes as elite (immune to mutation for 5 generations)' },
+      ],
+      mode: 'observer',
+    },
+  };
 
   const startMock = useCallback(() => {
     reset();
     setBackendAvailable(false);
+
+    const { curve } = generateMockCurve();
 
     const mockRun: EvolutionRun = {
       id: `mock_${Date.now()}`,
@@ -129,43 +226,49 @@ export function useEvolution() {
       n_generations: 100,
       best_fitness: 0,
       mean_fitness: 0,
-      population_size: 150,
+      population_size: 50,
       organism: 'c_elegans',
     };
     setRun(mockRun);
 
     if (mockIntervalRef.current) clearInterval(mockIntervalRef.current);
 
+    let genIndex = 0;
+
     mockIntervalRef.current = setInterval(() => {
       const state = useEvolutionStore.getState();
-      const gen = state.currentRun?.generation ?? 0;
-      const nGens = state.currentRun?.n_generations ?? 100;
       const status = state.currentRun?.status;
 
+      // Pause support: skip tick when paused
       if (status !== 'running') return;
 
-      if (gen >= nGens) {
+      if (genIndex >= curve.length) {
         const run = state.currentRun;
         if (run) useEvolutionStore.getState().setRun({ ...run, status: 'completed' });
         if (mockIntervalRef.current) clearInterval(mockIntervalRef.current);
         return;
       }
 
-      const progress = gen / nGens;
-      const bestFitness = 0.2 + progress * 0.7 + (Math.random() - 0.3) * 0.05;
-      const meanFitness = bestFitness * (0.5 + progress * 0.3) + (Math.random() - 0.5) * 0.03;
-
-      const stats: GenerationStats = {
-        generation: gen + 1,
-        best_fitness: Math.max(0, bestFitness),
-        mean_fitness: Math.max(0, meanFitness),
-        std_fitness: 0.1 - progress * 0.06,
-        n_species: Math.max(3, Math.round(12 - progress * 6 + Math.random() * 3)),
-        best_genome_id: `genome_${gen + 1}_best`,
-      };
+      const stats = curve[genIndex];
       useEvolutionStore.getState().addGeneration(stats);
-    }, 400);
-  }, [reset, setRun]);
+
+      // Fire God Agent interventions at key generations
+      const gen = stats.generation;
+      if (godInterventions[gen]) {
+        const intervention = godInterventions[gen];
+        const report: GodReport = {
+          analysis: intervention.analysis,
+          interventions: intervention.interventions,
+          mode: intervention.mode,
+          generation: gen,
+          fitness_trend: gen <= 20 ? 'improving' : gen <= 60 ? 'plateau' : 'breakthrough',
+        };
+        useEvolutionStore.getState().addGodReport(report);
+      }
+
+      genIndex++;
+    }, 500);
+  }, [reset, setRun, generateMockCurve]);
 
   const stopMock = useCallback(() => {
     if (mockIntervalRef.current) {

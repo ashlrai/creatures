@@ -11,6 +11,7 @@ import { ConnectomeComparison } from './components/evolution/ConnectomeCompariso
 import { GenerationTimeline } from './components/evolution/GenerationTimeline';
 import { useSimulation } from './hooks/useSimulation';
 import { useDemoMode } from './hooks/useDemoMode';
+import { NeuronTooltip } from './components/ui/NeuronTooltip';
 import { useSimulationStore } from './stores/simulationStore';
 import { useEvolutionStore } from './stores/evolutionStore';
 
@@ -183,6 +184,9 @@ export default function App() {
   return (
     <div className="app-root">
       {notification && <div className="notify">{notification}</div>}
+
+      {/* Neuron hover tooltip — rendered outside Canvas for CSS positioning */}
+      <NeuronTooltip />
 
       {/* Header */}
       <header className="app-header">

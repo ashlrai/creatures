@@ -1,5 +1,5 @@
-import { useRef, useMemo, useEffect, useState } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useRef, useMemo, useEffect, useState, useCallback } from 'react';
+import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSimulationStore } from '../../stores/simulationStore';
 
@@ -8,12 +8,43 @@ import { useSimulationStore } from '../../stores/simulationStore';
  * Each neuron rendered as a point, colored by type and activity.
  * Active neurons glow dramatically with halo rings.
  * Positions are real 3D coordinates from the C. elegans body.
+ *
+ * Hover over a neuron point to see its name, type, firing rate, and
+ * neurotransmitter in a tooltip (rendered in App.tsx via simulationStore).
  */
 
 interface NeuronPos {
   id: string;
   position: [number, number, number];
 }
+
+export interface NeuronTypeInfo {
+  type: string;
+  nt: string | null;
+}
+
+// Well-known gene expression for key mechanosensory / command neurons.
+// Used as a fallback when the /api/neurons/{id}/genes endpoint is unavailable.
+const HARDCODED_GENES: Record<string, string[]> = {
+  PLML: ['mec-4', 'mec-10', 'mec-2', 'mec-6'],
+  PLMR: ['mec-4', 'mec-10', 'mec-2', 'mec-6'],
+  ALML: ['mec-4', 'mec-10', 'mec-2', 'mec-6'],
+  ALMR: ['mec-4', 'mec-10', 'mec-2', 'mec-6'],
+  AVM:  ['mec-4', 'mec-10', 'mec-2'],
+  PVM:  ['mec-4', 'mec-10'],
+  AVAL: ['glr-1', 'nmr-1', 'unc-8'],
+  AVAR: ['glr-1', 'nmr-1', 'unc-8'],
+  AVBL: ['glr-1', 'nmr-1'],
+  AVBR: ['glr-1', 'nmr-1'],
+  AVDL: ['glr-1', 'nmr-1'],
+  AVDR: ['glr-1', 'nmr-1'],
+  AVEL: ['glr-1'],
+  AVER: ['glr-1'],
+  ASHL: ['osm-9', 'ocr-2'],
+  ASHR: ['osm-9', 'ocr-2'],
+  ADEL: ['dat-1', 'cat-2'],
+  ADER: ['dat-1', 'cat-2'],
+};
 
 const TYPE_COLORS: Record<string, THREE.Color> = {
   sensory: new THREE.Color(0.1, 0.8, 0.4),  // green
@@ -25,8 +56,11 @@ const TYPE_COLORS: Record<string, THREE.Color> = {
 export function NeuralNetwork3D() {
   const frame = useSimulationStore((s) => s.frame);
   const experiment = useSimulationStore((s) => s.experiment);
+  const setHoveredNeuron = useSimulationStore((s) => s.setHoveredNeuron);
   const [neurons, setNeurons] = useState<NeuronPos[]>([]);
   const [neuronTypes, setNeuronTypes] = useState<Record<string, string>>({});
+  const [neuronFullInfo, setNeuronFullInfo] = useState<Record<string, NeuronTypeInfo>>({});
+  const [geneCache, setGeneCache] = useState<Record<string, string[]>>({});
   const pointsRef = useRef<THREE.Points>(null);
   const haloRef = useRef<THREE.Points>(null);
 
@@ -57,14 +91,74 @@ export function NeuralNetwork3D() {
       .catch(() => {
         fetch(`${base}neuron-types.json`)
           .then(r => r.json())
-          .then((data: Record<string, { type: string }>) => {
+          .then((data: Record<string, { type: string; nt?: string | null }>) => {
             const types: Record<string, string> = {};
-            Object.entries(data).forEach(([id, info]) => { types[id] = info.type; });
+            const fullInfo: Record<string, NeuronTypeInfo> = {};
+            Object.entries(data).forEach(([id, info]) => {
+              types[id] = info.type;
+              fullInfo[id] = { type: info.type, nt: info.nt ?? null };
+            });
             setNeuronTypes(types);
+            setNeuronFullInfo(fullInfo);
           })
           .catch(() => {});
       });
   }, [experiment]);
+
+  // Fetch gene data for a neuron (with caching)
+  const fetchGenes = useCallback((neuronId: string) => {
+    if (geneCache[neuronId] !== undefined) return;
+
+    // Mark as loading to avoid duplicate fetches
+    setGeneCache(prev => ({ ...prev, [neuronId]: [] }));
+
+    fetch(`/api/neurons/${neuronId}/genes`)
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .then((data: { genes: string[] }) => {
+        setGeneCache(prev => ({ ...prev, [neuronId]: data.genes }));
+      })
+      .catch(() => {
+        // Fall back to hardcoded data
+        const hardcoded = HARDCODED_GENES[neuronId];
+        if (hardcoded) {
+          setGeneCache(prev => ({ ...prev, [neuronId]: hardcoded }));
+        }
+      });
+  }, [geneCache]);
+
+  // Handle pointer move over neuron points — raycasting is handled by R3F
+  const handlePointerMove = useCallback((event: ThreeEvent<PointerEvent>) => {
+    // R3F provides the intersection index for Points geometry
+    const index = event.index;
+    if (index === undefined || index < 0 || index >= neurons.length) {
+      setHoveredNeuron(null);
+      return;
+    }
+
+    const neuron = neurons[index];
+    const info = neuronFullInfo[neuron.id];
+    const type = info?.type ?? neuronTypes[neuron.id] ?? 'unknown';
+    const nt = info?.nt ?? null;
+
+    // Get current firing rate from the frame
+    const firingRate = frame?.firing_rates?.[index] ?? 0;
+
+    // Kick off gene data fetch for this neuron
+    fetchGenes(neuron.id);
+
+    setHoveredNeuron({
+      id: neuron.id,
+      type,
+      nt,
+      firingRate,
+      mouseX: event.nativeEvent.clientX,
+      mouseY: event.nativeEvent.clientY,
+    });
+  }, [neurons, neuronFullInfo, neuronTypes, frame, setHoveredNeuron, fetchGenes]);
+
+  const handlePointerLeave = useCallback(() => {
+    setHoveredNeuron(null);
+  }, [setHoveredNeuron]);
 
   // Build geometry from neuron positions
   const { positions, colors, baseColors, haloPositions, haloColors } = useMemo(() => {
@@ -175,7 +269,11 @@ export function NeuralNetwork3D() {
   return (
     <group>
       {/* Main neuron points — larger and more visible */}
-      <points ref={pointsRef}>
+      <points
+        ref={pointsRef}
+        onPointerMove={handlePointerMove}
+        onPointerLeave={handlePointerLeave}
+      >
         <bufferGeometry>
           <bufferAttribute
             attach="attributes-position"
@@ -232,3 +330,6 @@ export function NeuralNetwork3D() {
     </group>
   );
 }
+
+/** Gene cache exposed for the tooltip to read */
+export { HARDCODED_GENES };
