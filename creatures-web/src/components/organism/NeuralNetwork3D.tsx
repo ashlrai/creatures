@@ -28,27 +28,40 @@ export function NeuralNetwork3D() {
   const [neuronTypes, setNeuronTypes] = useState<Record<string, string>>({});
   const pointsRef = useRef<THREE.Points>(null);
 
-  // Fetch neuron positions from API
+  // Fetch neuron positions — API first, fall back to static file
   useEffect(() => {
-    if (!experiment || experiment.organism !== 'c_elegans') return;
+    if (!experiment) return;
 
+    const base = import.meta.env.BASE_URL || '/';
+
+    // Positions
     fetch('/api/neurons/positions')
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .catch(() => fetch(`${base}neuron-positions.json`).then(r => r.json()))
       .then((data: Record<string, [number, number, number]>) => {
         const entries = Object.entries(data).map(([id, pos]) => ({ id, position: pos }));
         setNeurons(entries);
       })
-      .catch(() => {});
+      .catch(e => console.warn('Failed to load neuron positions:', e));
 
-    // Also fetch neuron info for types
+    // Types — API first, fall back to static
     fetch(`/api/neurons/${experiment.id}/info`)
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
       .then((data: Array<{ id: string; type: string }>) => {
         const types: Record<string, string> = {};
         data.forEach(n => { types[n.id] = n.type; });
         setNeuronTypes(types);
       })
-      .catch(() => {});
+      .catch(() => {
+        fetch(`${base}neuron-types.json`)
+          .then(r => r.json())
+          .then((data: Record<string, { type: string }>) => {
+            const types: Record<string, string> = {};
+            Object.entries(data).forEach(([id, info]) => { types[id] = info.type; });
+            setNeuronTypes(types);
+          })
+          .catch(() => {});
+      });
   }, [experiment]);
 
   // Build geometry from neuron positions

@@ -3,6 +3,8 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Sparkles } from '@react-three/drei';
 import * as THREE from 'three';
 import { WormBody } from './organism/WormBody';
+import { NeuralNetwork3D } from './organism/NeuralNetwork3D';
+import { ConnectomeGraph3D } from './organism/ConnectomeGraph3D';
 import { PostProcessing } from './effects/PostProcessing';
 import { useSimulationStore } from '../stores/simulationStore';
 
@@ -76,8 +78,10 @@ export function Scene() {
       {/* Particles */}
       <Sparkles count={40} size={0.2} speed={0.06} opacity={0.08} color="#4488aa" scale={[2, 0.6, 1.5]} position={[0.44, 0.15, 0]} />
 
-      {/* Organism */}
+      {/* Organism + Neural Network */}
       <WormBody />
+      <NeuralNetwork3D />
+      <ConnectomeGraph3D />
 
       {/* Camera */}
       <SmoothCamera />

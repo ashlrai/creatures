@@ -12,9 +12,9 @@ const MAX_SEGMENTS = 88;
 const SEG_RADIUS = 0.012;
 const SEG_HALF_LEN = 0.032;
 
-const REST_COLOR = new THREE.Color(0.06, 0.18, 0.28);
-const ACTIVE_COLOR = new THREE.Color(0.1, 0.7, 0.95);
-const HOT_COLOR = new THREE.Color(0.9, 0.95, 1.0);
+const REST_COLOR = new THREE.Color(0.04, 0.22, 0.32);
+const ACTIVE_COLOR = new THREE.Color(0.05, 0.65, 0.9);
+const HOT_COLOR = new THREE.Color(0.6, 0.9, 1.0);
 const POKE_COLOR = new THREE.Color(1, 1, 1);
 
 export function WormBody() {
@@ -35,11 +35,11 @@ export function WormBody() {
         emissiveIntensity: 0.5,
         roughness: 0.25,
         metalness: 0.05,
-        transmission: 0.3,
-        thickness: 0.4,
-        ior: 1.4,
+        transmission: 0.45,
+        thickness: 0.5,
+        ior: 1.45,
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.75,
       })
     ),
     []
@@ -135,6 +135,13 @@ export function WormBody() {
     ? Math.min(frame.body_positions.length, MAX_SEGMENTS)
     : 12;
 
+  const handleClick = (index: number) => {
+    const store = useSimulationStore.getState();
+    if (store.experiment) {
+      store.setPoke(`seg_${index}`);
+    }
+  };
+
   return (
     <group>
       {Array.from({ length: segCount }, (_, i) => (
@@ -144,6 +151,7 @@ export function WormBody() {
           geometry={geometry}
           material={materials[i]}
           position={[i * SEG_HALF_LEN * 2.3, SEG_RADIUS + 0.001, 0]}
+          onPointerDown={() => handleClick(i)}
         />
       ))}
     </group>

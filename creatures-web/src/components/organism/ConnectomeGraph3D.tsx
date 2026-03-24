@@ -27,13 +27,15 @@ export function ConnectomeGraph3D() {
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const linesRef = useRef<THREE.LineSegments>(null);
 
-  // Fetch connectome graph
+  // Fetch connectome graph — API first, fall back to static
   useEffect(() => {
-    if (!experiment || experiment.organism !== 'c_elegans') return;
+    if (!experiment) return;
+    const base = import.meta.env.BASE_URL || '/';
     fetch('/api/morphology/connectome-graph')
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .catch(() => fetch(`${base}connectome-graph.json`).then(r => r.json()))
       .then(setGraphData)
-      .catch(() => {});
+      .catch(e => console.warn('Failed to load connectome graph:', e));
   }, [experiment]);
 
   // Build line geometry from edges
