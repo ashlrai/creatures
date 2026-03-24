@@ -3,7 +3,7 @@ import { useSimulationStore } from '../stores/simulationStore';
 import type { SimulationFrame, ExperimentInfo } from '../types/simulation';
 
 const API_BASE = '/api';
-const WS_BASE = `ws://${window.location.hostname}:8420`;
+const WS_BASE = `ws://${window.location.host}`;
 
 export function useSimulation() {
   const wsRef = useRef<WebSocket | null>(null);
