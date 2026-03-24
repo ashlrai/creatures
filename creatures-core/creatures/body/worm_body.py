@@ -12,6 +12,7 @@ each joint (lateral undulation for forward/backward crawling).
 from __future__ import annotations
 
 import logging
+import re
 import tempfile
 from pathlib import Path
 
@@ -76,6 +77,44 @@ _VD_SEGMENTS = {
     "VD09": [7, 8], "VD10": [8, 9], "VD11": [9, 10],
     "VD12": [10, 11], "VD13": [11],
 }
+
+# Muscle name → (segment_index, side) mapping
+# C. elegans has 95 body wall muscles: MDL01-24, MDR01-24, MVL01-24, MVR01-24
+# (plus some head/neck muscles). Muscles numbered 1-24 map to 12 body segments
+# (2 muscles per segment). MD* = muscular dorsal, MV* = muscular ventral.
+_MUSCLE_NUM_RE = re.compile(r"^(MDL|MDR|MVL|MVR|M[DV][LR]?)(\d+)$", re.IGNORECASE)
+
+
+def _muscle_to_actuator(muscle_name: str) -> list[str]:
+    """Map a C. elegans muscle name to body actuator name(s).
+
+    Muscle naming: MDL01-MDL24 (muscular dorsal left), MDR01-MDR24 (dorsal right),
+    MVL01-MVL24 (ventral left), MVR01-MVR24 (ventral right).
+    Muscles 1-24 map to segments 0-11 (2 muscles per segment).
+
+    Returns list of actuator names (e.g., ["dorsal_0"] or ["ventral_5"]).
+    """
+    m = _MUSCLE_NUM_RE.match(muscle_name)
+    if not m:
+        return []
+    prefix = m.group(1).upper()
+    num = int(m.group(2))
+    if num < 1 or num > 24:
+        return []
+
+    # Map muscle number (1-24) to segment index (0-11): two muscles per segment
+    seg = (num - 1) // 2
+    if seg >= N_JOINTS:
+        # Segment 11 has no joint after it; use last joint (10)
+        seg = N_JOINTS - 1
+
+    # Dorsal muscles (MD*) → dorsal actuators; ventral muscles (MV*) → ventral
+    if prefix.startswith("MD"):
+        return [f"dorsal_{seg}"]
+    elif prefix.startswith("MV"):
+        return [f"ventral_{seg}"]
+    return []
+
 
 # Touch sensor neurons → body regions
 # ALM: anterior lateral mechanosensory (segments 0-4)
@@ -191,12 +230,18 @@ class WormBody(BodyModel):
     map to sensory neurons (ALM, PLM, AVM).
     """
 
-    def __init__(self, config: BodyConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: BodyConfig | None = None,
+        motor_to_muscle: dict[str, list[dict]] | None = None,
+    ) -> None:
         self._config = config or BodyConfig()
         self._model: mujoco.MjModel | None = None
         self._data: mujoco.MjData | None = None
         self._mjcf_path: str | None = None
         self._external_forces: dict[str, tuple[float, float, float]] = {}
+        # Real motor-to-muscle data from connectome metadata (Task 1)
+        self._motor_to_muscle = motor_to_muscle
         self._build()
 
     def _build(self) -> None:
@@ -349,48 +394,49 @@ class WormBody(BodyModel):
     def motor_neuron_map(self) -> dict[str, list[str]]:
         """Map motor neuron IDs to actuator names.
 
+        If real motor-to-muscle data was provided (from CElegansNeuronTables.xls),
+        maps muscle names (e.g. MDL01-MDL24, MVL01-MVL24) to body segment
+        actuators. Falls back to hardcoded segment mappings for neurons not
+        covered by the muscle data.
+
         Returns {neuron_id: [actuator_names]} for all motor neurons.
-        Dorsal motor neurons (DA, DB) map to dorsal actuators.
-        Ventral motor neurons (VA, VB) map to ventral actuators.
-        Inhibitory neurons (DD, VD) map to opposing actuators.
         """
         mapping: dict[str, list[str]] = {}
 
-        # DA neurons → dorsal actuators (backward)
-        for nid, segs in _DA_SEGMENTS.items():
-            actuators = [f"dorsal_{s}" for s in segs if s < N_JOINTS]
-            if actuators:
-                mapping[nid] = actuators
+        # First, try to build mapping from real muscle data
+        if self._motor_to_muscle:
+            for neuron_id, muscles in self._motor_to_muscle.items():
+                actuators: list[str] = []
+                for entry in muscles:
+                    actuators.extend(_muscle_to_actuator(entry["muscle"]))
+                # De-duplicate while preserving order
+                seen: set[str] = set()
+                unique = []
+                for a in actuators:
+                    if a not in seen:
+                        seen.add(a)
+                        unique.append(a)
+                if unique:
+                    mapping[neuron_id] = unique
 
-        # VA neurons → ventral actuators (backward)
-        for nid, segs in _VA_SEGMENTS.items():
-            actuators = [f"ventral_{s}" for s in segs if s < N_JOINTS]
-            if actuators:
-                mapping[nid] = actuators
-
-        # DB neurons → dorsal actuators (forward)
-        for nid, segs in _DB_SEGMENTS.items():
-            actuators = [f"dorsal_{s}" for s in segs if s < N_JOINTS]
-            if actuators:
-                mapping[nid] = actuators
-
-        # VB neurons → ventral actuators (forward)
-        for nid, segs in _VB_SEGMENTS.items():
-            actuators = [f"ventral_{s}" for s in segs if s < N_JOINTS]
-            if actuators:
-                mapping[nid] = actuators
-
-        # DD neurons → ventral actuators (inhibit dorsal = activate ventral relaxation)
-        for nid, segs in _DD_SEGMENTS.items():
-            actuators = [f"ventral_{s}" for s in segs if s < N_JOINTS]
-            if actuators:
-                mapping[nid] = actuators
-
-        # VD neurons → dorsal actuators (inhibit ventral = activate dorsal relaxation)
-        for nid, segs in _VD_SEGMENTS.items():
-            actuators = [f"dorsal_{s}" for s in segs if s < N_JOINTS]
-            if actuators:
-                mapping[nid] = actuators
+        # Fill in any motor neurons not covered by real muscle data
+        # using the hardcoded segment mappings as fallback
+        _fallback = [
+            (_DA_SEGMENTS, "dorsal"),
+            (_VA_SEGMENTS, "ventral"),
+            (_DB_SEGMENTS, "dorsal"),
+            (_VB_SEGMENTS, "ventral"),
+            # Inhibitory: DD inhibits dorsal → maps to ventral relaxation
+            (_DD_SEGMENTS, "ventral"),
+            # Inhibitory: VD inhibits ventral → maps to dorsal relaxation
+            (_VD_SEGMENTS, "dorsal"),
+        ]
+        for seg_dict, side in _fallback:
+            for nid, segs in seg_dict.items():
+                if nid not in mapping:
+                    actuators_fb = [f"{side}_{s}" for s in segs if s < N_JOINTS]
+                    if actuators_fb:
+                        mapping[nid] = actuators_fb
 
         return mapping
 

@@ -12,16 +12,17 @@ from creatures.connectome.types import Connectome
 class NeuralConfig:
     """Configuration for a spiking neural network simulation."""
 
-    # LIF neuron parameters
-    tau_m: float = 10.0  # membrane time constant (ms)
-    v_rest: float = -65.0  # resting potential (mV)
-    v_reset: float = -65.0  # reset potential after spike (mV)
-    v_thresh: float = -50.0  # spike threshold (mV)
-    tau_ref: float = 2.0  # refractory period (ms)
+    # LIF neuron parameters — calibrated from Shiu et al. 2024
+    # (Eon Systems fruit fly brain emulation, applicable to LIF on real connectomes)
+    tau_m: float = 15.0  # membrane time constant (ms) — Shiu et al. used 10-20ms
+    v_rest: float = -52.0  # resting potential (mV) — C. elegans rests at -52mV
+    v_reset: float = -52.0  # reset to resting potential after spike (mV)
+    v_thresh: float = -45.0  # spike threshold (mV) — typical for C. elegans
+    tau_ref: float = 2.2  # refractory period (ms) — Shiu et al.
 
     # Synapse parameters
     tau_syn: float = 5.0  # synaptic current decay (ms)
-    weight_scale: float = 0.275  # mV per unit synapse weight (from Eon/Shiu)
+    weight_scale: float = 0.275  # mV per unit synapse weight (from Shiu et al.)
 
     # Simulation parameters
     dt: float = 0.1  # timestep (ms)

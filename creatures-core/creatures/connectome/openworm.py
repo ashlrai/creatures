@@ -9,6 +9,7 @@ Data sources:
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -139,9 +140,19 @@ def load_from_edge_list(data_dir: str | Path | None = None) -> Connectome:
     n2m_df = pd.read_excel(xls_path, sheet_name="NeuronsToMuscle")
     sensory_df = pd.read_excel(xls_path, sheet_name="Sensory")
 
-    # Build motor neuron set from neuron-to-muscle connections
+    # Build motor neuron set and full motor-to-muscle mapping
     motor_set = set(n2m_df["Neuron"].unique())
     sensory_set = set(sensory_df["Neuron"].unique()) | SENSORY_NEURONS
+
+    # Extract the full motor-to-muscle mapping from NeuronsToMuscle sheet
+    motor_to_muscle: dict[str, list[dict]] = {}
+    for _, row in n2m_df.iterrows():
+        neuron = str(row["Neuron"])
+        muscle = str(row["Muscle"])
+        n_conns = int(row["Number of Connections"])
+        motor_to_muscle.setdefault(neuron, []).append(
+            {"muscle": muscle, "connections": n_conns}
+        )
 
     # Collect all neuron IDs
     all_ids = sorted(set(conn_df["Origin"]) | set(conn_df["Target"]))
@@ -194,6 +205,16 @@ def load_from_edge_list(data_dir: str | Path | None = None) -> Connectome:
             )
         )
 
+    # Load 3D neuron positions from neuron_positions.json if available
+    positions_path = data_dir / "neuron_positions.json"
+    if positions_path.exists():
+        with open(positions_path) as f:
+            pos_data = json.load(f)
+        for nid, pos in pos_data.items():
+            if nid in neurons:
+                neurons[nid].position = tuple(pos)
+        logger.info(f"Loaded 3D positions for {sum(1 for n in neurons.values() if n.position)} neurons")
+
     connectome = Connectome(
         name="c_elegans_openworm",
         neurons=neurons,
@@ -202,6 +223,7 @@ def load_from_edge_list(data_dir: str | Path | None = None) -> Connectome:
             "species": "Caenorhabditis elegans",
             "source": "OpenWorm c302 / CElegansNeuronTables.xls",
             "reference": "Based on White et al. 1986, updated by Varshney et al. 2011",
+            "motor_to_muscle": motor_to_muscle,
         },
     )
 
