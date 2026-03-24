@@ -1,0 +1,153 @@
+"""Manages running simulation instances."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import uuid
+from dataclasses import dataclass, field
+
+from creatures.connectome.openworm import load as load_celegans
+from creatures.neural.brian2_engine import Brian2Engine
+from creatures.neural.base import NeuralConfig
+from creatures.body.worm_body import WormBody
+from creatures.body.base import BodyConfig
+from creatures.experiment.runner import SimulationRunner, CouplingConfig
+
+from app.models.schemas import ExperimentCreate, SimulationFrame
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SimulationInstance:
+    """A running simulation with its engine, body, and runner."""
+
+    id: str
+    name: str
+    organism: str
+    runner: SimulationRunner
+    engine: Brian2Engine
+    connectome: object  # Connectome
+    status: str = "ready"  # ready, running, paused, stopped
+    subscribers: list = field(default_factory=list)
+    _task: asyncio.Task | None = None
+
+
+class SimulationManager:
+    """Manages creation and lifecycle of simulation instances."""
+
+    def __init__(self) -> None:
+        self._simulations: dict[str, SimulationInstance] = {}
+
+    def create(self, config: ExperimentCreate) -> SimulationInstance:
+        """Create a new simulation from config."""
+        sim_id = str(uuid.uuid4())[:8]
+
+        if config.organism == "c_elegans":
+            connectome = load_celegans(config.connectome_source)
+        else:
+            raise ValueError(f"Organism '{config.organism}' not yet supported")
+
+        neural_config = NeuralConfig(
+            weight_scale=config.weight_scale,
+            tau_syn=config.tau_syn,
+            tau_m=config.tau_m,
+        )
+        engine = Brian2Engine()
+        engine.build(connectome, neural_config)
+
+        body = WormBody(BodyConfig(dt=1.0))
+        body.reset()
+
+        coupling = CouplingConfig(
+            poke_current=config.poke_current,
+            poke_duration_ms=config.poke_duration_ms,
+            firing_rate_to_torque_gain=config.firing_rate_to_torque_gain,
+            inhibitory_gain=config.inhibitory_gain,
+        )
+        runner = SimulationRunner(engine, body, coupling)
+
+        sim = SimulationInstance(
+            id=sim_id,
+            name=config.name,
+            organism=config.organism,
+            runner=runner,
+            engine=engine,
+            connectome=connectome,
+        )
+        self._simulations[sim_id] = sim
+        logger.info(f"Created simulation {sim_id}: {connectome.n_neurons} neurons")
+        return sim
+
+    def get(self, sim_id: str) -> SimulationInstance | None:
+        return self._simulations.get(sim_id)
+
+    def list_all(self) -> list[SimulationInstance]:
+        return list(self._simulations.values())
+
+    def delete(self, sim_id: str) -> bool:
+        sim = self._simulations.pop(sim_id, None)
+        if sim and sim._task:
+            sim._task.cancel()
+        return sim is not None
+
+    async def run_loop(self, sim: SimulationInstance, speed: float = 1.0) -> None:
+        """Run the simulation loop, broadcasting frames to subscribers."""
+        sim.status = "running"
+        step_interval = 1.0 / (30 * speed)  # target 30 fps at 1x speed
+
+        try:
+            while sim.status == "running":
+                frame_data = sim.runner.step()
+
+                # Build frame for broadcast
+                frame = SimulationFrame(
+                    t_ms=frame_data.t_ms,
+                    n_active=len(frame_data.active_neurons),
+                    spikes=[
+                        sim.engine._id_to_idx[n]
+                        for n in frame_data.active_neurons
+                        if n in sim.engine._id_to_idx
+                    ],
+                    firing_rates=list(sim.engine._firing_rates),
+                    body_positions=[
+                        list(p) for p in frame_data.body_state.positions
+                    ],
+                    joint_angles=frame_data.body_state.joint_angles,
+                    center_of_mass=list(frame_data.body_state.center_of_mass),
+                    muscle_activations=frame_data.muscle_activations,
+                )
+
+                # Broadcast to subscribers
+                dead = []
+                for i, (ws, queue) in enumerate(sim.subscribers):
+                    try:
+                        await queue.put(frame)
+                    except Exception:
+                        dead.append(i)
+                for i in reversed(dead):
+                    sim.subscribers.pop(i)
+
+                await asyncio.sleep(step_interval)
+
+        except asyncio.CancelledError:
+            pass
+        finally:
+            sim.status = "paused"
+
+    def start(self, sim: SimulationInstance, speed: float = 1.0) -> None:
+        """Start the simulation loop as an async task."""
+        if sim._task and not sim._task.done():
+            return
+        sim._task = asyncio.create_task(self.run_loop(sim, speed))
+
+    def pause(self, sim: SimulationInstance) -> None:
+        """Pause the simulation."""
+        sim.status = "paused"
+
+    def stop(self, sim: SimulationInstance) -> None:
+        """Stop the simulation."""
+        sim.status = "stopped"
+        if sim._task:
+            sim._task.cancel()
