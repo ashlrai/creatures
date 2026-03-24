@@ -183,53 +183,47 @@ def load(
         conn_df = conn_df[conn_df["syn_count"] >= min_synapse_count]
         logger.info(f"  {len(conn_df)} after filtering (min {min_synapse_count} synapses)")
 
-    # If neuropil filtering requested, identify neurons in those regions
+    # If neuropil filtering requested, filter connections by brain region
     if neuropils:
-        # Load neuropil counts (long format: pre_pt_root_id, neuropil, count)
-        pre_path = data_dir / "per_neuron_neuropil_count_pre_783.feather"
-        if not pre_path.exists():
-            _download_file(_NEUROPIL_PRE_URL, pre_path, "neuropil pre-synaptic counts")
-
-        neuropil_df = pd.read_feather(pre_path)
-
-        # Check available neuropils
-        available_neuropils = set(neuropil_df["neuropil"].unique())
+        # The connections file has a 'neuropil' column — filter directly
+        available_neuropils = set(conn_df["neuropil"].unique())
         matched = [n for n in neuropils if n in available_neuropils]
         if not matched:
             raise ValueError(
                 f"No matching neuropils found for {neuropils}. "
                 f"Available: {sorted(available_neuropils)[:20]}"
             )
+        conn_df = conn_df[conn_df["neuropil"].isin(matched)]
+        logger.info(f"  {len(conn_df)} connections in neuropils {matched}")
 
-        # Filter to neurons with presynaptic output in target neuropils
-        mask = neuropil_df["neuropil"].isin(matched)
-        target_ids = set(neuropil_df.loc[mask, "pre_pt_root_id"].values)
-        logger.info(f"  {len(target_ids)} neurons in neuropils {matched}")
+        # Also restrict to neurons that appear in filtered connections
+        target_ids = set(conn_df["pre_pt_root_id"]) | set(conn_df["post_pt_root_id"])
+        logger.info(f"  {len(target_ids)} neurons in target region")
 
         # Filter connections to only those between target neurons
         conn_df = conn_df[
-            conn_df["pre_root_id"].isin(target_ids) &
-            conn_df["post_root_id"].isin(target_ids)
+            conn_df["pre_pt_root_id"].isin(target_ids) &
+            conn_df["post_pt_root_id"].isin(target_ids)
         ]
         logger.info(f"  {len(conn_df)} connections in target region")
 
     # Apply max_neurons limit
     if max_neurons:
-        all_ids = sorted(set(conn_df["pre_root_id"]) | set(conn_df["post_root_id"]))
+        all_ids = sorted(set(conn_df["pre_pt_root_id"]) | set(conn_df["post_pt_root_id"]))
         if len(all_ids) > max_neurons:
             # Take the most connected neurons
-            degree = conn_df["pre_root_id"].value_counts().add(
-                conn_df["post_root_id"].value_counts(), fill_value=0
+            degree = conn_df["pre_pt_root_id"].value_counts().add(
+                conn_df["post_pt_root_id"].value_counts(), fill_value=0
             )
             top_ids = set(degree.nlargest(max_neurons).index)
             conn_df = conn_df[
-                conn_df["pre_root_id"].isin(top_ids) &
-                conn_df["post_root_id"].isin(top_ids)
+                conn_df["pre_pt_root_id"].isin(top_ids) &
+                conn_df["post_pt_root_id"].isin(top_ids)
             ]
             logger.info(f"  Limited to {max_neurons} most-connected neurons")
 
     # Build neuron objects
-    all_neuron_ids = sorted(set(conn_df["pre_root_id"]) | set(conn_df["post_root_id"]))
+    all_neuron_ids = sorted(set(conn_df["pre_pt_root_id"]) | set(conn_df["post_pt_root_id"]))
     ann_lookup = ann_df.set_index("root_id") if "root_id" in ann_df.columns else pd.DataFrame()
 
     neurons: dict[str, Neuron] = {}
@@ -256,8 +250,8 @@ def load(
     # Build synapses
     synapses: list[Synapse] = []
     for _, row in conn_df.iterrows():
-        pre_str = str(row["pre_root_id"])
-        post_str = str(row["post_root_id"])
+        pre_str = str(row["pre_pt_root_id"])
+        post_str = str(row["post_pt_root_id"])
         if pre_str in neurons and post_str in neurons:
             nt = neurons[pre_str].neurotransmitter
             synapses.append(Synapse(
