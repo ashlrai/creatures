@@ -34,7 +34,7 @@ class Neuron:
 
     @property
     def is_excitatory(self) -> bool:
-        inhibitory = {"GABA", "glycine"}
+        inhibitory = {"GABA", "GLYCINE"}
         if self.neurotransmitter is None:
             return True  # default assumption
         return self.neurotransmitter.upper() not in inhibitory
@@ -57,7 +57,7 @@ class Synapse:
 
     @property
     def is_excitatory(self) -> bool:
-        inhibitory = {"GABA", "glycine"}
+        inhibitory = {"GABA", "GLYCINE"}
         if self.neurotransmitter is None:
             return True
         return self.neurotransmitter.upper() not in inhibitory
