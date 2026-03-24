@@ -3,19 +3,16 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSimulationStore } from '../../stores/simulationStore';
 
-/**
- * 3D worm body using MeshPhysicalMaterial (robust, no custom shaders).
- * Translucent glassy segments with activity-driven emissive glow.
- */
-
 const MAX_SEGMENTS = 88;
-const SEG_RADIUS = 0.012;
-const SEG_HALF_LEN = 0.032;
+const SEG_RADIUS = 0.013;
+const SEG_HALF_LEN = 0.035;
 
-const REST_COLOR = new THREE.Color(0.06, 0.2, 0.3);
-const ACTIVE_COLOR = new THREE.Color(0.1, 0.6, 0.85);
-const HOT_COLOR = new THREE.Color(0.5, 0.85, 1.0);
-const POKE_COLOR = new THREE.Color(1, 1, 1);
+// Dark teal at rest, bright cyan when active
+const REST_COLOR = new THREE.Color(0.08, 0.22, 0.3);
+const ACTIVE_COLOR = new THREE.Color(0.15, 0.55, 0.8);
+const HOT_COLOR = new THREE.Color(0.4, 0.8, 0.95);
+const REST_EMISSIVE = new THREE.Color(0.015, 0.04, 0.06);
+const ACTIVE_EMISSIVE = new THREE.Color(0.05, 0.2, 0.35);
 
 export function WormBody() {
   const frame = useSimulationStore((s) => s.frame);
@@ -31,12 +28,12 @@ export function WormBody() {
     () => Array.from({ length: MAX_SEGMENTS }, () =>
       new THREE.MeshStandardMaterial({
         color: REST_COLOR.clone(),
-        emissive: new THREE.Color(0.03, 0.1, 0.15),
-        emissiveIntensity: 1.0,
-        roughness: 0.4,
-        metalness: 0.2,
+        emissive: REST_EMISSIVE.clone(),
+        emissiveIntensity: 1,
+        roughness: 0.5,
+        metalness: 0.15,
         transparent: true,
-        opacity: 0.7,
+        opacity: 0.85,
       })
     ),
     []
@@ -60,12 +57,11 @@ export function WormBody() {
       if (!mesh || !positions[i]) continue;
 
       const [x, y, z] = positions[i];
-      // MuJoCo → Three.js coordinate mapping
       mesh.position.set(x, z, -y);
       mesh.visible = true;
 
-      // Breathing animation
-      const breath = 1.0 + Math.sin(t * 2.0 + i * 0.4) * 0.02;
+      // Subtle breathing
+      const breath = 1.0 + Math.sin(t * 2.0 + i * 0.4) * 0.015;
       mesh.scale.set(breath, 1, breath);
 
       // Orient along body axis
@@ -78,14 +74,13 @@ export function WormBody() {
         }
       }
 
-      // Compute activity for this segment
+      // Compute activity
       const segStart = i * neuronsPerSeg;
       const segEnd = Math.min(segStart + neuronsPerSeg, nNeurons);
       let maxRate = 0;
       for (let j = segStart; j < segEnd; j++) {
         maxRate = Math.max(maxRate, rates[j]);
       }
-      // Also check muscles
       for (const [key, val] of Object.entries(frame.muscle_activations)) {
         if (key.includes(`_${i}`) || key.includes(`_${Math.max(0, i - 1)}`)) {
           maxRate = Math.max(maxRate, Math.abs(val) * 200);
@@ -95,34 +90,28 @@ export function WormBody() {
       const activity = Math.min(maxRate / 120, 1);
       const mat = materials[i];
 
-      // Poke flash
       const isPoked = i === pokeIdx && pokeFade > 0;
-      const nearPoke = Math.abs(i - pokeIdx) <= 1 && pokeFade > 0;
 
       if (isPoked) {
-        mat.color.copy(POKE_COLOR);
-        mat.emissive.set(1, 1, 1);
-        mat.emissiveIntensity = pokeFade * 2;
+        mat.color.setRGB(0.4 + pokeFade * 0.6, 0.6 + pokeFade * 0.4, 0.7 + pokeFade * 0.3);
+        mat.emissive.setRGB(0.1 * pokeFade, 0.3 * pokeFade, 0.5 * pokeFade);
       } else if (activity > 0.05) {
-        // Active: interpolate from active color to hot
         const c = activity < 0.5
           ? REST_COLOR.clone().lerp(ACTIVE_COLOR, activity * 2)
           : ACTIVE_COLOR.clone().lerp(HOT_COLOR, (activity - 0.5) * 2);
         mat.color.copy(c);
-        mat.emissive.copy(c);
-        mat.emissiveIntensity = 0.5 + activity * 2.5;
-      } else if (nearPoke) {
-        mat.color.copy(REST_COLOR);
-        mat.emissive.set(0.3, 0.3, 0.3);
-        mat.emissiveIntensity = pokeFade * 0.5;
+        mat.emissive.lerpColors(REST_EMISSIVE, ACTIVE_EMISSIVE, activity);
       } else {
         mat.color.copy(REST_COLOR);
-        mat.emissive.set(0.03, 0.1, 0.16);
-        mat.emissiveIntensity = 1.0 + Math.sin(t * 1.5 + i * 0.3) * 0.2;
+        mat.emissive.copy(REST_EMISSIVE);
+        // Subtle pulse
+        const pulse = Math.sin(t * 1.5 + i * 0.3) * 0.005;
+        mat.emissive.r += pulse;
+        mat.emissive.g += pulse * 2;
+        mat.emissive.b += pulse * 3;
       }
     }
 
-    // Hide extra
     for (let i = n; i < MAX_SEGMENTS; i++) {
       if (meshRefs.current[i]) meshRefs.current[i]!.visible = false;
     }

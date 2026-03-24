@@ -6,19 +6,9 @@ class EffectErrorBoundary extends Component<
   { hasError: boolean }
 > {
   state = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error) {
-    console.warn('PostProcessing failed (non-fatal):', error.message);
-  }
-
-  render() {
-    if (this.state.hasError) return null;
-    return this.props.children;
-  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: Error) { console.warn('PostProcessing failed:', error.message); }
+  render() { return this.state.hasError ? null : this.props.children; }
 }
 
 export function PostProcessing() {
@@ -26,13 +16,13 @@ export function PostProcessing() {
     <EffectErrorBoundary>
       <EffectComposer multisampling={0}>
         <Bloom
-          intensity={1.2}
-          luminanceThreshold={0.2}
+          intensity={0.8}
+          luminanceThreshold={0.4}
           luminanceSmoothing={0.9}
-          radius={0.8}
+          radius={0.6}
           mipmapBlur
         />
-        <Vignette eskil={false} offset={0.12} darkness={0.7} />
+        <Vignette eskil={false} offset={0.15} darkness={0.6} />
       </EffectComposer>
     </EffectErrorBoundary>
   );
