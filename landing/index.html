@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Neurevo -- Simulate Real Brains. Evolve New Life.</title>
-<meta name="description" content="The first platform to simulate organisms with real biological neural networks. C. elegans (299 neurons) and Drosophila (500 neurons) with spiking neural dynamics, drug testing, and multi-species ecosystems.">
+<meta name="description" content="The first platform to simulate organisms with real biological neural networks that learn. 1M neurons at 45ms, 100K organisms in shared ecosystems, STDP synaptic plasticity, 4 world types, emergent behavior detection. C. elegans and Drosophila with spiking neural dynamics and drug testing.">
 <meta name="keywords" content="neural simulation, connectome, C. elegans, Drosophila, brain simulation, computational neuroscience, neuroevolution, MuJoCo, Brian2, OpenWorm, FlyWire, drug testing, in-silico pharmacology, ecosystem simulation">
 <meta name="author" content="AshlrAI">
 <meta name="robots" content="index, follow">
@@ -498,6 +498,147 @@ section{padding:140px 0;position:relative}
 .github-btn:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(255,255,255,0.15);color:#000}
 .github-btn svg{width:20px;height:20px}
 
+/* ======== SCALE SECTION ======== */
+.scale-section{position:relative;overflow:hidden}
+.scale-headline{
+  font-size:clamp(36px,4vw,56px);font-weight:800;letter-spacing:-0.03em;
+  line-height:1.1;margin-bottom:20px;text-align:center;
+}
+.scale-stats{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:32px;
+  margin:48px 0;text-align:center;
+}
+.scale-stat{
+  background:var(--card);border:1px solid var(--border);border-radius:16px;
+  padding:32px 24px;transition:border-color 0.3s,transform 0.3s;
+}
+.scale-stat:hover{border-color:rgba(0,212,255,0.2);transform:translateY(-4px)}
+.scale-stat .scale-num{
+  font-size:clamp(32px,3.5vw,48px);font-weight:800;font-family:var(--mono);
+  letter-spacing:-2px;margin-bottom:8px;
+}
+.scale-stat .scale-label{font-size:14px;color:var(--muted)}
+.scale-bar-wrap{
+  position:relative;margin:48px auto 0;max-width:800px;
+}
+.scale-bar{
+  height:48px;border-radius:24px;position:relative;overflow:hidden;
+  background:rgba(255,255,255,0.03);border:1px solid var(--border);
+}
+.scale-bar-fill{
+  height:100%;border-radius:24px;
+  background:linear-gradient(90deg,rgba(0,212,255,0.15),var(--cyan),var(--green),var(--magenta));
+  width:0%;transition:width 2s cubic-bezier(0.16,1,0.3,1);
+}
+.scale-bar-fill.animate{width:100%}
+.scale-bar-labels{
+  display:flex;justify-content:space-between;margin-top:12px;
+  font-size:13px;font-family:var(--mono);color:var(--muted);
+}
+.scale-bar-labels span:last-child{color:var(--magenta);font-weight:700}
+.scale-bar-labels span:first-child{color:var(--cyan)}
+
+/* ======== LEARNING SECTION ======== */
+.learn-section{position:relative;overflow:hidden}
+.learn-grid{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}
+.learn-visual{
+  background:var(--card);border:1px solid var(--border);border-radius:20px;
+  padding:40px;position:relative;overflow:hidden;
+}
+.learn-visual::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,180,0,0.3),transparent);
+}
+.stdp-diagram{display:flex;flex-direction:column;gap:24px;align-items:center}
+.stdp-neurons{display:flex;align-items:center;gap:40px;justify-content:center}
+.stdp-neuron{
+  width:56px;height:56px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:12px;font-weight:700;font-family:var(--mono);
+  position:relative;
+}
+.stdp-neuron.pre{background:rgba(0,212,255,0.15);border:2px solid var(--cyan);color:var(--cyan)}
+.stdp-neuron.post{background:rgba(0,255,136,0.15);border:2px solid var(--green);color:var(--green)}
+.stdp-arrow{
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+}
+.stdp-arrow .arrow-line{
+  width:80px;height:3px;border-radius:2px;position:relative;
+  background:linear-gradient(90deg,var(--cyan),var(--green));
+}
+.stdp-arrow .arrow-label{font-size:11px;color:var(--amber);font-weight:700;font-family:var(--mono)}
+.stdp-result{
+  text-align:center;padding:16px 24px;border-radius:12px;
+  background:rgba(255,180,0,0.06);border:1px solid rgba(255,180,0,0.15);
+}
+.stdp-result .result-num{
+  font-size:36px;font-weight:800;font-family:var(--mono);color:var(--amber);
+}
+.stdp-result .result-label{font-size:13px;color:var(--muted);margin-top:4px}
+.learn-content h3{font-size:28px;font-weight:700;margin-bottom:16px;letter-spacing:-0.03em}
+.learn-content p{font-size:16px;color:var(--muted);line-height:1.7;margin-bottom:24px}
+.learn-features{list-style:none;padding:0}
+.learn-features li{
+  font-size:15px;color:var(--muted);padding:10px 0;
+  border-top:1px solid rgba(255,255,255,0.04);
+  display:flex;align-items:flex-start;gap:12px;line-height:1.5;
+}
+.learn-features li strong{color:var(--text);font-weight:600}
+.learn-check{color:var(--amber);font-weight:700;flex-shrink:0;margin-top:2px}
+
+/* ======== WORLDS SECTION ======== */
+.worlds-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+.world-card{
+  background:var(--card);border:1px solid var(--border);border-radius:16px;
+  padding:28px 20px;text-align:center;position:relative;overflow:hidden;
+  transition:border-color 0.3s,transform 0.3s;
+}
+.world-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,212,255,0.2),transparent);
+}
+.world-card:hover{transform:translateY(-4px)}
+.world-card.soil:hover{border-color:rgba(139,90,43,0.4)}
+.world-card.pond:hover{border-color:rgba(0,212,255,0.3)}
+.world-card.lab:hover{border-color:rgba(0,255,136,0.3)}
+.world-card.abstract:hover{border-color:rgba(255,34,136,0.3)}
+.world-icon{
+  font-size:36px;margin-bottom:16px;display:block;
+}
+.world-card h4{font-size:18px;font-weight:700;margin-bottom:8px;letter-spacing:-0.03em}
+.world-card p{font-size:13px;color:var(--muted);line-height:1.6}
+
+/* ======== EMERGENT SECTION ======== */
+.emergent-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:48px}
+.emergent-card{
+  background:var(--card);border:1px solid var(--border);border-radius:16px;
+  padding:32px 24px;position:relative;overflow:hidden;
+  transition:border-color 0.3s,transform 0.3s;
+}
+.emergent-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,212,255,0.2),transparent);
+}
+.emergent-card:hover{border-color:rgba(0,212,255,0.2);transform:translateY(-4px)}
+.emergent-icon{font-size:28px;margin-bottom:16px;display:block}
+.emergent-card h4{font-size:18px;font-weight:700;margin-bottom:8px;letter-spacing:-0.03em}
+.emergent-card p{font-size:14px;color:var(--muted);line-height:1.6}
+
+/* ======== EXPERIMENT BUILDER ======== */
+.experiment-grid{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}
+.experiment-protocols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.protocol-card{
+  background:var(--card);border:1px solid var(--border);border-radius:12px;
+  padding:20px;transition:border-color 0.3s,transform 0.3s;
+}
+.protocol-card:hover{border-color:rgba(0,255,136,0.2);transform:translateY(-2px)}
+.protocol-card .proto-name{
+  font-size:13px;font-weight:700;font-family:var(--mono);color:var(--green);
+  margin-bottom:8px;
+}
+.protocol-card .proto-desc{font-size:13px;color:var(--muted);line-height:1.5}
+.experiment-content h3{font-size:28px;font-weight:700;margin-bottom:16px;letter-spacing:-0.03em}
+.experiment-content p{font-size:16px;color:var(--muted);line-height:1.7;margin-bottom:24px}
+
 /* ======== FOOTER ======== */
 footer{
   border-top:1px solid var(--border);padding:48px 0;
@@ -526,6 +667,12 @@ footer a:hover{color:var(--green)}
   .god-grid{grid-template-columns:1fr;gap:40px}
   .science-grid{grid-template-columns:1fr}
   .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .scale-stats{grid-template-columns:1fr}
+  .learn-grid{grid-template-columns:1fr;gap:40px}
+  .worlds-grid{grid-template-columns:repeat(2,1fr)}
+  .emergent-grid{grid-template-columns:1fr}
+  .experiment-grid{grid-template-columns:1fr;gap:40px}
+  .experiment-protocols{grid-template-columns:1fr}
   .nav-links{display:none}
   section{padding:100px 0}
   .cascade-indicator{display:none}
@@ -538,6 +685,7 @@ footer a:hover{color:var(--green)}
   .section-title{font-size:clamp(28px,6vw,40px)}
   .connectome-wrap{max-width:260px}
   .drug-grid{grid-template-columns:repeat(2,1fr)}
+  .worlds-grid{grid-template-columns:1fr}
 }
 
 /* ======== OG IMAGE GENERATOR (hidden) ======== */
@@ -570,9 +718,10 @@ footer a:hover{color:var(--green)}
     </a>
     <div class="nav-links">
       <a href="#modes">Modes</a>
+      <a href="#scale">Scale</a>
+      <a href="#learning">Learning</a>
       <a href="#pharma">Pharma</a>
       <a href="#god">God Agent</a>
-      <a href="#science">Science</a>
       <a href="https://github.com/ashlrai/creatures" class="nav-cta" target="_blank" rel="noopener">GitHub</a>
     </div>
     <button class="hamburger" id="hamburgerBtn" aria-label="Toggle menu">
@@ -585,10 +734,12 @@ footer a:hover{color:var(--green)}
 <div class="mobile-overlay" id="mobileOverlay"></div>
 <div class="mobile-nav" id="mobileNav">
   <a href="#modes" class="mobile-nav-link">Modes</a>
+  <a href="#scale" class="mobile-nav-link">Scale</a>
+  <a href="#learning" class="mobile-nav-link">Learning</a>
+  <a href="#worlds" class="mobile-nav-link">Worlds</a>
   <a href="#pharma" class="mobile-nav-link">Pharma</a>
   <a href="#god" class="mobile-nav-link">God Agent</a>
-  <a href="#science" class="mobile-nav-link">Science</a>
-  <a href="#tech" class="mobile-nav-link">Tech Stack</a>
+  <a href="#experiments" class="mobile-nav-link">Experiments</a>
   <a href="https://github.com/ashlrai/creatures" target="_blank" rel="noopener" class="mobile-nav-link">GitHub</a>
 </div>
 
@@ -603,7 +754,7 @@ footer a:hover{color:var(--green)}
         Real connectome data
       </div>
       <h1><span class="grad-text">Simulate Real Brains.<br>Evolve New Life.</span></h1>
-      <p class="hero-sub">The first platform to simulate organisms with real biological neural networks &mdash; from single neurons to entire ecosystems.</p>
+      <p class="hero-sub">From single neurons to million-organism ecosystems &mdash; with real biological brains that learn. STDP plasticity, massive scale, four world types, emergent behavior.</p>
       <div class="hero-ctas">
         <a href="/app" class="btn btn-primary">Launch Simulator &rarr;</a>
         <a href="https://github.com/ashlrai/creatures" class="btn btn-secondary" target="_blank" rel="noopener">
@@ -613,9 +764,10 @@ footer a:hover{color:var(--green)}
       </div>
       <div class="hero-stats">
         <span class="hero-stat"><strong>2</strong> organisms</span>
-        <span class="hero-stat"><strong>800+</strong> neurons</span>
+        <span class="hero-stat"><strong>1M+</strong> neurons</span>
         <span class="hero-stat"><strong>8</strong> drugs</span>
-        <span class="hero-stat"><strong>3</strong> modes</span>
+        <span class="hero-stat"><strong>434</strong> tests</span>
+        <span class="hero-stat"><strong>4</strong> worlds</span>
       </div>
     </div>
     <div class="connectome-wrap" id="connectomeWrap">
@@ -709,6 +861,203 @@ footer a:hover{color:var(--green)}
   </div>
 </section>
 
+<!-- ===== SCALE ===== -->
+<div class="section-divider"></div>
+<section class="scale-section" id="scale">
+  <div class="container">
+    <div class="section-label reveal">Massive Scale</div>
+    <h2 class="scale-headline reveal reveal-delay-1"><span class="grad-text">From 1 neuron<br>to 1 million</span></h2>
+    <p class="section-desc reveal reveal-delay-2" style="text-align:center;margin-left:auto;margin-right:auto">The VectorizedEngine simulates entire ecosystems of organisms &mdash; each with a real spiking neural brain &mdash; at speeds that make real-time observation possible.</p>
+
+    <div class="scale-stats">
+      <div class="scale-stat reveal">
+        <div class="scale-num grad-text">1,000,000</div>
+        <div class="scale-label">neurons simulated in 45ms</div>
+      </div>
+      <div class="scale-stat reveal reveal-delay-1">
+        <div class="scale-num" style="color:var(--green)">100,000</div>
+        <div class="scale-label">organisms in a shared ecosystem</div>
+      </div>
+      <div class="scale-stat reveal reveal-delay-2">
+        <div class="scale-num" style="color:var(--magenta)">130 FPS</div>
+        <div class="scale-label">1K organisms with 50-neuron brains</div>
+      </div>
+    </div>
+
+    <div class="scale-bar-wrap reveal reveal-delay-3">
+      <div class="scale-bar">
+        <div class="scale-bar-fill" id="scaleBarFill"></div>
+      </div>
+      <div class="scale-bar-labels">
+        <span>1 worm</span>
+        <span>100 organisms</span>
+        <span>10K brains</span>
+        <span style="color:var(--magenta);font-weight:700">1,000,000 neurons</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== LEARNING ===== -->
+<div class="section-divider"></div>
+<section class="learn-section" id="learning">
+  <div class="container">
+    <div class="section-label reveal">STDP Plasticity</div>
+    <h2 class="section-title reveal reveal-delay-1">Not just evolution &mdash;<br>real learning</h2>
+    <p class="section-desc reveal reveal-delay-2">Organisms don't just evolve across generations. They learn within their lifetime through spike-timing-dependent plasticity &mdash; the same mechanism your brain uses right now.</p>
+
+    <div class="learn-grid">
+      <div class="learn-visual reveal">
+        <div class="stdp-diagram">
+          <div class="stdp-neurons">
+            <div class="stdp-neuron pre">PRE</div>
+            <div class="stdp-arrow">
+              <div class="arrow-line"></div>
+              <div class="arrow-label">synapse strengthens</div>
+            </div>
+            <div class="stdp-neuron post">POST</div>
+          </div>
+          <p style="font-size:14px;color:var(--muted);text-align:center;max-width:320px;line-height:1.6">When the presynaptic neuron fires <strong style="color:var(--cyan)">before</strong> the postsynaptic neuron, the connection gets <strong style="color:var(--amber)">stronger</strong>. Hebbian learning at the spike level.</p>
+          <div class="stdp-result">
+            <div class="result-num">+13.5%</div>
+            <div class="result-label">motor response improvement over 10 trials</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="learn-content reveal reveal-delay-1">
+        <h3>Synapses that fire together, wire together</h3>
+        <p>STDP is the biological learning rule that governs real neural plasticity. When a presynaptic spike arrives just before the postsynaptic neuron fires, that synapse strengthens. The reverse weakens it. This is how brains learn.</p>
+        <ul class="learn-features">
+          <li><span class="learn-check">+</span><span><strong>Within-lifetime learning</strong> &mdash; organisms improve their responses without any evolution</span></li>
+          <li><span class="learn-check">+</span><span><strong>Motor response strengthening</strong> &mdash; a worm's touch withdrawal improves 13.5% over 10 trials</span></li>
+          <li><span class="learn-check">+</span><span><strong>Biologically accurate</strong> &mdash; the same exponential STDP window used in computational neuroscience</span></li>
+          <li><span class="learn-check">+</span><span><strong>Evolution + Learning</strong> &mdash; organisms evolve their architecture AND learn within each lifetime</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FOUR WORLDS ===== -->
+<div class="section-divider"></div>
+<section id="worlds">
+  <div class="container">
+    <div class="section-label reveal">Four World Types</div>
+    <h2 class="section-title reveal reveal-delay-1">Every environment<br>tells a different story</h2>
+    <p class="section-desc reveal reveal-delay-2">From soil bacteria to abstract mazes &mdash; each world type creates unique evolutionary pressures and emergent behaviors.</p>
+
+    <div class="worlds-grid stagger-children">
+      <div class="world-card soil reveal">
+        <span class="world-icon">&#x1F33F;</span>
+        <h4>Soil</h4>
+        <p>Bacteria, fungi, moisture gradients. Organisms navigate a living substrate with decomposing resources and microbial competition.</p>
+      </div>
+      <div class="world-card pond reveal">
+        <span class="world-icon">&#x1F4A7;</span>
+        <h4>Pond</h4>
+        <p>Light gradients, algae blooms, predators. Phototaxis, chemotaxis, and predator evasion in a fluid environment.</p>
+      </div>
+      <div class="world-card lab reveal">
+        <span class="world-icon">&#x1F9EA;</span>
+        <h4>Lab Plate</h4>
+        <p>Standard C. elegans protocols. Chemotaxis assays, touch withdrawal, drug dose-response. Publication-ready conditions.</p>
+      </div>
+      <div class="world-card abstract reveal">
+        <span class="world-icon">&#x1F9E9;</span>
+        <h4>Abstract</h4>
+        <p>Mazes, memory tasks, social dilemmas. Pure cognitive challenges that test neural architecture without biological noise.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== EMERGENT BEHAVIOR ===== -->
+<div class="section-divider"></div>
+<section id="emergent">
+  <div class="container">
+    <div class="section-label reveal">Emergent Intelligence</div>
+    <h2 class="section-title reveal reveal-delay-1">Watch intelligence emerge</h2>
+    <p class="section-desc reveal reveal-delay-2">The God Agent monitors ecosystems for behaviors nobody programmed. When organisms self-organize, Neurevo detects it automatically.</p>
+
+    <div class="emergent-grid stagger-children">
+      <div class="emergent-card reveal">
+        <span class="emergent-icon">&#x1F4CD;</span>
+        <h4>Aggregation</h4>
+        <p>Organisms cluster around resources without any explicit grouping behavior. Already detected at 1K scale &mdash; emergent social structure from individual neural decisions.</p>
+      </div>
+      <div class="emergent-card reveal">
+        <span class="emergent-icon">&#x1F91D;</span>
+        <h4>Cooperation</h4>
+        <p>Organisms develop mutually beneficial strategies. Shared foraging, alarm signaling, resource division &mdash; cooperation emerges from competitive pressure.</p>
+      </div>
+      <div class="emergent-card reveal">
+        <span class="emergent-icon">&#x1F43E;</span>
+        <h4>Trail Following</h4>
+        <p>Chemical trail detection and following behavior. Organisms leave traces that others learn to exploit &mdash; the beginning of collective intelligence.</p>
+      </div>
+      <div class="emergent-card reveal">
+        <span class="emergent-icon">&#x26A0;</span>
+        <h4>Avoidance Learning</h4>
+        <p>After negative stimuli, organisms learn to avoid dangerous regions. STDP plasticity enables within-lifetime behavioral adaptation.</p>
+      </div>
+      <div class="emergent-card reveal">
+        <span class="emergent-icon">&#x1F3AF;</span>
+        <h4>Niche Specialization</h4>
+        <p>Species diverge to exploit different resources. What starts as competition becomes an ecosystem with distinct ecological roles.</p>
+      </div>
+      <div class="emergent-card reveal">
+        <span class="emergent-icon">&#x1F441;</span>
+        <h4>The God Agent Discovers</h4>
+        <p>AI-powered behavior detection analyzes population dynamics in real time. It finds patterns humans would miss and narrates the story of life.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== EXPERIMENT BUILDER ===== -->
+<div class="section-divider"></div>
+<section id="experiments">
+  <div class="container">
+    <div class="section-label reveal">Experiment Builder</div>
+    <h2 class="section-title reveal reveal-delay-1">Reproduce Nobel Prize<br>experiments</h2>
+    <p class="section-desc reveal reveal-delay-2">4 preset protocols from published literature. Run them in minutes, get publication-ready markdown reports.</p>
+
+    <div class="experiment-grid">
+      <div class="experiment-protocols reveal">
+        <div class="protocol-card">
+          <div class="proto-name">touch_withdrawal</div>
+          <div class="proto-desc">Classic C. elegans mechanosensory response. Stimulate touch neurons, measure motor output latency and amplitude.</div>
+        </div>
+        <div class="protocol-card">
+          <div class="proto-name">drug_dose_response</div>
+          <div class="proto-desc">Hill equation pharmacology. Sweep concentrations across 8 compounds, generate dose-response curves.</div>
+        </div>
+        <div class="protocol-card">
+          <div class="proto-name">gaba_knockout</div>
+          <div class="proto-desc">Simulate GABAergic neuron ablation. Measure hyperexcitability, seizure-like activity, motor dysfunction.</div>
+        </div>
+        <div class="protocol-card">
+          <div class="proto-name">chemotaxis_learning</div>
+          <div class="proto-desc">Train organisms to navigate chemical gradients. Measure learning curves with STDP-enabled plasticity.</div>
+        </div>
+      </div>
+
+      <div class="experiment-content reveal reveal-delay-1">
+        <h3>From hypothesis to publication</h3>
+        <p>Each experiment runs with biologically accurate neural dynamics, generates statistical analyses, and outputs a full markdown report ready for supplementary materials.</p>
+        <ul class="learn-features">
+          <li><span class="learn-check">+</span><span><strong>4 preset protocols</strong> &mdash; based on real published C. elegans experiments</span></li>
+          <li><span class="learn-check">+</span><span><strong>Publication-ready reports</strong> &mdash; markdown with figures, statistics, and methodology</span></li>
+          <li><span class="learn-check">+</span><span><strong>Neural recording tools</strong> &mdash; raster plots, firing rate heatmaps, activity timelines</span></li>
+          <li><span class="learn-check">+</span><span><strong>Circuit analysis</strong> &mdash; shortest paths, hub neurons, community detection, motifs</span></li>
+          <li><span class="learn-check">+</span><span><strong>Data persistence</strong> &mdash; SQLite storage for experiments, evolution runs, genomes</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ===== PHARMA API ===== -->
 <div class="section-divider"></div>
 <section id="pharma">
@@ -775,8 +1124,8 @@ footer a:hover{color:var(--green)}
 <section class="god-section" id="god">
   <div class="container">
     <div class="section-label reveal">The God Agent</div>
-    <h2 class="section-title reveal reveal-delay-1">AI oversees evolution</h2>
-    <p class="section-desc reveal reveal-delay-2">Powered by xAI/Grok, the God Agent watches evolution unfold &mdash; analyzing population dynamics, detecting stagnation, proposing interventions, and narrating the story of life.</p>
+    <h2 class="section-title reveal reveal-delay-1">AI oversees evolution<br>and discovers the unexpected</h2>
+    <p class="section-desc reveal reveal-delay-2">Powered by xAI/Grok, the God Agent watches 100K organisms evolve and learn &mdash; detecting emergent behaviors, analyzing STDP learning curves, proposing interventions, and narrating the story of life across four worlds.</p>
 
     <div class="god-grid">
       <div class="god-visual reveal">
@@ -807,20 +1156,20 @@ footer a:hover{color:var(--green)}
   <div class="container">
     <div class="stats-grid">
       <div class="stat-item reveal">
-        <div class="stat-num grad-text" data-target="800" data-suffix="+">0</div>
-        <div class="stat-label">Real Neurons Simulated</div>
+        <div class="stat-num grad-text" data-target="1000000" data-suffix="">0</div>
+        <div class="stat-label">Neurons at 45ms</div>
       </div>
       <div class="stat-item reveal reveal-delay-1">
         <div class="stat-num" style="color:var(--green)" data-target="8" data-suffix="">0</div>
         <div class="stat-label">Characterized Drugs</div>
       </div>
       <div class="stat-item reveal reveal-delay-2">
-        <div class="stat-num" style="color:var(--magenta)" data-target="230" data-suffix="+">0</div>
+        <div class="stat-num" style="color:var(--magenta)" data-target="434" data-suffix="">0</div>
         <div class="stat-label">Tests Passing</div>
       </div>
       <div class="stat-item reveal reveal-delay-3">
-        <div class="stat-num" style="color:var(--cyan)" data-target="2" data-suffix="">0</div>
-        <div class="stat-label">Model Organisms</div>
+        <div class="stat-num" style="color:var(--cyan)" data-target="4" data-suffix="">0</div>
+        <div class="stat-label">World Types</div>
       </div>
     </div>
   </div>
@@ -914,8 +1263,18 @@ footer a:hover{color:var(--green)}
         <div class="tech-role">Real-time API</div>
       </div>
       <div class="tech-item reveal">
+        <span class="tech-icon">&#x1F9E0;</span>
+        <div class="tech-name">STDP Plasticity</div>
+        <div class="tech-role">Synaptic learning</div>
+      </div>
+      <div class="tech-item reveal">
+        <span class="tech-icon">&#x1F5C4;</span>
+        <div class="tech-name">SQLite</div>
+        <div class="tech-role">Data persistence</div>
+      </div>
+      <div class="tech-item reveal">
         <span class="tech-icon">&#x2705;</span>
-        <div class="tech-name">230+ Tests</div>
+        <div class="tech-name">434 Tests</div>
         <div class="tech-role">Full coverage</div>
       </div>
     </div>
@@ -927,7 +1286,7 @@ footer a:hover{color:var(--green)}
 <section class="cta-section">
   <div class="container">
     <h2 class="reveal"><span class="grad-text">The biological world,<br>simulated.</span></h2>
-    <p class="reveal reveal-delay-1">Real connectomes. Real physics. Real pharmacology. From single neurons to ecosystems &mdash; Neurevo is open source and ready to explore.</p>
+    <p class="reveal reveal-delay-1">Real connectomes. Real physics. Real pharmacology. Real learning. From single neurons to million-organism ecosystems &mdash; Neurevo is open source and ready to explore.</p>
     <div class="cta-buttons reveal reveal-delay-2">
       <a href="/app" class="btn btn-primary">Launch Simulator &rarr;</a>
       <a href="https://github.com/ashlrai/creatures" class="github-btn" target="_blank" rel="noopener">
@@ -1012,6 +1371,25 @@ var revealObs = new IntersectionObserver(function(entries) {
   });
 }, {threshold: 0.1, rootMargin: '0px 0px -40px 0px'});
 revealEls.forEach(function(el) { revealObs.observe(el); });
+
+// ===== Scale bar animation =====
+(function scaleBar() {
+  var fill = document.getElementById('scaleBarFill');
+  if (!fill) return;
+  var obs = new IntersectionObserver(function(entries) {
+    if (entries[0].isIntersecting) {
+      fill.classList.add('animate');
+      obs.unobserve(fill);
+    }
+  }, {threshold: 0.3});
+  obs.observe(fill);
+})();
+
+// ===== Re-observe reveals added dynamically =====
+setTimeout(function() {
+  var newReveals = document.querySelectorAll('.reveal:not(.visible)');
+  newReveals.forEach(function(el) { revealObs.observe(el); });
+}, 100);
 
 // ===== 3D Connectome visualization with dramatic wave cascade =====
 (function buildConnectome() {
@@ -1224,15 +1602,15 @@ revealEls.forEach(function(el) { revealObs.observe(el); });
   var target = document.getElementById('typewriterTarget');
   var cursor = document.getElementById('twCursor');
   var lines = [
-    {text: 'Scanning population across 2 species...', cls: 'output'},
-    {text: 'C. elegans colony: 12 organisms, avg fitness 0.61', cls: 'output'},
-    {text: 'Drosophila swarm: 8 organisms, avg fitness 0.38', cls: 'output'},
-    {text: 'Stagnation detected in Drosophila at generation 14.', cls: 'warn'},
-    {text: 'Hypothesis: motor neuron pruning is over-aggressive.', cls: 'output'},
-    {text: 'Proposed: restore wing CPG connections, reduce mutation rate 40%.', cls: 'warn'},
-    {text: 'Applying targeted intervention...', cls: 'output'},
-    {text: 'Generation 15: Drosophila fitness 0.57 (+50.0%)', cls: 'highlight'},
-    {text: 'Predator evasion behavior emerging. Narrative logged.', cls: 'highlight'},
+    {text: 'Scanning 100K organisms across 4 world types...', cls: 'output'},
+    {text: 'Soil: 28K organisms | Pond: 35K | Lab: 22K | Abstract: 15K', cls: 'output'},
+    {text: 'STDP learning active: avg synapse delta +4.2% per trial', cls: 'output'},
+    {text: 'EMERGENT: aggregation detected in Pond quadrant 7', cls: 'warn'},
+    {text: 'EMERGENT: trail-following behavior in Soil cluster 12', cls: 'warn'},
+    {text: 'Hypothesis: chemical gradient exploitation via STDP.', cls: 'output'},
+    {text: 'Motor response strengthening: +13.5% over 10 trials', cls: 'highlight'},
+    {text: 'Cooperation index rising. Niche specialization emerging.', cls: 'highlight'},
+    {text: '1M neurons @ 45ms. 130 FPS. All brains thinking.', cls: 'highlight'},
   ];
 
   var started = false;
