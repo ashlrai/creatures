@@ -85,6 +85,42 @@ async def simulation_ws(websocket: WebSocket, sim_id: str):
                     if nid:
                         sim.engine.lesion_neuron(nid)
 
+                elif cmd_type == "silence_neuron":
+                    nid = data.get("neuron_id")
+                    if nid and sim.engine:
+                        sim.engine.silence_neuron(nid)
+
+                elif cmd_type == "undo_lesion":
+                    nid = data.get("neuron_id")
+                    if nid and sim.engine:
+                        sim.engine.undo_lesion(nid)
+
+                elif cmd_type == "enable_stdp":
+                    if sim.engine:
+                        enabled = data.get("enabled", True)
+                        a_plus = data.get("a_plus", 0.01)
+                        a_minus = data.get("a_minus", 0.012)
+                        w_max = data.get("w_max", 10.0)
+                        sim.engine.set_stdp_params(enabled, a_plus, a_minus, w_max)
+
+                elif cmd_type == "get_weights":
+                    if sim.engine:
+                        try:
+                            weights = sim.engine.get_synapse_weights()
+                            changes = sim.engine.get_weight_changes()
+                            await websocket.send_json({
+                                "type": "weight_snapshot",
+                                "weights": weights.tolist() if hasattr(weights, 'tolist') else list(weights),
+                                "changes": changes,
+                            })
+                        except Exception as e:
+                            await websocket.send_json({"type": "error", "message": str(e)})
+
+                elif cmd_type == "record_neuron":
+                    nids = data.get("neuron_ids", [])
+                    if nids and sim.engine:
+                        sim.engine.record_neurons(nids)
+
         send_task = asyncio.create_task(send_frames())
         recv_task = asyncio.create_task(receive_commands())
 

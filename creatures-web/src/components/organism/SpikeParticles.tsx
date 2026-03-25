@@ -18,14 +18,14 @@ import { useSimulationStore } from '../../stores/simulationStore';
  */
 
 // --- Burst particles (original spike location effects) ---
-const MAX_BURST = 600;
+const MAX_BURST = 2000;
 const BURST_LIFETIME = 0.6;
 
 // --- Cascade particles (signal propagation along synapses) ---
-const MAX_CASCADE = 300;
+const MAX_CASCADE = 1000;
 const CASCADE_TRAVEL_TIME = 0.3; // 300ms per synapse hop — longer trails
-const MAX_SPIKES_PER_FRAME = 20; // cap to avoid flooding
-const MAX_EDGES_PER_SPIKE = 6;  // top N strongest outgoing edges
+const MAX_SPIKES_PER_FRAME = 40; // cap to avoid flooding
+const MAX_EDGES_PER_SPIKE = 8;  // top N strongest outgoing edges
 
 interface BurstParticle {
   position: THREE.Vector3;
@@ -61,13 +61,13 @@ interface ConnectomeNode {
   z: number;
 }
 
-// Neurotransmitter-based colors for cascade particles
+// Neurotransmitter-based colors for cascade particles (refined palette)
 const NT_COLORS: Record<string, THREE.Color> = {
-  Acetylcholine: new THREE.Color(0.2, 1.4, 1.4),   // cyan
-  GABA:          new THREE.Color(1.3, 0.3, 1.3),    // magenta
-  Glutamate:     new THREE.Color(0.3, 1.4, 0.5),    // green
-  Serotonin:     new THREE.Color(1.2, 1.0, 0.3),    // warm yellow
-  Dopamine:      new THREE.Color(1.4, 0.6, 0.2),    // orange
+  Acetylcholine: new THREE.Color(0.1, 0.8, 1.0),   // cyan
+  GABA:          new THREE.Color(0.8, 0.15, 0.7),   // magenta
+  Glutamate:     new THREE.Color(0.2, 0.9, 0.3),    // green
+  Serotonin:     new THREE.Color(0.9, 0.7, 0.2),    // warm yellow
+  Dopamine:      new THREE.Color(1.0, 0.45, 0.1),   // orange
 };
 const NT_DEFAULT_COLOR = new THREE.Color(0.8, 0.8, 1.0); // white-blue
 
@@ -358,9 +358,11 @@ export function SpikeParticles() {
         cascadeColArr[i * 3 + 1] = cp.color.g * brightness;
         cascadeColArr[i * 3 + 2] = cp.color.b * brightness;
 
-        // Size pulses slightly during travel
+        // Size pulses slightly during travel, with motion trail stretch
+        // during mid-travel (t=0.3-0.7) particles expand to 2x for streak effect
         const sizePulse = 1.0 + 0.3 * Math.sin(t * Math.PI);
-        cascadeSizeArr[i] = cp.baseSize * sizePulse * (1 - t * 0.4);
+        const trailStretch = (t >= 0.3 && t <= 0.7) ? 2.0 : 1.0;
+        cascadeSizeArr[i] = cp.baseSize * sizePulse * trailStretch * (1 - t * 0.4);
       }
 
       const geo = cascadeRef.current.geometry;
@@ -404,7 +406,7 @@ export function SpikeParticles() {
           opacity={0.95}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
-          size={0.008}
+          size={0.015}
         />
       </points>
     </group>

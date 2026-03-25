@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 
 export interface RasterPlotProps {
   spikeHistory: Array<{ t_ms: number; spikes: number[] }>;
@@ -11,6 +11,7 @@ export interface RasterPlotProps {
  * Canvas-based raster plot showing spike times for all neurons.
  * X axis: time (ms), Y axis: neurons sorted by type (sensory top, inter middle, motor bottom).
  * Each spike rendered as a small dot, colored by neuron type.
+ * Optional burst detection overlay highlights windows where >30% of neurons fire simultaneously.
  */
 export function RasterPlot({
   spikeHistory,
@@ -20,6 +21,7 @@ export function RasterPlot({
 }: RasterPlotProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
+  const [showBursts, setShowBursts] = useState(true);
 
   // Build a sorted index: sensory neurons first, then inter, then motor.
   // Returns an array where sortedOrder[displayRow] = original neuron index.
@@ -131,6 +133,44 @@ export function RasterPlot({
       }
     }
 
+    // Burst detection overlay: a "burst" = >30% of neurons firing within a 5ms window
+    if (showBursts && nNeurons > 0) {
+      const BURST_WINDOW_MS = 5;
+      const BURST_THRESHOLD = 0.30;
+
+      // Scan through time in 5ms bins within the visible window
+      const binStart = Math.floor(tMin / BURST_WINDOW_MS) * BURST_WINDOW_MS;
+      const binEnd = tMax;
+
+      for (let binT = binStart; binT < binEnd; binT += BURST_WINDOW_MS) {
+        const binTEnd = binT + BURST_WINDOW_MS;
+
+        // Count unique neurons that fire within this bin
+        const firedNeurons = new Set<number>();
+        for (let fi = 0; fi < spikeHistory.length; fi++) {
+          const frame = spikeHistory[fi];
+          if (frame.t_ms < binT || frame.t_ms >= binTEnd) continue;
+          for (let si = 0; si < frame.spikes.length; si++) {
+            firedNeurons.add(frame.spikes[si]);
+          }
+        }
+
+        const fraction = firedNeurons.size / nNeurons;
+        if (fraction >= BURST_THRESHOLD) {
+          // Draw semi-transparent rectangle behind this burst region
+          const x1 = ((Math.max(binT, tMin) - tMin) / windowMs) * w;
+          const x2 = ((Math.min(binTEnd, tMax) - tMin) / windowMs) * w;
+
+          // Scale opacity with burst intensity (0.15 base, up to 0.3 for 100%)
+          const intensity = Math.min(fraction, 1);
+          const alpha = 0.10 + intensity * 0.15;
+
+          ctx.fillStyle = `rgba(255, 180, 40, ${alpha.toFixed(3)})`;
+          ctx.fillRect(x1, 0, x2 - x1, h);
+        }
+      }
+    }
+
     // Type band labels
     ctx.font = '9px monospace';
     ctx.globalAlpha = 0.35;
@@ -165,7 +205,7 @@ export function RasterPlot({
     ctx.font = '9px monospace';
     ctx.fillText(`${Math.round(tMin)}ms`, 4, h - 4);
     ctx.fillText(`${Math.round(tMax)}ms`, w - 48, h - 4);
-  }, [spikeHistory, neuronTypes, nNeurons, windowMs, buildSortedOrder, buildReverseMap]);
+  }, [spikeHistory, neuronTypes, nNeurons, windowMs, buildSortedOrder, buildReverseMap, showBursts]);
 
   useEffect(() => {
     rafRef.current = requestAnimationFrame(draw);
@@ -173,11 +213,37 @@ export function RasterPlot({
   }, [draw]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={800}
-      height={200}
-      style={{ width: '100%', height: '200px', borderRadius: 4, display: 'block' }}
-    />
+    <div style={{ position: 'relative', width: '100%' }}>
+      <label
+        style={{
+          position: 'absolute',
+          top: 2,
+          right: 4,
+          zIndex: 1,
+          fontSize: '9px',
+          fontFamily: 'monospace',
+          color: 'rgba(140, 170, 200, 0.5)',
+          cursor: 'pointer',
+          userSelect: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 3,
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={showBursts}
+          onChange={(e) => setShowBursts(e.target.checked)}
+          style={{ width: 10, height: 10, accentColor: '#ffb428' }}
+        />
+        Show bursts
+      </label>
+      <canvas
+        ref={canvasRef}
+        width={800}
+        height={200}
+        style={{ width: '100%', height: '200px', borderRadius: 4, display: 'block' }}
+      />
+    </div>
   );
 }

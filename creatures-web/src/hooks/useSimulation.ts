@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useSimulationStore } from '../stores/simulationStore';
+import { useTransportStore } from '../stores/transportStore';
 import type { SimulationFrame, ExperimentInfo } from '../types/simulation';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -91,8 +92,19 @@ export function useSimulation() {
 
     ws.onmessage = (evt) => {
       try {
-        const frame: SimulationFrame = JSON.parse(evt.data);
-        store.setFrame(frame);
+        const data = JSON.parse(evt.data);
+        // Route typed messages
+        if (data.type === 'weight_snapshot') {
+          // Will be consumed by stdpStore when it exists
+          window.dispatchEvent(new CustomEvent('neurevo-weight-snapshot', { detail: data }));
+        } else if (data.type === 'error') {
+          console.warn('[WS] Backend error:', data.message);
+        } else {
+          // Default: treat as SimulationFrame
+          const frame: SimulationFrame = data;
+          store.setFrame(frame);
+          useTransportStore.getState().pushFrame(frame);
+        }
       } catch (err) {
         console.warn('Failed to parse frame:', err);
       }
@@ -114,6 +126,11 @@ export function useSimulation() {
     sendCommand({ type: 'stimulate', neuron_ids: neuronIds, current });
   }, [sendCommand]);
 
+  const setSpeed = useCallback((value: number) => {
+    sendCommand({ type: 'speed', value });
+    useTransportStore.getState().setSpeed(value);
+  }, [sendCommand]);
+
   const pause = useCallback(() => sendCommand({ type: 'pause' }), [sendCommand]);
   const resume = useCallback(() => sendCommand({ type: 'resume' }), [sendCommand]);
 
@@ -126,7 +143,7 @@ export function useSimulation() {
   }, []);
 
   return {
-    createExperiment, connect, poke, stimulate, pause, resume, sendCommand,
+    createExperiment, connect, poke, stimulate, pause, resume, setSpeed, sendCommand,
     ...store,
   };
 }

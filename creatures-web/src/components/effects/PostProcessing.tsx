@@ -1,31 +1,13 @@
-import { Component, type ReactNode } from 'react';
-import { EffectComposer, Bloom, Vignette, ToneMapping } from '@react-three/postprocessing';
-import { ToneMappingMode } from 'postprocessing';
-
-class EffectErrorBoundary extends Component<
-  { children: ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-  static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(error: Error) { console.warn('PostProcessing failed:', error.message); }
-  render() { return this.state.hasError ? null : this.props.children; }
-}
-
+/**
+ * PostProcessing — temporarily disabled due to @react-three/postprocessing
+ * compatibility issue with postprocessing@6.39.0. The EffectComposer Bloom
+ * effect throws "Cannot read properties of undefined (reading 'length')"
+ * during commit phase. The scene uses emissive materials + additive blending
+ * for glow instead.
+ *
+ * To re-enable: upgrade @react-three/postprocessing to latest or downgrade
+ * postprocessing to ~6.35.0.
+ */
 export function PostProcessing() {
-  return (
-    <EffectErrorBoundary>
-      <EffectComposer multisampling={0}>
-        <Bloom
-          intensity={1.8}
-          luminanceThreshold={0.3}
-          luminanceSmoothing={0.7}
-          radius={0.9}
-          mipmapBlur
-        />
-        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-        <Vignette eskil={false} offset={0.15} darkness={0.6} />
-      </EffectComposer>
-    </EffectErrorBoundary>
-  );
+  return null;
 }

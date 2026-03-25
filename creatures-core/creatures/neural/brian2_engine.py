@@ -380,6 +380,58 @@ class Brian2Engine(NeuralEngine):
                 self._synapses.w[int(i)] = 0 * mV
             logger.info(f"Lesioned neuron {neuron_id}: zeroed {len(indices)} synapses")
 
+    def silence_neuron(self, neuron_id: str) -> None:
+        """Silence a neuron by setting its threshold extremely high."""
+        idx = self.get_neuron_index(neuron_id)
+        if idx is not None and self._neurons is not None:
+            self._neurons.v_thresh[idx] = 1000 * mV  # effectively infinite
+
+    def undo_lesion(self, neuron_id: str) -> None:
+        """Restore a lesioned neuron's synapses from the original weights."""
+        if self._original_build_weights is None:
+            return
+        idx = self.get_neuron_index(neuron_id)
+        if idx is None:
+            return
+        # Restore incoming and outgoing synapse weights
+        syn = self._synapses
+        if syn is not None:
+            pre_mask = (np.array(syn.i) == idx)
+            post_mask = (np.array(syn.j) == idx)
+            mask = pre_mask | post_mask
+            if mask.any():
+                original_w = self._original_build_weights[mask]
+                indices = np.where(mask)[0]
+                for k, i in enumerate(indices):
+                    syn.w[int(i)] = original_w[k] * mV
+
+    def set_stdp_params(self, enabled: bool, a_plus: float, a_minus: float, w_max: float) -> None:
+        """Enable or disable STDP by setting learning rate parameters."""
+        if self._synapses is None:
+            return
+        try:
+            if enabled:
+                self._synapses.A_plus[:] = a_plus
+                self._synapses.A_minus[:] = a_minus
+                self._synapses.w_max[:] = w_max
+            else:
+                self._synapses.A_plus[:] = 0.0
+                self._synapses.A_minus[:] = 0.0
+        except AttributeError:
+            pass  # STDP synapses not built
+
+    def record_neurons(self, neuron_ids: list[str]) -> None:
+        """Mark specific neurons for detailed voltage recording."""
+        indices = []
+        for nid in neuron_ids:
+            idx = self.get_neuron_index(nid)
+            if idx is not None:
+                indices.append(idx)
+        if indices and self._neurons is not None:
+            if not hasattr(self, '_recorded_indices'):
+                self._recorded_indices = set()
+            self._recorded_indices.update(indices)
+
     def get_firing_rates_array(self) -> np.ndarray:
         """Return firing rates as a numpy array (ordered by neuron index)."""
         if self._firing_rates is None:

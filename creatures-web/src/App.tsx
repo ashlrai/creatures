@@ -2,7 +2,8 @@ import { useCallback, useState, useEffect, useRef, useMemo, Component, type Reac
 import { Scene } from './components/Scene';
 import { ConnectomeExplorer } from './components/ui/ConnectomeExplorer';
 import { DrugTestingPanel } from './components/ui/DrugTestingPanel';
-import { Waveform } from './components/ui/Waveform';
+import { TransportControls } from './components/ui/TransportControls';
+import { useTransportStore } from './stores/transportStore';
 import { EvolutionDashboard } from './components/ui/EvolutionDashboard';
 import { FitnessGraph } from './components/ui/FitnessGraph';
 import { GodAgentPanel } from './components/ui/GodAgentPanel';
@@ -10,6 +11,7 @@ import { ArenaView } from './components/evolution/ArenaView';
 import { ConnectomeComparison } from './components/evolution/ConnectomeComparison';
 import { GenerationTimeline } from './components/evolution/GenerationTimeline';
 import { EcosystemView, type MassiveOrganism, type MassiveNeuralStats, type EmergentEvent } from './components/ecosystem/EcosystemView';
+import { EcosystemView3D } from './components/ecosystem/EcosystemView3D';
 import { SpeciesComparison } from './components/ui/SpeciesComparison';
 import { useSimulation } from './hooks/useSimulation';
 import { useDemoMode } from './hooks/useDemoMode';
@@ -20,9 +22,35 @@ import { NeuronDetailPanel } from './components/ui/NeuronDetailPanel';
 import { NeuralMetrics } from './components/ui/NeuralMetrics';
 import { RecordingPanel } from './components/ui/RecordingPanel';
 import { ExperimentPanel } from './components/ui/ExperimentPanel';
+import { ParameterPanel } from './components/ui/ParameterPanel';
+import { ExportPanel } from './components/ui/ExportPanel';
+import { CircuitSurgeryToolbar } from './components/ui/CircuitSurgeryToolbar';
+import { ModificationLog } from './components/ui/ModificationLog';
+import { useCircuitModificationStore } from './stores/circuitModificationStore';
+import { useNavigationStore } from './stores/navigationStore';
+import { BreadcrumbNav } from './components/ui/BreadcrumbNav';
+import { NeuronDetail } from './components/ui/NeuronDetail';
+import { STDPDashboard } from './components/ui/STDPDashboard';
+import { OptogeneticsPanel } from './components/ui/OptogeneticsPanel';
+import { MutualInfoMatrix } from './components/ui/MutualInfoMatrix';
+import { TransferEntropyNetwork } from './components/ui/TransferEntropyNetwork';
+import { CausalDashboard } from './components/ui/CausalDashboard';
+import { ProtocolTimeline } from './components/ui/ProtocolTimeline';
+import { ProtocolResults } from './components/ui/ProtocolResults';
+import { ConnectomeDiff } from './components/ui/ConnectomeDiff';
+import { CalciumOverlay } from './components/ui/CalciumOverlay';
+import { ActivityTimelineConnected } from './components/ui/ActivityTimeline';
+import { Oscilloscope } from './components/ui/Oscilloscope';
+import { DoseResponsePanel } from './components/ui/DoseResponsePanel';
+import { PhasePortrait3D } from './components/ui/PhasePortrait3D';
+import { ExperimentComparison } from './components/ui/ExperimentComparison';
+import { EnvironmentEditor } from './components/ui/EnvironmentEditor';
+import { MotifAnalyzer } from './components/ui/MotifAnalyzer';
 import { useSimulationStore } from './stores/simulationStore';
 import { useEvolutionStore } from './stores/evolutionStore';
 import { GlobalErrorBoundary, PanelErrorBoundary } from './components/ErrorBoundary';
+import { useUIPreferencesStore } from './stores/uiPreferencesStore';
+import { CorrelationMatrixConnected as CorrelationMatrix, PopulationProjectionConnected as PopulationProjection, PowerSpectralDensityConnected as PowerSpectralDensity } from './components/ui/AdvancedVizWrappers';
 import { Tutorial } from './components/ui/Tutorial';
 import { SharedView, isShareRoute } from './components/ui/SharedView';
 import {
@@ -123,6 +151,7 @@ export default function App() {
   const error = useSimulationStore((s) => s.error);
   const history = useSimulationStore((s) => s.frameHistory);
   const connectionStatus = useSimulationStore((s) => s.connectionStatus);
+  const researchMode = useUIPreferencesStore((s) => s.researchMode);
   const reconnectAttempts = useSimulationStore((s) => s.reconnectAttempts);
 
   // Shared view detection -- if the URL hash matches a share route, show SharedView
@@ -178,7 +207,7 @@ export default function App() {
   useEffect(() => {
     // Check hash first
     const hash = window.location.hash.replace(/^#\/?/, '');
-    if (hash === 'eco') {
+    if (hash === 'app/eco' || hash === 'eco') {
       setAppMode('eco');
     } else if (savedMode === 'evo') {
       setAppMode('evo');
@@ -286,8 +315,8 @@ export default function App() {
 
   // Manually set hash for eco mode
   useEffect(() => {
-    if (appMode === 'eco' && window.location.hash !== '#/eco') {
-      window.location.hash = '#/eco';
+    if (appMode === 'eco' && window.location.hash !== '#/app/eco') {
+      window.location.hash = '#/app/eco';
     }
   }, [appMode]);
 
@@ -321,7 +350,7 @@ export default function App() {
       }
       setShowSharedView(false);
       const path = hash.replace(/^#\/?/, '');
-      if (path === 'eco') {
+      if (path === 'app/eco' || path === 'eco') {
         setAppMode('eco');
       }
     };
@@ -461,6 +490,27 @@ export default function App() {
         setAppMode((m) => m === 'sim' ? 'evo' : m === 'evo' ? 'eco' : 'sim');
       } else if (key === '?') {
         setShowShortcuts((s) => !s);
+      } else if (key === 'k') {
+        e.preventDefault();
+        useTransportStore.getState().togglePlaying();
+      } else if (key === ',') {
+        useTransportStore.getState().stepBack();
+      } else if (key === '.') {
+        useTransportStore.getState().stepForward();
+      } else if (key === '[') {
+        const ts = useTransportStore.getState();
+        ts.setSpeed(Math.max(0.1, ts.speed / 1.5));
+      } else if (key === ']') {
+        const ts = useTransportStore.getState();
+        ts.setSpeed(Math.min(10, ts.speed * 1.5));
+      } else if (key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        e.preventDefault();
+        useCircuitModificationStore.getState().undo();
+      } else if ((key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey) || (key === 'y' && (e.ctrlKey || e.metaKey))) {
+        e.preventDefault();
+        useCircuitModificationStore.getState().redo();
+      } else if (key === 'l') {
+        useTransportStore.getState().toggleLoop();
       } else if (key === 'escape') {
         setShowShortcuts(false);
       }
@@ -474,7 +524,7 @@ export default function App() {
     return (
       <SharedView onExit={() => {
         setShowSharedView(false);
-        window.location.hash = '#/sim/c_elegans';
+        window.location.hash = '#/app/sim/c_elegans';
       }} />
     );
   }
@@ -486,6 +536,9 @@ export default function App() {
       {/* Neuron hover tooltip + detail panel — rendered outside Canvas */}
       <NeuronTooltip />
       <NeuronDetailPanel />
+      <CircuitSurgeryToolbar />
+      <BreadcrumbNav />
+      <NeuronDetail />
 
       {/* Welcome overlay — shown on first visit */}
       {showWelcome && (
@@ -582,6 +635,14 @@ export default function App() {
               Ecosystem
             </button>
           </div>
+          <button
+            className={`mode-switch-btn${researchMode ? ' active' : ''}`}
+            onClick={() => useUIPreferencesStore.getState().toggleResearchMode()}
+            title="Toggle Research Mode"
+            style={{ fontSize: 10, padding: '4px 10px' }}
+          >
+            Research
+          </button>
           <ConnectionIndicator status={connectionStatus} connected={connected} attempts={reconnectAttempts} />
           {frame && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-label)' }}>{frame.t_ms.toFixed(0)}ms</span>}
           <button
@@ -862,6 +923,9 @@ export default function App() {
                       ))}
                     </div>
                   </div>
+                  <PanelErrorBoundary name="Oscilloscope">
+                    <Oscilloscope />
+                  </PanelErrorBoundary>
                   <div className="glass">
                     <div className="glass-label">Interaction</div>
                     <div style={{ display: 'flex', gap: 6 }}>
@@ -892,6 +956,21 @@ export default function App() {
                     </div>
                   </div>
                   <DrugTestingPanel isDemo={isDemo} expanded={drugPanelExpanded} onToggleExpanded={setDrugPanelExpanded} />
+                  <PanelErrorBoundary name="Circuit Log">
+                    <ModificationLog />
+                  </PanelErrorBoundary>
+                  <PanelErrorBoundary name="Optogenetics">
+                    <OptogeneticsPanel />
+                  </PanelErrorBoundary>
+                  <PanelErrorBoundary name="Parameters">
+                    <ParameterPanel />
+                  </PanelErrorBoundary>
+                  <PanelErrorBoundary name="Dose-Response">
+                    <DoseResponsePanel />
+                  </PanelErrorBoundary>
+                  <PanelErrorBoundary name="Environment">
+                    <EnvironmentEditor />
+                  </PanelErrorBoundary>
                 </>
               )}
 
@@ -905,6 +984,21 @@ export default function App() {
                   </PanelErrorBoundary>
                   <PanelErrorBoundary name="Experiments">
                     <ExperimentPanel />
+                  </PanelErrorBoundary>
+                  <PanelErrorBoundary name="STDP">
+                    <STDPDashboard />
+                  </PanelErrorBoundary>
+                  <PanelErrorBoundary name="Activity Timeline">
+                    <ActivityTimelineConnected />
+                  </PanelErrorBoundary>
+                  <PanelErrorBoundary name="Export">
+                    <ExportPanel />
+                  </PanelErrorBoundary>
+                  <PanelErrorBoundary name="Phase Portrait">
+                    <PhasePortrait3D />
+                  </PanelErrorBoundary>
+                  <PanelErrorBoundary name="Compare Experiments">
+                    <ExperimentComparison />
                   </PanelErrorBoundary>
                 </>
               )}
@@ -920,14 +1014,19 @@ export default function App() {
         {/* 3D Viewport / Arena */}
         <div className="viewport">
           {appMode === 'eco' ? (
-            <EcosystemView
-              ecosystemId={ecoScale === 'standard' ? ecosystemId : undefined}
-              massiveId={ecoScale === 'massive' ? massiveId : undefined}
-              massiveOrganisms={massiveOrganisms}
-              massiveNeuralStats={massiveNeuralStats}
-              emergentEvents={massiveEmergent}
-              worldType={massiveWorldType}
-            />
+            ecoScale === 'massive' ? (
+              <EcosystemView3D
+                massiveId={massiveId ?? undefined}
+                massiveOrganisms={massiveOrganisms}
+                massiveNeuralStats={massiveNeuralStats}
+                emergentEvents={massiveEmergent}
+                worldType={massiveWorldType}
+              />
+            ) : (
+              <EcosystemView
+                ecosystemId={ecosystemId ?? undefined}
+              />
+            )
           ) : appMode === 'evo' ? (
             <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
               <div style={{ flex: 1, minHeight: 0 }}>
@@ -986,6 +1085,37 @@ export default function App() {
                 <PanelErrorBoundary name="Species Comparison">
                   <SpeciesComparison />
                 </PanelErrorBoundary>
+                {researchMode && (
+                  <>
+                    <PanelErrorBoundary name="Correlation">
+                      <CorrelationMatrix />
+                    </PanelErrorBoundary>
+                    <PanelErrorBoundary name="PCA">
+                      <PopulationProjection />
+                    </PanelErrorBoundary>
+                    <PanelErrorBoundary name="PSD">
+                      <PowerSpectralDensity />
+                    </PanelErrorBoundary>
+                    <PanelErrorBoundary name="Mutual Information">
+                      <MutualInfoMatrix />
+                    </PanelErrorBoundary>
+                    <PanelErrorBoundary name="Transfer Entropy">
+                      <TransferEntropyNetwork />
+                    </PanelErrorBoundary>
+                    <PanelErrorBoundary name="Causal Analysis">
+                      <CausalDashboard />
+                    </PanelErrorBoundary>
+                    <PanelErrorBoundary name="Connectome Diff">
+                      <ConnectomeDiff />
+                    </PanelErrorBoundary>
+                    <PanelErrorBoundary name="Calcium Imaging">
+                      <CalciumOverlay />
+                    </PanelErrorBoundary>
+                    <PanelErrorBoundary name="Circuit Motifs">
+                      <MotifAnalyzer />
+                    </PanelErrorBoundary>
+                  </>
+                )}
               </>
             ) : <ConnectomeSkeleton />
           )}
@@ -1006,11 +1136,27 @@ export default function App() {
             <div className="shortcuts-title">Keyboard Shortcuts</div>
             <div className="shortcuts-row"><kbd>Space</kbd> or <kbd>P</kbd><span>Poke tail</span></div>
             <div className="shortcuts-row"><kbd>H</kbd><span>Poke head</span></div>
-            <div className="shortcuts-row"><kbd>E</kbd><span>Toggle Evolution mode</span></div>
+            <div className="shortcuts-row"><kbd>E</kbd><span>Toggle mode</span></div>
+            <div className="shortcuts-row"><kbd>K</kbd><span>Play / Pause</span></div>
+            <div className="shortcuts-row"><kbd>,</kbd> / <kbd>.</kbd><span>Step back / forward</span></div>
+            <div className="shortcuts-row"><kbd>[</kbd> / <kbd>]</kbd><span>Speed down / up</span></div>
+            <div className="shortcuts-row"><kbd>L</kbd><span>Toggle loop</span></div>
             <div className="shortcuts-row"><kbd>?</kbd><span>Show / hide shortcuts</span></div>
-            <div className="shortcuts-row"><kbd>Esc</kbd><span>Close this panel</span></div>
+            <div className="shortcuts-row"><kbd>Esc</kbd><span>Close panels</span></div>
           </div>
         </div>
+      )}
+
+      {/* Protocol timeline & results overlay */}
+      {appMode === 'sim' && (
+        <>
+          <PanelErrorBoundary name="Protocol Timeline">
+            <ProtocolTimeline />
+          </PanelErrorBoundary>
+          <PanelErrorBoundary name="Protocol Results">
+            <ProtocolResults />
+          </PanelErrorBoundary>
+        </>
       )}
 
       {/* Bottom bar: waveform or generation timeline */}
@@ -1024,7 +1170,7 @@ export default function App() {
         ) : appMode === 'evo' ? (
           <GenerationTimeline />
         ) : experiment ? (
-          <Waveform />
+          <TransportControls />
         ) : (
           <WaveformSkeleton />
         )}

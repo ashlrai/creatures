@@ -1,7 +1,8 @@
 import { useRef, useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, extend } from '@react-three/fiber';
 import { Sparkles } from '@react-three/drei';
 import * as THREE from 'three';
+import { useSimulationStore } from '../../stores/simulationStore';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,7 +50,7 @@ function makeParticleVelocities(
 
 function DefaultParticles() {
   const pointsRef = useRef<THREE.Points>(null);
-  const count = 60;
+  const count = 120;
 
   const { positions, velocities } = useMemo(() => ({
     positions: makeParticlePositions(count, 0.44, 0.3, 0, 2.0, 0.6, 1.5),
@@ -128,11 +129,116 @@ function DefaultGroundPlane() {
   );
 }
 
+/** Tiny "dust in fluid" particles for depth and realism */
+function MicroParticles() {
+  const pointsRef = useRef<THREE.Points>(null);
+  const count = 200;
+
+  const { positions, velocities } = useMemo(() => ({
+    positions: makeParticlePositions(count, 0.4, 0.1, 0, 0.8, 0.4, 0.6),
+    velocities: makeParticleVelocities(count, 0.0008, 0.0006, 0.0008),
+  }), []);
+
+  useFrame(() => {
+    if (!pointsRef.current) return;
+    const posAttr = pointsRef.current.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const arr = posAttr.array as Float32Array;
+    for (let i = 0; i < count; i++) {
+      arr[i * 3] += velocities[i * 3];
+      arr[i * 3 + 1] += velocities[i * 3 + 1] * 0.3 + 0.00008;
+      arr[i * 3 + 2] += velocities[i * 3 + 2];
+      // Wrap particles back into volume
+      if (arr[i * 3 + 1] > 0.35) arr[i * 3 + 1] = -0.1;
+      if (Math.abs(arr[i * 3] - 0.4) > 0.5) arr[i * 3] = 0.4 + (Math.random() - 0.5) * 0.6;
+      if (Math.abs(arr[i * 3 + 2]) > 0.4) arr[i * 3 + 2] = (Math.random() - 0.5) * 0.4;
+    }
+    posAttr.needsUpdate = true;
+  });
+
+  return (
+    <points ref={pointsRef}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" array={positions} count={count} itemSize={3} />
+      </bufferGeometry>
+      <pointsMaterial
+        color="#443322"
+        size={0.003}
+        sizeAttenuation
+        transparent
+        opacity={0.3}
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
+      />
+    </points>
+  );
+}
+
+/** Ambient glow sphere that subtly pulses with neural activity */
+const ambientGlowVertexShader = /* glsl */ `
+  varying vec3 vNormal;
+  void main() {
+    vNormal = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const ambientGlowFragmentShader = /* glsl */ `
+  uniform float uTime;
+  uniform float uActivity;
+  varying vec3 vNormal;
+  void main() {
+    float rim = 1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
+    rim = pow(rim, 2.0);
+    // Shift between deep blue and teal based on activity
+    vec3 deepBlue = vec3(0.02, 0.04, 0.12);
+    vec3 teal = vec3(0.02, 0.10, 0.10);
+    float blend = 0.5 + 0.5 * sin(uTime * 0.3 + uActivity * 3.14);
+    vec3 col = mix(deepBlue, teal, blend);
+    float pulse = 0.02 + 0.03 * (0.5 + 0.5 * sin(uTime * 0.5));
+    gl_FragColor = vec4(col, rim * pulse);
+  }
+`;
+
+function AmbientGlow() {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const frame = useSimulationStore((s) => s.frame);
+
+  const uniforms = useMemo(() => ({
+    uTime: { value: 0 },
+    uActivity: { value: 0 },
+  }), []);
+
+  useFrame(({ clock }) => {
+    uniforms.uTime.value = clock.getElapsedTime();
+    // Derive a 0-1 activity signal from average spike rate
+    const spikes = frame?.spikes;
+    if (spikes && spikes.length > 0) {
+      const avg = spikes.reduce((a: number, b: number) => a + b, 0) / spikes.length;
+      uniforms.uActivity.value += (avg - uniforms.uActivity.value) * 0.05;
+    }
+  });
+
+  return (
+    <mesh ref={meshRef} position={[0.4, 0.05, 0]}>
+      <sphereGeometry args={[0.6, 32, 32]} />
+      <shaderMaterial
+        vertexShader={ambientGlowVertexShader}
+        fragmentShader={ambientGlowFragmentShader}
+        uniforms={uniforms}
+        transparent
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
+        side={THREE.BackSide}
+      />
+    </mesh>
+  );
+}
+
 function DefaultEnvironment() {
   return (
     <>
       <color attach="background" args={['#020210']} />
-      <fog attach="fog" args={['#020210', 3, 12]} />
+      <fog attach="fog" args={['#020408', 1.5, 8]} />
 
       {/* Lighting */}
       <ambientLight intensity={0.15} color="#1a2a4a" />
@@ -149,8 +255,12 @@ function DefaultEnvironment() {
       <gridHelper args={[4, 40, '#0a1525', '#0a1525']} position={[0.44, -0.01, 0]} />
 
       {/* Particles */}
-      <Sparkles count={60} size={0.35} speed={0.06} opacity={0.15} color="#4488dd" scale={[2.0, 0.6, 1.5]} position={[0.44, 0.15, 0]} />
+      <Sparkles count={120} size={0.35} speed={0.06} opacity={0.15} color="#4488dd" scale={[2.0, 0.6, 1.5]} position={[0.44, 0.15, 0]} />
       <DefaultParticles />
+      <MicroParticles />
+
+      {/* Ambient neural glow */}
+      <AmbientGlow />
     </>
   );
 }

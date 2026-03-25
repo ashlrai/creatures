@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { OrbitControls, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 import { WormBody } from './organism/WormBody';
 import { FlyBody3D } from './organism/FlyBody3D';
@@ -10,6 +10,7 @@ import { ConnectomeGraph3D } from './organism/ConnectomeGraph3D';
 import { SpikeParticles } from './organism/SpikeParticles';
 import { PostProcessing } from './effects/PostProcessing';
 import { PerformanceMonitor } from './ui/PerformanceMonitor';
+import { PerformanceStats } from './ui/PerformanceStats';
 import { EnvironmentBackground } from './environment/EnvironmentBackground';
 import { useSimulationStore } from '../stores/simulationStore';
 
@@ -41,12 +42,14 @@ function SmoothCamera() {
       ref={controlsRef}
       target={[0.3, 0.02, 0]}
       minDistance={0.08}
-      maxDistance={3}
+      maxDistance={5}
       enableDamping
-      dampingFactor={0.08}
+      dampingFactor={0.06}
       rotateSpeed={0.5}
+      enablePan={true}
+      panSpeed={0.3}
       autoRotate
-      autoRotateSpeed={0.15}
+      autoRotateSpeed={0.08}
     />
   );
 }
@@ -73,13 +76,41 @@ export interface SceneProps {
 export function Scene({ worldType }: SceneProps) {
   return (
     <Canvas
+      shadows
       camera={{ position: [0.44, 0.06, 0.35], fov: 42, near: 0.005, far: 15 }}
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
-      dpr={[1, 2]}
+      dpr={[1, 1.5]}
+      flat={false}
       style={{
         background: 'radial-gradient(ellipse at 50% 40%, #0a0f20 0%, #040408 60%, #010102 100%)',
       }}
     >
+      {/* Professional 3-point lighting rig */}
+      <ambientLight intensity={0.15} color="#1a2a40" />
+      <directionalLight
+        position={[2, 3, 1]}
+        intensity={1.2}
+        color="#c8d8ff"
+        castShadow
+        shadow-mapSize={[1024, 1024]}
+        shadow-camera-near={0.1}
+        shadow-camera-far={10}
+      />
+      <directionalLight position={[-1, 2, -2]} intensity={0.4} color="#4488cc" />
+      <pointLight position={[0, -0.5, 0]} intensity={0.3} color="#0066ff" distance={2} decay={2} />
+      <hemisphereLight args={['#1a2a40', '#000510', 0.5]} />
+
+      <ContactShadows
+        position={[0.4, -0.01, 0]}
+        opacity={0.25}
+        scale={2}
+        blur={2}
+        far={1}
+        color="#001020"
+      />
+
+      <gridHelper args={[4, 40, '#0a1525', '#060c18']} position={[0.4, -0.01, 0]} />
+
       {/* Environment: background color, fog, lighting, ground, particles */}
       <EnvironmentBackground worldType={worldType} />
 
@@ -97,6 +128,9 @@ export function Scene({ worldType }: SceneProps) {
 
       {/* FPS warning — only visible when performance drops below 30fps */}
       <PerformanceMonitor />
+
+      {/* Detailed performance stats — visible in research mode or via F3 */}
+      <PerformanceStats />
     </Canvas>
   );
 }

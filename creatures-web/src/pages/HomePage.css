@@ -1,0 +1,528 @@
+/* Neurevo Marketing Homepage — Scientific Prestige Theme */
+
+.hp-page {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #fafbfc;
+  color: #1a1a2e;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ========== Navigation ========== */
+
+.hp-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 40px;
+  height: 64px;
+  background: rgba(250, 251, 252, 0.85);
+  backdrop-filter: blur(12px);
+  transition: box-shadow 0.3s ease;
+}
+.hp-nav--scrolled {
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06), 0 4px 20px rgba(0, 0, 0, 0.03);
+}
+.hp-nav__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+.hp-nav__wordmark {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #0a0e1a;
+  text-decoration: none;
+}
+.hp-nav__links {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+.hp-nav__link {
+  font-size: 14px;
+  font-weight: 500;
+  color: #5a6070;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.hp-nav__link:hover {
+  color: #1a1a2e;
+}
+.hp-nav__cta {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  background: #0a0e1a;
+  text-decoration: none;
+  transition: all 0.2s;
+  border: none;
+  cursor: pointer;
+}
+.hp-nav__cta:hover {
+  background: #1a2040;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+.hp-nav__hamburger {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  color: #1a1a2e;
+  flex-direction: column;
+  gap: 5px;
+}
+.hp-nav__hamburger-bar {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: #1a1a2e;
+  border-radius: 1px;
+}
+
+/* ========== Hero ========== */
+
+.hp-hero {
+  display: flex;
+  align-items: center;
+  min-height: 100vh;
+  padding: 64px 40px 0;
+  max-width: 1280px;
+  margin: 0 auto;
+  gap: 60px;
+}
+.hp-hero__content {
+  flex: 1;
+  max-width: 560px;
+}
+.hp-hero__eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #0891b2;
+  margin-bottom: 16px;
+}
+.hp-hero__headline {
+  font-size: 56px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+  color: #0a0e1a;
+  margin-bottom: 20px;
+}
+.hp-hero__sub {
+  font-size: 18px;
+  line-height: 1.7;
+  color: #5a6070;
+  margin-bottom: 36px;
+  max-width: 480px;
+}
+.hp-hero__actions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.hp-hero__btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 28px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: inherit;
+  color: white;
+  background: #0a0e1a;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.hp-hero__btn-primary:hover {
+  background: #1a2040;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.hp-hero__btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 28px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #5a6070;
+  background: transparent;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.hp-hero__btn-secondary:hover {
+  border-color: rgba(0, 0, 0, 0.2);
+  color: #1a1a2e;
+  transform: translateY(-1px);
+}
+.hp-hero__viz {
+  flex: 1;
+  height: 420px;
+  max-width: 560px;
+  position: relative;
+}
+
+/* ========== Capabilities ========== */
+
+.hp-cap {
+  padding: 140px 40px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.hp-cap__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.hp-cap__heading {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: #0a0e1a;
+  text-align: center;
+  margin-bottom: 64px;
+}
+.hp-cap__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.hp-cap__card {
+  padding: 36px;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: white;
+  transition: all 0.3s ease;
+}
+.hp-cap__card:hover {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+.hp-cap__icon {
+  margin-bottom: 20px;
+}
+.hp-cap__title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0a0e1a;
+  margin-bottom: 10px;
+  letter-spacing: -0.01em;
+}
+.hp-cap__desc {
+  font-size: 15px;
+  line-height: 1.65;
+  color: #5a6070;
+}
+
+/* ========== Science ========== */
+
+.hp-sci {
+  padding: 140px 40px;
+  background: #f0f2f5;
+}
+.hp-sci__inner {
+  max-width: 960px;
+  margin: 0 auto;
+  text-align: center;
+}
+.hp-sci__heading {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: #0a0e1a;
+  margin-bottom: 16px;
+}
+.hp-sci__subheading {
+  font-size: 17px;
+  color: #5a6070;
+  line-height: 1.7;
+  max-width: 600px;
+  margin: 0 auto;
+}
+.hp-sci__stats {
+  display: flex;
+  justify-content: center;
+  gap: 80px;
+  margin-top: 64px;
+}
+.hp-sci__stat {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hp-sci__stat-value {
+  font-size: 52px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #0891b2;
+  line-height: 1;
+}
+.hp-sci__stat-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+.hp-sci__stat-sublabel {
+  font-size: 13px;
+  color: #8890a0;
+}
+
+/* ========== Use Cases ========== */
+
+.hp-uc {
+  padding: 140px 40px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+.hp-uc__inner {
+  max-width: 960px;
+  margin: 0 auto;
+}
+.hp-uc__heading {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: #0a0e1a;
+  text-align: center;
+  margin-bottom: 48px;
+}
+.hp-uc__tabs {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 32px;
+  background: #f0f2f5;
+  border-radius: 12px;
+  padding: 4px;
+}
+.hp-uc__tab {
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #5a6070;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.hp-uc__tab:hover {
+  color: #1a1a2e;
+}
+.hp-uc__tab--active {
+  background: white;
+  color: #0a0e1a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.hp-uc__panel {
+  padding: 40px;
+  background: white;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+.hp-uc__desc {
+  font-size: 18px;
+  font-weight: 600;
+  color: #0a0e1a;
+  margin-bottom: 24px;
+  letter-spacing: -0.01em;
+}
+.hp-uc__bullets {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hp-uc__bullet {
+  font-size: 15px;
+  color: #3a3e4a;
+  padding-left: 24px;
+  position: relative;
+  line-height: 1.6;
+}
+.hp-uc__bullet::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0891b2;
+  opacity: 0.5;
+}
+
+/* ========== CTA ========== */
+
+.hp-cta {
+  padding: 120px 40px;
+  background: #0a0e1a;
+  text-align: center;
+}
+.hp-cta__inner {
+  max-width: 600px;
+  margin: 0 auto;
+}
+.hp-cta__heading {
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: white;
+  margin-bottom: 16px;
+}
+.hp-cta__subtext {
+  font-size: 17px;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.7;
+  margin-bottom: 40px;
+}
+.hp-cta__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.hp-cta__primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 36px;
+  border-radius: 10px;
+  font-size: 17px;
+  font-weight: 700;
+  font-family: inherit;
+  color: #0a0e1a;
+  background: white;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.hp-cta__primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(255, 255, 255, 0.15);
+}
+.hp-cta__secondary {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.35);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.hp-cta__secondary:hover {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ========== Footer ========== */
+
+.hp-footer {
+  padding: 40px;
+  background: #060810;
+}
+.hp-footer__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+.hp-footer__wordmark {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.4);
+}
+.hp-footer__links {
+  display: flex;
+  gap: 24px;
+}
+.hp-footer__link {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.3);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.hp-footer__link:hover {
+  color: rgba(255, 255, 255, 0.6);
+}
+.hp-footer__copy {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+/* ========== Responsive ========== */
+
+@media (max-width: 960px) {
+  .hp-hero {
+    flex-direction: column;
+    padding-top: 100px;
+    min-height: auto;
+    gap: 40px;
+  }
+  .hp-hero__headline { font-size: 40px; }
+  .hp-hero__viz { min-height: 350px; width: 100%; }
+  .hp-cap__grid { grid-template-columns: 1fr; }
+  .hp-sci__stats { flex-direction: column; gap: 40px; }
+  .hp-sci__stat-value { font-size: 40px; }
+  .hp-cap__heading,
+  .hp-sci__heading,
+  .hp-uc__heading { font-size: 32px; }
+}
+
+@media (max-width: 768px) {
+  .hp-nav { padding: 0 20px; }
+  .hp-nav__links { display: none; }
+  .hp-nav__links--open {
+    display: flex;
+    position: fixed;
+    top: 64px;
+    left: 0;
+    right: 0;
+    background: rgba(250, 251, 252, 0.98);
+    backdrop-filter: blur(12px);
+    padding: 16px 40px 24px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    flex-direction: column;
+    gap: 16px;
+  }
+  .hp-nav__hamburger { display: flex; }
+  .hp-hero { padding: 80px 20px 40px; }
+  .hp-hero__headline { font-size: 32px; }
+  .hp-hero__sub { font-size: 16px; }
+  .hp-hero__actions { flex-direction: column; align-items: stretch; }
+  .hp-hero__btn-primary, .hp-hero__btn-secondary {
+    justify-content: center;
+  }
+  .hp-cap { padding: 80px 20px; }
+  .hp-sci { padding: 80px 20px; }
+  .hp-uc { padding: 80px 20px; }
+  .hp-uc__tabs { flex-direction: column; }
+  .hp-cta { padding: 80px 20px; }
+  .hp-cta__heading { font-size: 32px; }
+  .hp-footer__inner { flex-direction: column; gap: 16px; text-align: center; }
+}

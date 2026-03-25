@@ -1,26 +1,34 @@
 import { useRef, useEffect, useCallback } from 'react';
+import { useSimulationStore } from '../../stores/simulationStore';
+import { useCircuitModificationStore } from '../../stores/circuitModificationStore';
+import { CollapsiblePanel } from './CollapsiblePanel';
 
 export interface ActivityTimelineProps {
   /** Recent frames with spike and type information. */
   spikeHistory: Array<{ t_ms: number; spikes: number[] }>;
   neuronTypes?: Record<number, 'sensory' | 'inter' | 'motor'>;
   nNeurons: number;
-  windowMs?: number; // default 500
+  windowMs?: number;
 }
 
 /**
- * Timeline of neural events: oscilloscope-style traces showing
- * total active, motor, and sensory neuron counts over time.
- * Canvas 2D with smooth lines and grid.
+ * Horizontal scrolling timeline showing neural activity events:
+ * - Population firing rate as blue filled area chart
+ * - Spike bursts as yellow vertical bars
+ * - Circuit modification events as colored diamond markers
+ * - Current time indicator at the right edge
+ *
+ * Wraps in a CollapsiblePanel for the Science tab.
  */
 export function ActivityTimeline({
   spikeHistory,
   neuronTypes,
   nNeurons,
-  windowMs = 500,
+  windowMs = 10_000,
 }: ActivityTimelineProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
+  const modifications = useCircuitModificationStore((s) => s.modifications);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -28,121 +36,175 @@ export function ActivityTimeline({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const w = canvas.width;
-    const h = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvas.clientWidth;
+    const cssH = canvas.clientHeight;
+
+    // Resize canvas to match CSS size at device pixel ratio
+    if (canvas.width !== cssW * dpr || canvas.height !== cssH * dpr) {
+      canvas.width = cssW * dpr;
+      canvas.height = cssH * dpr;
+      ctx.scale(dpr, dpr);
+    }
+
+    const w = cssW;
+    const h = cssH;
 
     // Background
-    ctx.fillStyle = '#05050d';
+    ctx.fillStyle = '#04060e';
     ctx.fillRect(0, 0, w, h);
 
-    // Grid lines
-    ctx.strokeStyle = 'rgba(40, 60, 100, 0.15)';
+    // Grid lines (subtle)
+    ctx.strokeStyle = 'rgba(40, 60, 100, 0.12)';
     ctx.lineWidth = 0.5;
-    for (let y = 0; y < h; y += h / 4) {
+    for (let y = 0; y <= h; y += h / 4) {
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-    }
-    for (let x = 0; x < w; x += w / 10) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
     }
 
     if (spikeHistory.length < 2 || nNeurons === 0) {
-      ctx.fillStyle = 'rgba(140, 170, 200, 0.3)';
+      ctx.fillStyle = 'rgba(140, 170, 200, 0.25)';
       ctx.font = '10px monospace';
       ctx.fillText('Waiting for activity data...', 8, h / 2);
       return;
     }
 
-    // Determine time window
     const latestT = spikeHistory[spikeHistory.length - 1].t_ms;
     const tMin = latestT - windowMs;
 
-    // Compute per-frame counts
-    type Counts = { t_ms: number; total: number; sensory: number; motor: number };
-    const counts: Counts[] = [];
+    const toX = (t: number) => ((t - tMin) / windowMs) * w;
+
+    // ── Layer 1: Population firing rate (blue filled area) ──────────
+    // Bin frames into ~100 buckets for smoother rendering
+    const nBins = Math.min(200, spikeHistory.length);
+    const binSize = windowMs / nBins;
+    const binCounts = new Float32Array(nBins);
+    let maxRate = 1;
 
     for (const frame of spikeHistory) {
       if (frame.t_ms < tMin) continue;
-
-      let total = 0;
-      let sensory = 0;
-      let motor = 0;
-
-      // Count unique spiking neurons per type
-      for (const neuronIdx of frame.spikes) {
-        total++;
-        const nType = neuronTypes?.[neuronIdx];
-        if (nType === 'sensory') sensory++;
-        else if (nType === 'motor') motor++;
-      }
-
-      counts.push({ t_ms: frame.t_ms, total, sensory, motor });
+      const binIdx = Math.min(nBins - 1, Math.floor((frame.t_ms - tMin) / binSize));
+      binCounts[binIdx] += frame.spikes.length;
     }
 
-    if (counts.length < 2) return;
+    // Normalize to firing rate
+    for (let i = 0; i < nBins; i++) {
+      binCounts[i] = binCounts[i] / Math.max(1, nNeurons);
+      if (binCounts[i] > maxRate) maxRate = binCounts[i];
+    }
 
-    // Find max for Y scaling
-    const maxCount = Math.max(5, ...counts.map((c) => c.total));
-    const yPad = h * 0.05;
-    const yRange = h - yPad * 2;
+    // Draw filled area
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    for (let i = 0; i < nBins; i++) {
+      const x = (i / nBins) * w;
+      const y = h - (binCounts[i] / maxRate) * (h * 0.8);
+      i === 0 ? ctx.lineTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.lineTo(w, h);
+    ctx.closePath();
 
-    const toX = (t: number) => ((t - tMin) / windowMs) * w;
-    const toY = (v: number) => h - yPad - (v / maxCount) * yRange;
+    const areaGrad = ctx.createLinearGradient(0, 0, 0, h);
+    areaGrad.addColorStop(0, 'rgba(34, 136, 255, 0.25)');
+    areaGrad.addColorStop(1, 'rgba(34, 136, 255, 0.02)');
+    ctx.fillStyle = areaGrad;
+    ctx.fill();
 
-    // Draw line helper
-    const drawLine = (
-      values: Counts[],
-      getter: (c: Counts) => number,
-      color: string,
-      lineWidth: number,
-      glowBlur: number,
-    ) => {
-      ctx.beginPath();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = lineWidth;
-      ctx.lineJoin = 'round';
-      ctx.lineCap = 'round';
+    // Stroke line on top
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(34, 136, 255, 0.6)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < nBins; i++) {
+      const x = (i / nBins) * w;
+      const y = h - (binCounts[i] / maxRate) * (h * 0.8);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
 
-      if (glowBlur > 0) {
-        ctx.shadowColor = color;
-        ctx.shadowBlur = glowBlur;
+    // ── Layer 2: Spike burst bars (yellow) ──────────────────────────
+    // Detect bursts: bins where activity exceeds 2x mean
+    const mean = binCounts.reduce((s, v) => s + v, 0) / nBins;
+    const burstThreshold = Math.max(mean * 2, 0.1);
+
+    for (let i = 0; i < nBins; i++) {
+      if (binCounts[i] > burstThreshold) {
+        const x = (i / nBins) * w;
+        const barW = Math.max(1, w / nBins);
+        const intensity = Math.min(1, binCounts[i] / maxRate);
+        ctx.fillStyle = `rgba(255, 200, 40, ${intensity * 0.5})`;
+        ctx.fillRect(x, 0, barW, h);
       }
+    }
 
-      for (let i = 0; i < values.length; i++) {
-        const x = toX(values[i].t_ms);
-        const y = toY(getter(values[i]));
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-      ctx.shadowBlur = 0;
+    // ── Layer 3: Event markers (colored diamonds) ───────────────────
+    const modColors: Record<string, string> = {
+      lesion: '#ff3366',
+      stimulate: '#00ddff',
+      silence: '#ffaa22',
+      record: '#2288ff',
     };
 
-    // Total active (cyan)
-    drawLine(counts, (c) => c.total, '#00ccff', 1.5, 4);
+    for (const mod of modifications) {
+      const t = mod.timestamp;
+      // Convert wall-clock timestamp to approximate simulation time
+      // We can only show markers within our visible window
+      const x = toX(t);
+      if (x < -10 || x > w + 10) continue;
 
-    // Motor (magenta)
-    drawLine(counts, (c) => c.motor, '#ff2288', 1.2, 3);
+      const color = modColors[mod.type] ?? '#ffffff';
+      const cy = h * 0.15;
+      const size = 5;
 
-    // Sensory (green)
-    drawLine(counts, (c) => c.sensory, '#00ff88', 1.2, 3);
+      // Diamond shape
+      ctx.beginPath();
+      ctx.moveTo(x, cy - size);
+      ctx.lineTo(x + size, cy);
+      ctx.lineTo(x, cy + size);
+      ctx.lineTo(x - size, cy);
+      ctx.closePath();
 
-    // Legend
-    ctx.font = '9px monospace';
-    ctx.globalAlpha = 0.5;
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
 
-    ctx.fillStyle = '#00ccff';
-    ctx.fillText('total', 4, 10);
+    // ── Layer 4: Current time indicator (bright vertical line) ──────
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.4)';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(w - 1, 0);
+    ctx.lineTo(w - 1, h);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
 
-    ctx.fillStyle = '#ff2288';
-    ctx.fillText('motor', 40, 10);
+    // ── Time labels ─────────────────────────────────────────────────
+    ctx.font = '8px monospace';
+    ctx.fillStyle = 'rgba(140, 170, 200, 0.3)';
+    const secInterval = windowMs > 5000 ? 2000 : 1000;
+    const firstTick = Math.ceil(tMin / secInterval) * secInterval;
+    for (let t = firstTick; t <= latestT; t += secInterval) {
+      const x = toX(t);
+      ctx.fillText(`${(t / 1000).toFixed(1)}s`, x + 2, h - 3);
+      ctx.strokeStyle = 'rgba(140, 170, 200, 0.08)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
 
-    ctx.fillStyle = '#00ff88';
-    ctx.fillText('sensory', 80, 10);
+    // ── Legend ───────────────────────────────────────────────────────
+    ctx.font = '8px monospace';
+    ctx.globalAlpha = 0.45;
 
-    ctx.globalAlpha = 0.3;
-    ctx.fillStyle = 'rgba(140, 170, 200, 1)';
-    ctx.fillText(`max: ${maxCount}`, w - 55, 10);
+    ctx.fillStyle = '#2288ff';
+    ctx.fillText('rate', 4, 10);
+
+    ctx.fillStyle = '#ffc828';
+    ctx.fillText('burst', 30, 10);
+
     ctx.globalAlpha = 1;
-  }, [spikeHistory, neuronTypes, nNeurons, windowMs]);
+  }, [spikeHistory, neuronTypes, nNeurons, windowMs, modifications]);
 
   useEffect(() => {
     rafRef.current = requestAnimationFrame(draw);
@@ -152,9 +214,46 @@ export function ActivityTimeline({
   return (
     <canvas
       ref={canvasRef}
-      width={800}
-      height={120}
-      style={{ width: '100%', height: '120px', borderRadius: 4, display: 'block' }}
+      style={{
+        width: '100%',
+        height: 80,
+        borderRadius: 4,
+        display: 'block',
+      }}
     />
+  );
+}
+
+/**
+ * Self-contained version that reads data from stores.
+ * Drop into the Science sidebar tab directly.
+ */
+export function ActivityTimelineConnected() {
+  const frame = useSimulationStore((s) => s.frame);
+  const frameHistory = useSimulationStore((s) => s.frameHistory);
+  const experiment = useSimulationStore((s) => s.experiment);
+
+  // Build a lightweight spike history from recent frame snapshots
+  // We store the last N frames' spike data in a rolling buffer
+  const spikeHistoryRef = useRef<Array<{ t_ms: number; spikes: number[] }>>([]);
+
+  useEffect(() => {
+    if (!frame) return;
+    const buf = spikeHistoryRef.current;
+    buf.push({ t_ms: frame.t_ms, spikes: [...frame.spikes] });
+    // Keep last ~600 frames (~10s at 60fps)
+    if (buf.length > 600) buf.splice(0, buf.length - 600);
+  }, [frame]);
+
+  const nNeurons = experiment?.n_neurons ?? 0;
+
+  return (
+    <CollapsiblePanel id="activity-timeline" label="Activity Timeline">
+      <ActivityTimeline
+        spikeHistory={spikeHistoryRef.current}
+        nNeurons={nNeurons}
+        windowMs={10_000}
+      />
+    </CollapsiblePanel>
   );
 }
