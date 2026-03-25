@@ -46,7 +46,7 @@ export function ExperimentPanel() {
     setShowReport(false);
 
     try {
-      const res = await fetch('/api/experiments/protocol', {
+      const res = await fetch('/api/experiments/protocols/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ preset: selectedPreset }),

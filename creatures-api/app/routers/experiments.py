@@ -28,9 +28,8 @@ from creatures.storage.persistence import NeurevoStore
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/experiments", tags=["experiments"])
-# Protocol sub-router — registered FIRST so /protocols and /protocol/{name}
-# are not shadowed by /{sim_id}
-protocol_router = APIRouter(prefix="/experiments", tags=["experiments"])
+# Protocol sub-router uses a distinct prefix to avoid /{sim_id} shadowing
+protocol_router = APIRouter(prefix="/experiments/protocols", tags=["experiments"])
 
 # Shared simulation manager (injected from main.py)
 manager: SimulationManager | None = None
@@ -239,7 +238,7 @@ class ProtocolInfoSchema(BaseModel):
     steps: list[StepSchema]
 
 
-@protocol_router.get("/protocols", response_model=list[ProtocolInfoSchema])
+@protocol_router.get("", response_model=list[ProtocolInfoSchema])
 async def list_protocols() -> list[ProtocolInfoSchema]:
     """List all available preset experiment protocols."""
     result = []
@@ -267,7 +266,7 @@ async def list_protocols() -> list[ProtocolInfoSchema]:
     return result
 
 
-@protocol_router.get("/protocol/{name}", response_model=ProtocolInfoSchema)
+@protocol_router.get("/{name}", response_model=ProtocolInfoSchema)
 async def get_protocol(name: str) -> ProtocolInfoSchema:
     """Get details of a specific preset protocol by name."""
     if name not in PRESET_EXPERIMENTS:
@@ -295,7 +294,7 @@ async def get_protocol(name: str) -> ProtocolInfoSchema:
     )
 
 
-@protocol_router.post("/protocol", response_model=ProtocolResultSchema)
+@protocol_router.post("/run", response_model=ProtocolResultSchema)
 async def run_protocol(req: ProtocolRunRequest) -> ProtocolResultSchema:
     """Run an experiment protocol (preset or custom).
 
