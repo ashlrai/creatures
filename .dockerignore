@@ -5,6 +5,9 @@ __pycache__
 *.pyc
 .pytest_cache
 evolution_results
+neurevo_data
 benchmark_results.png
 *.egg-info
 .github
+.env
+creatures-web/tsconfig.tsbuildinfo

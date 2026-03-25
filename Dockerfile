@@ -10,24 +10,31 @@ RUN npm run build
 FROM python:3.13-slim AS api
 WORKDIR /app
 
-# Install system dependencies for MuJoCo and Brian2
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY creatures-core/pyproject.toml creatures-core/
-RUN pip install --no-cache-dir -e creatures-core/
-
-# Copy application code
+# Copy and install Python dependencies
 COPY creatures-core/ creatures-core/
+RUN pip install --no-cache-dir \
+    numpy brian2 h5py pydantic requests pandas scipy cython \
+    fastapi "uvicorn[standard]" websockets httpx
+
+# Copy API code
 COPY creatures-api/ creatures-api/
 
 # Copy frontend build
 COPY --from=frontend /app/creatures-web/dist creatures-web/dist
 
-# Expose port
-EXPOSE 8420
+# Copy scripts and data
+COPY scripts/ scripts/
+COPY data/ data/
+COPY landing/ landing/
 
-# Run with uvicorn
-ENV PYTHONPATH="creatures-core:creatures-api"
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8420"]
+# Environment
+ENV PYTHONPATH="/app/creatures-core:/app/creatures-api"
+ENV BRIAN2_CODEGEN_TARGET="numpy"
+
+# Railway uses $PORT, default to 8420 for local
+EXPOSE 8420
+CMD python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8420}
