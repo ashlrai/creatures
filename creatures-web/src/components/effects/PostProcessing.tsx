@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from 'react';
-import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
+import { EffectComposer, Bloom, Vignette, ToneMapping } from '@react-three/postprocessing';
+import { ToneMappingMode } from 'postprocessing';
 
 class EffectErrorBoundary extends Component<
   { children: ReactNode },
@@ -16,13 +17,14 @@ export function PostProcessing() {
     <EffectErrorBoundary>
       <EffectComposer multisampling={0}>
         <Bloom
-          intensity={1.2}
-          luminanceThreshold={0.4}
-          luminanceSmoothing={0.75}
-          radius={0.85}
+          intensity={1.8}
+          luminanceThreshold={0.3}
+          luminanceSmoothing={0.7}
+          radius={0.9}
           mipmapBlur
         />
-        <Vignette eskil={false} offset={0.12} darkness={0.5} />
+        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+        <Vignette eskil={false} offset={0.15} darkness={0.6} />
       </EffectComposer>
     </EffectErrorBoundary>
   );

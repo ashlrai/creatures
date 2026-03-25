@@ -18,12 +18,12 @@ import { useSimulationStore } from '../../stores/simulationStore';
  */
 
 // --- Burst particles (original spike location effects) ---
-const MAX_BURST = 400;
-const BURST_LIFETIME = 0.5;
+const MAX_BURST = 600;
+const BURST_LIFETIME = 0.6;
 
 // --- Cascade particles (signal propagation along synapses) ---
-const MAX_CASCADE = 200;
-const CASCADE_TRAVEL_TIME = 0.2; // 200ms per synapse hop
+const MAX_CASCADE = 300;
+const CASCADE_TRAVEL_TIME = 0.3; // 300ms per synapse hop — longer trails
 const MAX_SPIKES_PER_FRAME = 20; // cap to avoid flooding
 const MAX_EDGES_PER_SPIKE = 6;  // top N strongest outgoing edges
 
@@ -230,7 +230,7 @@ export function SpikeParticles() {
       const burstColor = TYPE_BURST_COLORS[type] || TYPE_BURST_COLORS.unknown;
 
       // --- Burst particles (2-3 per spike) ---
-      const bCount = 2 + Math.floor(Math.random() * 2);
+      const bCount = 3 + Math.floor(Math.random() * 3);
       for (let j = 0; j < bCount; j++) {
         const p = burstParticles.current[nextBurst.current % MAX_BURST];
         p.position.set(pos[0], pos[1], pos[2]);
@@ -269,7 +269,7 @@ export function SpikeParticles() {
 
           // Stronger synapses = larger particles (weight typically 1-40+)
           const normWeight = Math.min(edge.weight / 30, 1);
-          cp.baseSize = 0.002 + normWeight * 0.004; // range 0.002 - 0.006
+          cp.baseSize = 0.004 + normWeight * 0.006; // range 0.004 - 0.010
 
           cp.age = 0;
           cp.lifetime = CASCADE_TRAVEL_TIME;
@@ -307,11 +307,11 @@ export function SpikeParticles() {
         burstPosArr[i * 3 + 1] = p.position.y;
         burstPosArr[i * 3 + 2] = p.position.z;
 
-        burstColArr[i * 3]     = p.color.r * fade * 1.5;
-        burstColArr[i * 3 + 1] = p.color.g * fade * 1.5;
-        burstColArr[i * 3 + 2] = p.color.b * fade * 1.5;
+        burstColArr[i * 3]     = p.color.r * fade * 2.0;
+        burstColArr[i * 3 + 1] = p.color.g * fade * 2.0;
+        burstColArr[i * 3 + 2] = p.color.b * fade * 2.0;
 
-        burstSizeArr[i] = 0.008 * fade;
+        burstSizeArr[i] = 0.014 * fade;
       }
 
       const geo = burstRef.current.geometry;
@@ -352,7 +352,7 @@ export function SpikeParticles() {
         const fadeCurve = t < 0.15
           ? t / 0.15
           : 1.0 - ((t - 0.15) / 0.85) * ((t - 0.15) / 0.85);
-        const brightness = Math.max(fadeCurve, 0) * 1.8;
+        const brightness = Math.max(fadeCurve, 0) * 2.5;
 
         cascadeColArr[i * 3]     = cp.color.r * brightness;
         cascadeColArr[i * 3 + 1] = cp.color.g * brightness;
@@ -383,10 +383,10 @@ export function SpikeParticles() {
           vertexColors
           sizeAttenuation
           transparent
-          opacity={0.95}
+          opacity={1.0}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
-          size={0.008}
+          size={0.014}
         />
       </points>
 
@@ -401,10 +401,10 @@ export function SpikeParticles() {
           vertexColors
           sizeAttenuation
           transparent
-          opacity={0.9}
+          opacity={0.95}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
-          size={0.005}
+          size={0.008}
         />
       </points>
     </group>

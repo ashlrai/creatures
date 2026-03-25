@@ -19,7 +19,7 @@ function SmoothCamera() {
     if (!frame?.center_of_mass || !controlsRef.current) return;
     const [x, y, z] = frame.center_of_mass;
     const desired = new THREE.Vector3(x, z + 0.005, -y);
-    targetRef.current.lerp(desired, 0.02);
+    targetRef.current.lerp(desired, 0.035);
     controlsRef.current.target.copy(targetRef.current);
   });
 
@@ -30,8 +30,10 @@ function SmoothCamera() {
       minDistance={0.08}
       maxDistance={3}
       enableDamping
-      dampingFactor={0.06}
+      dampingFactor={0.08}
       rotateSpeed={0.5}
+      autoRotate
+      autoRotateSpeed={0.15}
     />
   );
 }
@@ -153,11 +155,11 @@ function AmbientParticles() {
         />
       </bufferGeometry>
       <pointsMaterial
-        color="#2244aa"
-        size={0.008}
+        color="#3366cc"
+        size={0.012}
         sizeAttenuation
         transparent
-        opacity={0.08}
+        opacity={0.15}
         blending={THREE.AdditiveBlending}
         depthWrite={false}
       />
@@ -168,27 +170,35 @@ function AmbientParticles() {
 export function Scene() {
   return (
     <Canvas
-      camera={{ position: [0.44, 0.25, 0.8], fov: 36, near: 0.005, far: 10 }}
+      camera={{ position: [0.44, 0.2, 0.6], fov: 34, near: 0.005, far: 15 }}
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
       dpr={[1, 2]}
       style={{
         background: 'radial-gradient(ellipse at 50% 40%, #0a0f20 0%, #040408 60%, #010102 100%)',
       }}
     >
-      {/* Lighting — key, fill, rim */}
-      <ambientLight intensity={0.2} color="#1a2545" />
-      <directionalLight position={[1, 2, 1]} intensity={0.4} color="#6699cc" />
-      <pointLight position={[0.44, 0.2, 0.15]} intensity={0.35} color="#4488bb" distance={2} decay={2} />
-      <pointLight position={[0.44, 0.05, -0.1]} intensity={0.2} color="#6655aa" distance={1.5} decay={2} />
+      {/* Scene background and fog for atmospheric depth */}
+      <color attach="background" args={['#020210']} />
+      <fog attach="fog" args={['#020210', 3, 12]} />
+
+      {/* Lighting — dramatic key, fill, rim, accent */}
+      <ambientLight intensity={0.15} color="#1a2a4a" />
+      <directionalLight position={[5, 8, 3]} intensity={0.8} color="#88ccff" castShadow />
+      <directionalLight position={[-3, 4, -2]} intensity={0.3} color="#ff8844" />
+      <pointLight position={[0.44, 0.3, 0.2]} intensity={0.5} color="#00d4ff" distance={5} decay={2} />
+      <pointLight position={[0.44, 0.05, -0.1]} intensity={0.3} color="#6655aa" distance={2} decay={2} />
       {/* Rim light from behind for depth separation */}
-      <directionalLight position={[-0.5, 0.3, -1]} intensity={0.25} color="#4466aa" />
-      <pointLight position={[0.44, 0.1, -0.25]} intensity={0.15} color="#335588" distance={1.5} decay={2} />
+      <directionalLight position={[-0.5, 0.3, -1]} intensity={0.35} color="#4466aa" />
+      <pointLight position={[0.44, 0.1, -0.25]} intensity={0.2} color="#335588" distance={2} decay={2} />
+      {/* Warm accent from below for drama */}
+      <pointLight position={[0.44, -0.1, 0.05]} intensity={0.15} color="#ff6633" distance={1.5} decay={2} />
 
       {/* Ground with grid */}
       <GroundPlane />
+      <gridHelper args={[4, 40, '#0a1525', '#0a1525']} position={[0.44, -0.01, 0]} />
 
       {/* Particles — small sparkles + large ambient drifters */}
-      <Sparkles count={40} size={0.18} speed={0.04} opacity={0.08} color="#3366aa" scale={[1.5, 0.4, 1]} position={[0.44, 0.1, 0]} />
+      <Sparkles count={60} size={0.35} speed={0.06} opacity={0.15} color="#4488dd" scale={[2.0, 0.6, 1.5]} position={[0.44, 0.15, 0]} />
       <AmbientParticles />
 
       {/* Organism + Neural Network */}

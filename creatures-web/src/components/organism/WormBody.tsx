@@ -4,16 +4,16 @@ import * as THREE from 'three';
 import { useSimulationStore } from '../../stores/simulationStore';
 
 const MAX_SEGMENTS = 88;
-const SEG_RADIUS = 0.013;
-const SEG_HALF_LEN = 0.035;
+const SEG_RADIUS = 0.016;
+const SEG_HALF_LEN = 0.04;
 
-// Rich teal palette — subtle emissive at rest for visibility, bright when active
-const REST_COLOR = new THREE.Color(0.08, 0.30, 0.42);
-const ACTIVE_COLOR = new THREE.Color(0.12, 0.65, 0.90);
-const HOT_COLOR = new THREE.Color(0.35, 0.90, 1.0);
-const REST_EMISSIVE = new THREE.Color(0.015, 0.06, 0.09);
-const ACTIVE_EMISSIVE = new THREE.Color(0.06, 0.35, 0.55);
-const HOT_EMISSIVE = new THREE.Color(0.18, 0.55, 0.75);
+// Vibrant deep-ocean palette — visible at rest, electric when active
+const REST_COLOR = new THREE.Color(0.05, 0.15, 0.25);
+const ACTIVE_COLOR = new THREE.Color(0.1, 0.7, 0.95);
+const HOT_COLOR = new THREE.Color(0.5, 0.95, 1.0);
+const REST_EMISSIVE = new THREE.Color(0.02, 0.06, 0.12);
+const ACTIVE_EMISSIVE = new THREE.Color(0.08, 0.4, 0.65);
+const HOT_EMISSIVE = new THREE.Color(0.25, 0.65, 0.85);
 
 export function WormBody() {
   const frame = useSimulationStore((s) => s.frame);
@@ -32,30 +32,36 @@ export function WormBody() {
     const curve = new THREE.CatmullRomCurve3(
       Array.from({ length: 12 }, (_, i) => new THREE.Vector3(i * SEG_HALF_LEN * 2.3, SEG_RADIUS, 0))
     );
-    return new THREE.TubeGeometry(curve, 64, SEG_RADIUS * 0.5, 8, false);
+    return new THREE.TubeGeometry(curve, 64, SEG_RADIUS * 0.6, 8, false);
   }, []);
 
   const spineMaterial = useMemo(
-    () => new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0.06, 0.22, 0.32),
-      emissive: new THREE.Color(0.008, 0.03, 0.05),
-      emissiveIntensity: 1,
-      roughness: 0.6,
-      metalness: 0.1,
+    () => new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(0.04, 0.18, 0.3),
+      emissive: new THREE.Color(0.015, 0.06, 0.1),
+      emissiveIntensity: 1.5,
+      roughness: 0.4,
+      metalness: 0.2,
+      clearcoat: 0.3,
+      iridescence: 0.3,
       transparent: true,
-      opacity: 0.45,
+      opacity: 0.55,
     }),
     []
   );
 
   const materials = useMemo(
     () => Array.from({ length: MAX_SEGMENTS }, () =>
-      new THREE.MeshStandardMaterial({
+      new THREE.MeshPhysicalMaterial({
         color: REST_COLOR.clone(),
         emissive: REST_EMISSIVE.clone(),
         emissiveIntensity: 1,
-        roughness: 0.45,
-        metalness: 0.1,
+        roughness: 0.35,
+        metalness: 0.3,
+        clearcoat: 0.5,
+        clearcoatRoughness: 0.3,
+        iridescence: 0.4,
+        iridescenceIOR: 1.3,
         transparent: true,
         opacity: 0.92,
       })
@@ -171,7 +177,7 @@ export function WormBody() {
           ? REST_EMISSIVE.clone().lerp(ACTIVE_EMISSIVE, totalActivity * 2)
           : ACTIVE_EMISSIVE.clone().lerp(HOT_EMISSIVE, (totalActivity - 0.5) * 2);
         mat.emissive.copy(e);
-        mat.emissiveIntensity = 1.0 + totalActivity * 1.5;
+        mat.emissiveIntensity = 1.0 + totalActivity * 2.5;
       } else {
         mat.color.copy(REST_COLOR);
         mat.emissive.copy(REST_EMISSIVE);
@@ -182,7 +188,7 @@ export function WormBody() {
     // Update spine tube geometry (throttled to every 5th frame to avoid GPU churn)
     if (spineRef.current && spinePoints.length >= 2 && frameCount.current % 5 === 0) {
       const curve = new THREE.CatmullRomCurve3(spinePoints);
-      const newGeo = new THREE.TubeGeometry(curve, Math.max(spinePoints.length * 2, 16), SEG_RADIUS * 0.45, 6, false);
+      const newGeo = new THREE.TubeGeometry(curve, Math.max(spinePoints.length * 2, 16), SEG_RADIUS * 0.55, 8, false);
       spineRef.current.geometry.dispose();
       spineRef.current.geometry = newGeo;
 
@@ -197,10 +203,11 @@ export function WormBody() {
       }
       avgActivity = Math.min((avgActivity / Math.max(nNeurons, 1)) / 100, 1);
       spineMaterial.emissive.setRGB(
-        0.003 + avgActivity * 0.03,
-        0.01 + avgActivity * 0.08,
-        0.02 + avgActivity * 0.12,
+        0.01 + avgActivity * 0.06,
+        0.03 + avgActivity * 0.15,
+        0.05 + avgActivity * 0.25,
       );
+      spineMaterial.emissiveIntensity = 1.5 + avgActivity * 2.0;
     }
 
     for (let i = n; i < MAX_SEGMENTS; i++) {
