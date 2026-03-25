@@ -107,8 +107,9 @@ export function useDemoMode() {
     store.setLoading(true);
     store.setError(null);
 
-    // Choose demo data file based on organism
+    // Choose demo data file based on organism (zebrafish falls back to worm data for now)
     const demoFile = organism === 'drosophila' ? 'demo-frames-fly.json' : 'demo-frames.json';
+    // TODO: Add demo-frames-zebrafish.json when zebrafish demo recording is available
 
     try {
       const base = import.meta.env.BASE_URL || '/';

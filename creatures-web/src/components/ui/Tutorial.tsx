@@ -37,7 +37,7 @@ export function Tutorial({ onComplete, onPoke, onSetSidebarTab, onSetAppMode }: 
         label: 'Poke it!',
         onClick: () => {
           onPoke('seg_8');
-          setStep(1);
+          setStep((s) => s + 1);
         },
       },
     },
@@ -55,7 +55,31 @@ export function Tutorial({ onComplete, onPoke, onSetSidebarTab, onSetAppMode }: 
         label: 'Open Drug Panel',
         onClick: () => {
           onSetSidebarTab('tools');
-          setStep(3);
+          setStep((s) => s + 1);
+        },
+      },
+    },
+    {
+      title: 'Perform circuit surgery',
+      text: 'Click any neuron on the worm to select it. Use the toolbar to lesion, stimulate, or silence neurons. Press Ctrl+Z to undo. Try lesioning a motor neuron and watch the behavior change.',
+      highlight: 'viewport',
+      action: {
+        label: 'Open Circuit Tools',
+        onClick: () => {
+          onSetSidebarTab('tools');
+          setStep((s) => s + 1);
+        },
+      },
+    },
+    {
+      title: 'Analyze with science tools',
+      text: 'The Science tab shows neural metrics, STDP plasticity, experiment protocols, and data export. Toggle Research mode in the header for advanced analysis: mutual information, transfer entropy, and causal inference.',
+      highlight: 'sidebar',
+      action: {
+        label: 'Open Science Tab',
+        onClick: () => {
+          onSetSidebarTab('science');
+          setStep((s) => s + 1);
         },
       },
     },
@@ -67,7 +91,7 @@ export function Tutorial({ onComplete, onPoke, onSetSidebarTab, onSetAppMode }: 
         label: 'Start Evolution',
         onClick: () => {
           onSetAppMode('evo');
-          setStep(4);
+          setStep((s) => s + 1);
         },
       },
     },

@@ -1080,7 +1080,9 @@ export default function App() {
           ) : (
             experiment ? (
               <>
-                <ConnectomeExplorer />
+                <PanelErrorBoundary name="Connectome">
+                  <ConnectomeExplorer />
+                </PanelErrorBoundary>
                 <PanelErrorBoundary name="Species Comparison">
                   <SpeciesComparison />
                 </PanelErrorBoundary>
@@ -1146,16 +1148,16 @@ export default function App() {
         </div>
       )}
 
-      {/* Protocol timeline & results overlay */}
+      {/* Protocol timeline & results — positioned above bottom bar */}
       {appMode === 'sim' && (
-        <>
+        <div style={{ position: 'fixed', bottom: 56, left: 180, right: 260, zIndex: 30, pointerEvents: 'auto' }}>
           <PanelErrorBoundary name="Protocol Timeline">
             <ProtocolTimeline />
           </PanelErrorBoundary>
           <PanelErrorBoundary name="Protocol Results">
             <ProtocolResults />
           </PanelErrorBoundary>
-        </>
+        </div>
       )}
 
       {/* Bottom bar: waveform or generation timeline */}
