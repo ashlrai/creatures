@@ -42,7 +42,7 @@ export function useHashRouter(
   currentState: HashState,
   onHashChange: (state: HashState) => void,
 ) {
-  const suppressRef = useRef(false);
+  const suppressRef = useRef(0);
 
   // On mount: read hash and push state to app
   useEffect(() => {
@@ -58,7 +58,7 @@ export function useHashRouter(
   useEffect(() => {
     const newHash = buildHash(currentState);
     if (window.location.hash !== newHash) {
-      suppressRef.current = true;
+      suppressRef.current += 1;
       window.location.hash = newHash;
     }
   }, [currentState.mode, currentState.organism, currentState.compare]);
@@ -66,8 +66,8 @@ export function useHashRouter(
   // Listen for user/browser navigation (back/forward)
   useEffect(() => {
     const handler = () => {
-      if (suppressRef.current) {
-        suppressRef.current = false;
+      if (suppressRef.current > 0) {
+        suppressRef.current -= 1;
         return;
       }
       const parsed = parseHash(window.location.hash);

@@ -433,4 +433,5 @@ class Brian2Engine(NeuralEngine):
             raise RuntimeError("Network not built. Call build() first.")
         self._net.restore("initial")
         self._firing_rates = np.zeros(self.n_neurons)
-        self._input_currents[:] = 0
+        if self._input_currents is not None:
+            self._input_currents[:] = 0
