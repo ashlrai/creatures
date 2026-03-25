@@ -114,13 +114,20 @@ export function WormBody() {
 
   useFrame(({ clock }) => {
     frameCount.current++;
-    if (!frame?.body_positions?.length) return;
-
     const t = clock.getElapsedTime();
-    const positions = frame.body_positions;
+
+    // Generate default positions if no body data yet (so worm is visible immediately)
+    let positions = frame?.body_positions;
+    if (!positions?.length) {
+      positions = Array.from({ length: 12 }, (_, i) => [
+        i * 0.07 + 0.05,
+        Math.sin(t * 2 + i * 0.5) * 0.003,
+        0.015 + Math.sin(t * 1.5 + i * 0.3) * 0.001,
+      ]);
+    }
     const n = Math.min(positions.length, MAX_SEGMENTS);
-    const rates = frame.firing_rates ?? [];
-    const spikes = new Set(frame.spikes ?? []);
+    const rates = frame?.firing_rates ?? [];
+    const spikes = new Set(frame?.spikes ?? []);
     const nNeurons = rates.length;
     const neuronsPerSeg = nNeurons > 0 ? Math.ceil(nNeurons / n) : 1;
 
@@ -175,7 +182,7 @@ export function WormBody() {
         maxRate = Math.max(maxRate, rates[j]);
         if (spikes.has(j)) hasSpike = true;
       }
-      if (frame.muscle_activations) {
+      if (frame?.muscle_activations) {
         for (const [key, val] of Object.entries(frame.muscle_activations)) {
           if (key.includes(`_${i}`) || key.includes(`_${Math.max(0, i - 1)}`)) {
             maxRate = Math.max(maxRate, Math.abs(val) * 200);
