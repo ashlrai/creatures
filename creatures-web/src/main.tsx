@@ -18,10 +18,17 @@ function Root() {
   // Marketing homepage for empty hash or #/
   const isHomepage = !route || route === '#' || route === '#/' || route === '#/home';
 
+  useEffect(() => {
+    if (isHomepage) {
+      document.documentElement.classList.remove('app-mode');
+      document.documentElement.classList.add('homepage-mode');
+    } else {
+      document.documentElement.classList.remove('homepage-mode');
+      document.documentElement.classList.add('app-mode');
+    }
+  }, [isHomepage]);
+
   if (isHomepage) {
-    // Homepage: allow scrolling
-    document.documentElement.classList.remove('app-mode');
-    document.documentElement.classList.add('homepage-mode');
     return (
       <Suspense fallback={null}>
         <HomePage />
@@ -29,9 +36,6 @@ function Root() {
     );
   }
 
-  // App: lock scrolling
-  document.documentElement.classList.remove('homepage-mode');
-  document.documentElement.classList.add('app-mode');
   return (
     <Suspense fallback={
       <div style={{ width: '100vw', height: '100vh', background: '#020206', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

@@ -222,6 +222,7 @@ export function FlyBody3D() {
   const baseSizes = useMemo(() => assignNeuronSizes(N_NEURAL_POINTS), []);
   const animColors = useMemo(() => new Float32Array(baseColors), [baseColors]);
   const animSizes = useMemo(() => new Float32Array(baseSizes), [baseSizes]);
+  const glowColors = useMemo(() => new Float32Array(N_NEURAL_POINTS * 3), []);
 
   const synapseGeo = useMemo(
     () => buildSynapseGeometry(neuronPositions, N_NEURAL_POINTS, N_SYNAPSE_LINES),
@@ -627,7 +628,7 @@ export function FlyBody3D() {
           />
           <bufferAttribute
             attach="attributes-color"
-            array={new Float32Array(animColors)}
+            array={glowColors}
             count={N_NEURAL_POINTS}
             itemSize={3}
           />

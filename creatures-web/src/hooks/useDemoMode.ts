@@ -40,14 +40,12 @@ export function useDemoMode() {
     drugEffect: number;      // drug multiplier (0-2, 1 = normal)
     stimulatedNeurons: Set<number>; // indices with extra current
     lesionedNeurons: Set<number>;   // indices forced to zero
-    globalExcitation: number; // overall excitation modifier (0-2)
   }>({
     pokeBoost: 0,
     pokeSegment: -1,
     drugEffect: 1.0,
     stimulatedNeurons: new Set(),
     lesionedNeurons: new Set(),
-    globalExcitation: 1.0,
   });
 
   // Listen for neurevo-command events to drive perturbations in demo mode
