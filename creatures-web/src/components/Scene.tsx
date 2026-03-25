@@ -16,20 +16,30 @@ import { useSimulationStore } from '../stores/simulationStore';
 function SmoothCamera() {
   const frame = useSimulationStore((s) => s.frame);
   const controlsRef = useRef<any>(null);
-  const targetRef = useRef(new THREE.Vector3(0.44, 0.015, 0));
+  const targetRef = useRef(new THREE.Vector3(0.3, 0.02, 0));
+  const hasSnapped = useRef(false);
 
-  useFrame(() => {
+  useFrame(({ camera }) => {
     if (!frame?.center_of_mass || !controlsRef.current) return;
     const [x, y, z] = frame.center_of_mass;
     const desired = new THREE.Vector3(x, z + 0.02, -y);
-    targetRef.current.lerp(desired, 0.035);
-    controlsRef.current.target.copy(targetRef.current);
+
+    if (!hasSnapped.current) {
+      // Snap camera directly to the organism on first frame
+      targetRef.current.copy(desired);
+      controlsRef.current.target.copy(desired);
+      camera.position.set(desired.x, desired.y + 0.12, desired.z + 0.35);
+      hasSnapped.current = true;
+    } else {
+      targetRef.current.lerp(desired, 0.05);
+      controlsRef.current.target.copy(targetRef.current);
+    }
   });
 
   return (
     <OrbitControls
       ref={controlsRef}
-      target={[0.44, 0.015, 0]}
+      target={[0.3, 0.02, 0]}
       minDistance={0.08}
       maxDistance={3}
       enableDamping
