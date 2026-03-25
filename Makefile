@@ -1,4 +1,4 @@
-.PHONY: setup dev api web notebook test clean
+.PHONY: setup dev api web notebook test clean docker-build docker-run docker-compose
 
 # Setup everything
 setup:
@@ -41,6 +41,16 @@ data:
 # Build frontend for production
 build:
 	cd creatures-web && npm run build
+
+# Docker
+docker-build:
+	docker build -t neurevo .
+
+docker-run:
+	docker run -p 8420:8420 --env-file .env neurevo
+
+docker-compose:
+	docker compose up --build
 
 # Clean build artifacts
 clean:

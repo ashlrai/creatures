@@ -27,6 +27,9 @@ from creatures.experiment.protocol import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/experiments", tags=["experiments"])
+# Protocol sub-router — registered FIRST so /protocols and /protocol/{name}
+# are not shadowed by /{sim_id}
+protocol_router = APIRouter(prefix="/experiments", tags=["experiments"])
 
 # Shared simulation manager (injected from main.py)
 manager: SimulationManager | None = None
@@ -75,9 +78,6 @@ async def list_experiments() -> list[ExperimentInfo]:
 @router.get("/{sim_id}", response_model=ExperimentInfo)
 async def get_experiment(sim_id: str) -> ExperimentInfo:
     """Get experiment info."""
-    # Guard against route shadowing: reject known sub-paths
-    if sim_id in ("protocols", "protocol"):
-        raise HTTPException(404, f"Experiment '{sim_id}' not found")
     m = get_manager()
     sim = m.get(sim_id)
     if not sim:
@@ -236,7 +236,7 @@ class ProtocolInfoSchema(BaseModel):
     steps: list[StepSchema]
 
 
-@router.get("/protocols", response_model=list[ProtocolInfoSchema])
+@protocol_router.get("/protocols", response_model=list[ProtocolInfoSchema])
 async def list_protocols() -> list[ProtocolInfoSchema]:
     """List all available preset experiment protocols."""
     result = []
@@ -264,7 +264,7 @@ async def list_protocols() -> list[ProtocolInfoSchema]:
     return result
 
 
-@router.get("/protocol/{name}", response_model=ProtocolInfoSchema)
+@protocol_router.get("/protocol/{name}", response_model=ProtocolInfoSchema)
 async def get_protocol(name: str) -> ProtocolInfoSchema:
     """Get details of a specific preset protocol by name."""
     if name not in PRESET_EXPERIMENTS:
@@ -292,7 +292,7 @@ async def get_protocol(name: str) -> ProtocolInfoSchema:
     )
 
 
-@router.post("/protocol", response_model=ProtocolResultSchema)
+@protocol_router.post("/protocol", response_model=ProtocolResultSchema)
 async def run_protocol(req: ProtocolRunRequest) -> ProtocolResultSchema:
     """Run an experiment protocol (preset or custom).
 
@@ -339,7 +339,7 @@ async def run_protocol(req: ProtocolRunRequest) -> ProtocolResultSchema:
 
     # Run in a thread pool to avoid blocking the event loop
     # (Brian2 simulation is CPU-intensive)
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     try:
         runner = ExperimentRunner(protocol)
         result = await loop.run_in_executor(None, runner.run)

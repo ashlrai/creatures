@@ -1,0 +1,13 @@
+version: '3.8'
+services:
+  neurevo:
+    build: .
+    ports:
+      - "8420:8420"
+    environment:
+      - XAI_API_KEY=${XAI_API_KEY:-}
+      - BRIAN2_CODEGEN_TARGET=numpy
+    volumes:
+      - ./data:/app/data
+      - ./evolution_results:/app/evolution_results
+    restart: unless-stopped

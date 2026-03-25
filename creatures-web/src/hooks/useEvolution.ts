@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEvolutionStore } from '../stores/evolutionStore';
 import type { EvolutionRun, EvolutionWsMessage, GenerationStats, GodReport } from '../types/evolution';
 
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const protocol =
   typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const WS_BASE =

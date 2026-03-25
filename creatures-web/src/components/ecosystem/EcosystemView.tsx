@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,6 +39,7 @@ interface EcosystemViewProps {
   organisms?: EcosystemOrganism[];
   food_sources?: EcosystemFood[];
   stats?: EcosystemStats;
+  ecosystemId?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,12 +122,62 @@ function createMockFood(): EcosystemFood[] {
 // Component
 // ---------------------------------------------------------------------------
 
-export function EcosystemView({ organisms, food_sources, stats }: EcosystemViewProps) {
+export function EcosystemView({ organisms, food_sources, stats, ecosystemId }: EcosystemViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const orgsRef = useRef<EcosystemOrganism[]>(organisms ?? createMockOrganisms());
   const foodRef = useRef<EcosystemFood[]>(food_sources ?? createMockFood());
   const animRef = useRef<number>(0);
   const timeRef = useRef(0);
+  const [apiStats, setApiStats] = useState<EcosystemStats | null>(null);
+
+  // Poll real API data when ecosystemId is provided
+  useEffect(() => {
+    if (!ecosystemId) return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/ecosystem/${ecosystemId}`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+
+        // Update organisms from API if available
+        if (data.organisms && Array.isArray(data.organisms)) {
+          orgsRef.current = data.organisms.map((o: Record<string, unknown>, i: number) => ({
+            id: (o.id as number) ?? i,
+            species: (o.species as string) ?? 'c_elegans',
+            position: (o.position as Vec2) ?? { x: 0, y: 0 },
+            energy: (o.energy as number) ?? 0.5,
+            alive: (o.alive as boolean) ?? true,
+            angle: (o.angle as number) ?? Math.random() * Math.PI * 2,
+            vel: (o.vel as Vec2) ?? { x: 0, y: 0 },
+            segments: (o.segments as Vec2[]) ?? [],
+            fadeAlpha: (o.alive as boolean) !== false ? 1 : 0,
+          }));
+        }
+
+        // Update food from API if available
+        if (data.food_sources && Array.isArray(data.food_sources)) {
+          foodRef.current = data.food_sources.map((f: Record<string, unknown>) => ({
+            position: (f.position as Vec2) ?? { x: 0, y: 0 },
+            energy: (f.energy as number) ?? 0.5,
+            pulse: Math.random() * Math.PI * 2,
+          }));
+        }
+
+        // Update stats
+        if (data.stats) {
+          setApiStats(data.stats as EcosystemStats);
+        }
+      } catch {
+        // Silently fall back to mock simulation on fetch failure
+      }
+    };
+
+    const interval = setInterval(poll, 500);
+    poll(); // Initial fetch
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [ecosystemId]);
 
   // Sync props into refs when they change
   useEffect(() => {
@@ -139,6 +190,7 @@ export function EcosystemView({ organisms, food_sources, stats }: EcosystemViewP
 
   // Compute live stats from ref data
   const computeStats = useCallback((): EcosystemStats => {
+    if (apiStats) return apiStats;
     if (stats) return stats;
     const orgs = orgsRef.current;
     return {
@@ -147,7 +199,7 @@ export function EcosystemView({ organisms, food_sources, stats }: EcosystemViewP
       total_food: foodRef.current.length,
       generation: 0,
     };
-  }, [stats]);
+  }, [stats, apiStats]);
 
   const tick = useCallback((dt: number) => {
     const orgs = orgsRef.current;

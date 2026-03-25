@@ -39,6 +39,7 @@ class EvolutionRun:
         self.god_reports: list[dict] = []
         self.world_log: WorldLog = WorldLog()
         self.narrator: EvolutionNarrator = EvolutionNarrator()
+        self.god_agent: Any | None = None
 
     def to_info(self) -> dict:
         return {

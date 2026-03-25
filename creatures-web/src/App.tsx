@@ -10,6 +10,7 @@ import { ArenaView } from './components/evolution/ArenaView';
 import { ConnectomeComparison } from './components/evolution/ConnectomeComparison';
 import { GenerationTimeline } from './components/evolution/GenerationTimeline';
 import { EcosystemView } from './components/ecosystem/EcosystemView';
+import { SpeciesComparison } from './components/ui/SpeciesComparison';
 import { useSimulation } from './hooks/useSimulation';
 import { useDemoMode } from './hooks/useDemoMode';
 import { useLocalStorage } from './hooks/useLocalStorage';
@@ -455,8 +456,23 @@ export default function App() {
                       });
                       if (res.ok) {
                         const data = await res.json();
-                        setEcosystemId(data.id ?? data.ecosystem_id ?? null);
+                        const newId = data.id ?? data.ecosystem_id ?? null;
+                        setEcosystemId(newId);
                         notify('Ecosystem created');
+                        // Fetch initial stats
+                        if (newId) {
+                          try {
+                            const statsRes = await fetch(`/api/ecosystem/${newId}/stats`);
+                            if (statsRes.ok) {
+                              const statsData = await statsRes.json();
+                              setEcoStats({
+                                c_elegans: statsData.by_species?.c_elegans?.count ?? statsData.c_elegans_count ?? statsData.c_elegans ?? 0,
+                                drosophila: statsData.by_species?.drosophila?.count ?? statsData.drosophila_count ?? statsData.drosophila ?? 0,
+                                food: Math.round((statsData.total_food_energy ?? 0) / 50) || statsData.total_food ?? statsData.food ?? 10,
+                              });
+                            }
+                          } catch { /* stats fetch non-critical */ }
+                        }
                       } else {
                         notify('Ecosystem API unavailable — using local sim');
                       }
@@ -607,7 +623,7 @@ export default function App() {
         {/* 3D Viewport / Arena */}
         <div className="viewport">
           {appMode === 'eco' ? (
-            <EcosystemView />
+            <EcosystemView ecosystemId={ecosystemId} />
           ) : appMode === 'evo' ? (
             <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
               <div style={{ flex: 1, minHeight: 0 }}>
@@ -644,7 +660,12 @@ export default function App() {
               </div>
             </div>
           ) : (
-            experiment ? <ConnectomeExplorer /> : <ConnectomeSkeleton />
+            experiment ? (
+              <>
+                <ConnectomeExplorer />
+                <SpeciesComparison />
+              </>
+            ) : <ConnectomeSkeleton />
           )}
         </div>
       </div>

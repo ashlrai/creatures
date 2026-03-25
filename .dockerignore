@@ -1,0 +1,10 @@
+.git
+.venv
+node_modules
+__pycache__
+*.pyc
+.pytest_cache
+evolution_results
+benchmark_results.png
+*.egg-info
+.github

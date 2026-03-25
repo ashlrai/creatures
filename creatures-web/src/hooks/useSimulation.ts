@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useSimulationStore } from '../stores/simulationStore';
 import type { SimulationFrame, ExperimentInfo } from '../types/simulation';
 
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const WS_BASE = typeof window !== 'undefined' ? `${protocol}//${window.location.host}` : 'ws://localhost:5173';
 const MAX_RECONNECT_ATTEMPTS = 3;

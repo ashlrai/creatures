@@ -52,8 +52,15 @@ export function ConnectomeExplorer() {
 
   const [graph, setGraph] = useState<ConnectomeGraph | null>(null);
   const [neuronTypes, setNeuronTypes] = useState<Record<string, NeuronTypeInfo>>({});
-  const [selectedNeuron, setSelectedNeuron] = useState<string | null>(null);
+  const [selectedNeuron, setSelectedNeuronLocal] = useState<string | null>(null);
+  const setSelectedNeuronGlobal = useSimulationStore((s) => s.setSelectedNeuron);
   const [hoveredNeuron, setHoveredNeuron] = useState<string | null>(null);
+
+  // Wrapper that sets both local and global selected neuron
+  const setSelectedNeuron = useCallback((id: string | null) => {
+    setSelectedNeuronLocal(id);
+    setSelectedNeuronGlobal(id);
+  }, [setSelectedNeuronGlobal]);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
   // View transform state + version counter to trigger redraws
@@ -471,10 +478,10 @@ export function ConnectomeExplorer() {
       // If barely moved, treat as click
       if (dx < 3 && dy < 3) {
         const hit = hitTest(e.clientX, e.clientY);
-        setSelectedNeuron((prev) => (prev === hit ? null : hit));
+        setSelectedNeuron(selectedNeuron === hit ? null : hit);
       }
     }
-  }, [hitTest]);
+  }, [hitTest, selectedNeuron, setSelectedNeuron]);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();

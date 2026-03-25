@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 # Add creatures-core to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "creatures-core"))
@@ -59,6 +60,7 @@ app.include_router(analysis.router)
 app.include_router(metrics.router)
 app.include_router(ecosystem.router)
 app.include_router(evolution.router)
+app.include_router(experiments.protocol_router)  # Must come before experiments.router to avoid /{sim_id} shadowing
 app.include_router(experiments.router)
 app.include_router(export.router)
 app.include_router(god.router)
@@ -81,3 +83,9 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# Serve frontend build (after all API routes so they take priority)
+frontend_dist = Path(__file__).resolve().parents[2] / "creatures-web" / "dist"
+if frontend_dist.exists():
+    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
