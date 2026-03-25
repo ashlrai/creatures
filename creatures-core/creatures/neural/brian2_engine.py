@@ -143,10 +143,10 @@ class Brian2Engine(NeuralEngine):
             stdp_on_pre = """
             I_syn_post += w
             apre += A_plus
-            w = clip(w + apost * mV, w_min * mV, w_max * mV)
+            w = clip(w - apost * mV, w_min * mV, w_max * mV)
             """
             stdp_on_post = """
-            apost -= A_minus
+            apost += A_minus
             w = clip(w + apre * mV, w_min * mV, w_max * mV)
             """
             self._synapses = Synapses(

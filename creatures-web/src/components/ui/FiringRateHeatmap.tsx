@@ -87,7 +87,6 @@ export function FiringRateHeatmap({
     }
 
     // Calculate cell sizes
-    const cellW = w / 200; // always scale to 200 columns
     const cellH = h / nNeurons;
 
     // Use ImageData for performance when neuron count is high
@@ -96,8 +95,8 @@ export function FiringRateHeatmap({
 
     for (let fi = 0; fi < nFrames; fi++) {
       const rates = data[fi].firing_rates;
-      const xStart = Math.floor((fi / 200) * w);
-      const xEnd = Math.floor(((fi + 1) / 200) * w);
+      const xStart = Math.floor((fi / nFrames) * w);
+      const xEnd = Math.floor(((fi + 1) / nFrames) * w);
 
       for (let row = 0; row < sortedOrder.length; row++) {
         const neuronIdx = sortedOrder[row];

@@ -286,7 +286,8 @@ class ExperimentRunner:
         body = WormBody(BodyConfig(dt=1.0))
         body.reset()
 
-        runner = SimulationRunner(engine, body, CouplingConfig(), connectome=connectome)
+        coupling = CouplingConfig(poke_current=60.0, poke_duration_ms=50.0)
+        runner = SimulationRunner(engine, body, coupling, connectome=connectome)
         return engine, body, runner, connectome
 
     def _measure(
@@ -302,8 +303,9 @@ class ExperimentRunner:
 
         if metric == "motor_latency":
             # Time from last poke to first motor neuron spike
-            # Scan recent frames for motor neuron activity
-            motor_prefixes = ("VA", "VB", "DA", "DB", "DD", "VD", "AS")
+            # Scan recent frames for motor/command neuron activity
+            motor_prefixes = ("VA", "VB", "DA", "DB", "DD", "VD", "AS",
+                              "AVA", "AVB", "AVD", "PVC", "DVA")
             first_motor_t = None
             for frame in runner.frames:
                 for n in frame.active_neurons:
@@ -401,9 +403,15 @@ class ExperimentRunner:
         step_idx = 0
         sync_interval = 1.0  # ms per simulation step
         n_steps = int(self.protocol.duration_ms / sync_interval)
+        _stim_clear_at: float | None = None  # time to clear persistent stimuli
 
         for i in range(n_steps):
             current_t = runner.t_ms
+
+            # Clear stimuli that have expired
+            if _stim_clear_at is not None and current_t >= _stim_clear_at:
+                runner.clear_stimuli()
+                _stim_clear_at = None
 
             # Apply all steps whose time has arrived
             while step_idx < len(sorted_steps):
@@ -421,8 +429,11 @@ class ExperimentRunner:
                 elif not is_control:
                     # Stimulus actions are skipped for control condition
                     if step.action == "stimulus":
+                        stim_duration = step.parameters.get("duration_ms", 50.0)
                         for nid in step.parameters.get("neuron_ids", []):
                             runner.set_stimulus(nid, step.parameters.get("current_mV", 25.0))
+                        # Schedule stimulus clearance after duration
+                        _stim_clear_at = current_t + stim_duration
 
                     elif step.action == "drug":
                         if pharma is None:
@@ -437,6 +448,16 @@ class ExperimentRunner:
 
                     elif step.action == "poke":
                         runner.poke(step.parameters.get("segment", "seg_8"))
+                        # Also stimulate the broader touch circuit to ensure
+                        # the poke drives activity through command interneurons.
+                        # A real poke activates multiple mechanosensory neurons.
+                        touch_circuit = [
+                            "PLML", "PLMR", "AVM", "ALML", "ALMR",
+                            "ASHL", "ASHR",
+                        ]
+                        for nid in touch_circuit:
+                            runner.set_stimulus(nid, 50.0)
+                        _stim_clear_at = current_t + 50.0  # clear poke stimuli after 50ms
 
                     elif step.action == "wait":
                         pass  # just advance time
@@ -564,7 +585,7 @@ PRESET_EXPERIMENTS: dict[str, ExperimentProtocol] = {
         organism="c_elegans",
         steps=[
             ExperimentStep(100, "poke", {"segment": "seg_8"}, "Posterior touch"),
-            ExperimentStep(100, "measure", {"metric": "motor_latency"}, "Time to first motor spike"),
+            ExperimentStep(200, "measure", {"metric": "motor_latency"}, "Time to first motor spike"),
             ExperimentStep(500, "measure", {"metric": "displacement"}, "Backward movement"),
         ],
         duration_ms=1000.0,

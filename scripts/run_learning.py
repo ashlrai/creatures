@@ -106,8 +106,8 @@ def main() -> int:
           f"({time.time() - t0:.2f}s)")
 
     # --- Define sensory and motor neurons ---
-    # Touch sensory neurons (anterior gentle touch circuit)
-    sensory_ids = ["PLML", "PLMR", "AVM", "ALML", "ALMR"]
+    # Touch sensory neurons (anterior gentle touch + nociceptive ASH circuit)
+    sensory_ids = ["PLML", "PLMR", "AVM", "ALML", "ALMR", "ASHL", "ASHR"]
     # Command interneurons (direct targets of sensory neurons, easier to activate)
     # These are the first neurons to respond and where STDP learning is most visible.
     motor_ids = ["AVAL", "AVAR", "AVBL", "AVBR", "AVDL", "AVDR", "PVCL", "PVCR", "DVA"]
@@ -128,8 +128,8 @@ def main() -> int:
         enabled=True,
         tau_pre=20.0,
         tau_post=20.0,
-        a_plus=0.05,      # strong potentiation for visible learning
-        a_minus=0.02,      # weaker depression so causal pairings dominate
+        a_plus=0.08,      # strong potentiation so repeated stimulation strengthens pathways
+        a_minus=0.03,      # weaker depression so causal pairings dominate
         w_max=20.0,        # generous ceiling for learning
         w_min=-5.0,        # allow inhibitory weights
     )
@@ -139,11 +139,31 @@ def main() -> int:
     print(f"  Built in {build_time:.2f}s")
     print()
 
+    # --- Warmup phase ---
+    # Inject targeted subthreshold current for 500ms to get the sensory-motor
+    # pathway into an active state before starting trials. This primes STDP
+    # traces along the relevant circuit without saturating all weights.
+    print("Running 500ms warmup phase (targeted current injection)...")
+    warmup_targets = available_sensory + ["AVAL", "AVAR", "AVBL", "AVBR", "PVCL", "PVCR"]
+    warmup_currents: dict[str, float] = {}
+    for nid in warmup_targets:
+        if engine.get_neuron_index(nid) is not None:
+            warmup_currents[nid] = 40.0  # moderate suprathreshold drive to prime circuit
+    engine.set_input_currents(warmup_currents)
+    for _ in range(500):
+        engine.step(1.0)
+    engine.set_input_currents({})
+    # Brief rest after warmup
+    for _ in range(100):
+        engine.step(1.0)
+    print("  Warmup complete.")
+    print()
+
     # --- Learning experiment ---
     n_trials = 10
-    stimulus_mv = 50.0         # strong drive to ensure cascading activity
-    stimulus_duration_ms = 150.0
-    rest_duration_ms = 400.0
+    stimulus_mv = 80.0         # strong drive to ensure cascading activity
+    stimulus_duration_ms = 200.0
+    rest_duration_ms = 200.0   # shorter rest keeps network warm
 
     print(f"Running {n_trials} stimulus trials...")
     print(f"  Stimulus: {stimulus_mv} mV to {available_sensory}")

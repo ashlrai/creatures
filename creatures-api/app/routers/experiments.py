@@ -75,6 +75,9 @@ async def list_experiments() -> list[ExperimentInfo]:
 @router.get("/{sim_id}", response_model=ExperimentInfo)
 async def get_experiment(sim_id: str) -> ExperimentInfo:
     """Get experiment info."""
+    # Guard against route shadowing: reject known sub-paths
+    if sim_id in ("protocols", "protocol"):
+        raise HTTPException(404, f"Experiment '{sim_id}' not found")
     m = get_manager()
     sim = m.get(sim_id)
     if not sim:
