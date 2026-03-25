@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { useSimulationStore } from '../../stores/simulationStore';
 import { useCircuitModificationStore } from '../../stores/circuitModificationStore';
 import { createOrganismMaterial } from '../../shaders/OrganismMaterial';
+import { createNeuralInteriorMaterial } from '../../shaders/NeuralInteriorMaterial';
 
 const MAX_SEGMENTS = 88;
 const NODE_RADIUS = 0.005;
@@ -133,15 +134,9 @@ export function WormBody() {
     []
   );
 
-  // Interior line material — additive glow for connectome
+  // Interior line material — neural circuit shader for connectome
   const interiorLineMaterial = useMemo(
-    () => new THREE.LineBasicMaterial({
-      color: new THREE.Color(0.0, 0.4, 0.7),
-      transparent: true,
-      opacity: 0.25,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    }),
+    () => createNeuralInteriorMaterial(),
     []
   );
 
@@ -359,17 +354,15 @@ export function WormBody() {
       posAttr.needsUpdate = true;
       geo.setDrawRange(0, Math.floor(copyLen / 3));
 
-      // Pulse interior line brightness with activity
+      // Drive neural interior shader uniforms with activity
       let avgActivity = 0;
       for (let i = 0; i < nNeurons; i++) avgActivity += rates[i] || 0;
       avgActivity = Math.min((avgActivity / Math.max(nNeurons, 1)) / 80, 1);
 
-      interiorLineMaterial.opacity = 0.15 + avgActivity * 0.45;
-      interiorLineMaterial.color.setRGB(
-        avgActivity * 0.3,
-        0.3 + avgActivity * 0.5,
-        0.6 + avgActivity * 0.4,
-      );
+      if (interiorLineMaterial.uniforms) {
+        interiorLineMaterial.uniforms.u_time.value = t;
+        interiorLineMaterial.uniforms.u_activity.value = avgActivity;
+      }
     }
 
     // Update nerve ring glow points at head

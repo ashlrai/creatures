@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { useSimulationStore } from '../../stores/simulationStore';
 import { useCircuitModificationStore } from '../../stores/circuitModificationStore';
 import { createOrganismMaterial } from '../../shaders/OrganismMaterial';
+import { createNeuralInteriorMaterial } from '../../shaders/NeuralInteriorMaterial';
 
 /**
  * Anatomical zebrafish body with semi-transparent skin and visible neural
@@ -119,30 +120,6 @@ function buildFishTube(curve: THREE.CatmullRomCurve3): THREE.BufferGeometry {
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   return geo;
 }
-
-// ---------------------------------------------------------------------------
-// Spinal cord pulse shader
-// ---------------------------------------------------------------------------
-const spinalVertexShader = /* glsl */ `
-  varying float vT;
-  void main() {
-    vT = uv.x;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-const spinalFragmentShader = /* glsl */ `
-  uniform float uTime;
-  uniform float uActivity;
-  uniform vec3 uColor;
-  varying float vT;
-  void main() {
-    float wave = sin(vT * 20.0 - uTime * 4.0) * 0.5 + 0.5;
-    float pulse = mix(0.3, 1.0, wave * uActivity);
-    float glow = pulse * (0.4 + uActivity * 0.6);
-    gl_FragColor = vec4(uColor * glow, glow * 0.8);
-  }
-`;
 
 // ---------------------------------------------------------------------------
 // Layout helpers for neural positions
@@ -341,27 +318,19 @@ export function ZebraFishBody3D() {
     opacity: 0.9,
   }), []);
 
-  const mauthnerLineMaterial = useMemo(() => new THREE.LineBasicMaterial({
-    color: MAUTHNER_COLOR,
-    transparent: true,
-    opacity: 0.08,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  }), []);
+  const mauthnerLineMaterial = useMemo(() => {
+    const mat = createNeuralInteriorMaterial();
+    // Gold-tinted base color to match Mauthner cell identity
+    mat.uniforms.u_baseColor.value.set(1.0, 0.85, 0.15);
+    return mat;
+  }, []);
 
-  const spinalMaterial = useMemo(() => new THREE.ShaderMaterial({
-    vertexShader: spinalVertexShader,
-    fragmentShader: spinalFragmentShader,
-    uniforms: {
-      uTime: { value: 0 },
-      uActivity: { value: 0.3 },
-      uColor: { value: SPINAL_COLOR },
-    },
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  }), []);
+  const spinalMaterial = useMemo(() => {
+    const mat = createNeuralInteriorMaterial();
+    // Spinal cord blue tint
+    mat.uniforms.u_baseColor.value.set(SPINAL_COLOR.r, SPINAL_COLOR.g, SPINAL_COLOR.b);
+    return mat;
+  }, []);
 
   // ---- Geometries -----------------------------------------------------------
   const eyeGeometry = useMemo(() => new THREE.SphereGeometry(EYE_RADIUS, 12, 8), []);
@@ -483,7 +452,7 @@ export function ZebraFishBody3D() {
     // --- Spinal cord shader pulse ---
     if (spinalCordRef.current) {
       const mat = spinalCordRef.current.material as THREE.ShaderMaterial;
-      mat.uniforms.uTime.value = t;
+      mat.uniforms.u_time.value = t;
       // Average motor neuron activity
       let motorAct = 0;
       let cnt = 0;
@@ -491,7 +460,7 @@ export function ZebraFishBody3D() {
         if (mi < rates.length) { motorAct += rates[mi]; cnt++; }
       }
       motorAct = cnt > 0 ? Math.min(motorAct / cnt / 60, 1) : 0.2;
-      mat.uniforms.uActivity.value += (motorAct - mat.uniforms.uActivity.value) * 0.1;
+      mat.uniforms.u_activity.value += (motorAct - mat.uniforms.u_activity.value) * 0.1;
     }
 
     // --- Drive organism shader uniforms on body material ---
@@ -591,9 +560,13 @@ export function ZebraFishBody3D() {
       (mauthnerRightRef.current.material as THREE.MeshStandardMaterial).emissiveIntensity = m1Firing ? 3.0 : 0.5;
     }
 
-    // Mauthner connection lines: flash when active
+    // Mauthner connection lines: drive shader uniforms
     if (mauthnerLinesRef.current) {
-      (mauthnerLinesRef.current.material as THREE.LineBasicMaterial).opacity = mauthnerActive ? 0.25 : 0.04;
+      const mat = mauthnerLinesRef.current.material as THREE.ShaderMaterial;
+      if (mat.uniforms) {
+        mat.uniforms.u_time.value = t;
+        mat.uniforms.u_activity.value = mauthnerActive ? 0.9 : 0.05;
+      }
     }
   });
 

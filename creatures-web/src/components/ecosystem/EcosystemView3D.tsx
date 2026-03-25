@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Text } from '@react-three/drei';
-// EffectComposer disabled due to postprocessing@6.39.0 bug
+import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import type {
   MassiveOrganism,
@@ -563,7 +563,9 @@ function SceneContents({
         </>
       )}
 
-      {/* Bloom disabled — postprocessing@6.39.0 bug */}
+      <EffectComposer>
+        <Bloom luminanceThreshold={0.3} luminanceSmoothing={0.9} intensity={0.8} mipmapBlur />
+      </EffectComposer>
     </>
   );
 }

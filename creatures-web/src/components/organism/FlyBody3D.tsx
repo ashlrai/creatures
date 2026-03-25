@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { useSimulationStore } from '../../stores/simulationStore';
 import { useCircuitModificationStore } from '../../stores/circuitModificationStore';
 import { createOrganismMaterial } from '../../shaders/OrganismMaterial';
+import { createNeuralInteriorMaterial } from '../../shaders/NeuralInteriorMaterial';
 
 /**
  * Drosophila anatomical body with neural overlay.
@@ -346,6 +347,8 @@ export function FlyBody3D() {
     [],
   );
 
+  const synapseMat = useMemo(() => createNeuralInteriorMaterial(), []);
+
   // -----------------------------------------------------------------------
   // useFrame — animation loop
   // -----------------------------------------------------------------------
@@ -420,6 +423,12 @@ export function FlyBody3D() {
     if (headMat.userData.uniforms) {
       headMat.userData.uniforms.u_avgActivity.value = avgActivity;
       headMat.userData.uniforms.u_time.value = t;
+    }
+
+    // -- Synapse line shader uniforms --
+    if (synapseMat.uniforms) {
+      synapseMat.uniforms.u_time.value = t;
+      synapseMat.uniforms.u_activity.value = avgActivity;
     }
 
     // -- Update neuron point visuals --
@@ -573,15 +582,7 @@ export function FlyBody3D() {
 
       {/* ============ NEURAL INTERIOR (inside thorax) ============ */}
       {/* Synapse lines */}
-      <lineSegments ref={synapseLinesRef} geometry={synapseGeo}>
-        <lineBasicMaterial
-          vertexColors
-          transparent
-          opacity={0.12}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
-      </lineSegments>
+      <lineSegments ref={synapseLinesRef} geometry={synapseGeo} material={synapseMat} />
 
       {/* Neuron points */}
       <points ref={neuronPointsRef}>
