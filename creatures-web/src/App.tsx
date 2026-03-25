@@ -542,7 +542,7 @@ export default function App() {
           </div>
           <div className="organism-selector">
             <button
-              className={`organism-pill${!experiment || experiment.organism !== 'drosophila' ? ' active' : ''}`}
+              className={`organism-pill${!experiment || (experiment.organism !== 'drosophila' && experiment.organism !== 'zebrafish') ? ' active' : ''}`}
               onClick={() => handleSwitchOrganism('c_elegans')}
             >
               C. elegans
@@ -552,6 +552,12 @@ export default function App() {
               onClick={() => handleSwitchOrganism('drosophila')}
             >
               Drosophila
+            </button>
+            <button
+              className={`organism-pill${experiment?.organism === 'zebrafish' ? ' active' : ''}`}
+              onClick={() => handleSwitchOrganism('zebrafish')}
+            >
+              Zebrafish
             </button>
           </div>
         </div>
