@@ -63,7 +63,7 @@ export interface SceneProps {
 export function Scene({ worldType }: SceneProps) {
   return (
     <Canvas
-      camera={{ position: [0.44, 0.15, 0.45], fov: 40, near: 0.005, far: 15 }}
+      camera={{ position: [0.44, 0.06, 0.35], fov: 42, near: 0.005, far: 15 }}
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
       dpr={[1, 2]}
       style={{
