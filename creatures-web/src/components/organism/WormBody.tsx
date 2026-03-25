@@ -228,8 +228,8 @@ export function WormBody() {
       if (nodeRefs.current[i]) nodeRefs.current[i]!.visible = false;
     }
 
-    // Update the main tube geometry (every 3rd frame for performance)
-    if (tubeRef.current && spinePoints.length >= 3 && frameCount.current % 3 === 0) {
+    // Update the main tube geometry (every 8th frame to reduce GC pressure)
+    if (tubeRef.current && spinePoints.length >= 3 && frameCount.current % 8 === 0) {
       const curve = new THREE.CatmullRomCurve3(spinePoints);
       const segments = Math.max(spinePoints.length * 4, 32);
       const newGeo = new THREE.TubeGeometry(curve, segments, TUBE_RADIUS, 12, false);

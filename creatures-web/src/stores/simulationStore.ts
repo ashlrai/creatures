@@ -59,10 +59,15 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
 
   setFrame: (frame) => {
     const state = get();
-    const initialCom = state.initialCom ?? frame.center_of_mass;
-    const dx = frame.center_of_mass[0] - initialCom[0];
-    const dy = frame.center_of_mass[1] - initialCom[1];
-    const dz = frame.center_of_mass[2] - initialCom[2];
+    const com = frame.center_of_mass;
+    if (!com || com.length < 3) {
+      set({ frame });
+      return;
+    }
+    const initialCom = state.initialCom ?? com;
+    const dx = com[0] - initialCom[0];
+    const dy = com[1] - initialCom[1];
+    const dz = com[2] - initialCom[2];
     const displacement = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
     const entry = { t: frame.t_ms, n_active: frame.n_active, displacement };
