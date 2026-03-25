@@ -135,6 +135,8 @@ export default function App() {
   const [ecosystemId, setEcosystemId] = useState<string | null>(null);
   const [ecoStats, setEcoStats] = useState<{ c_elegans: number; drosophila: number; food: number } | null>(null);
   const [ecoLoading, setEcoLoading] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<'brain' | 'tools' | 'science'>('brain');
+  const [showWelcome, setShowWelcome] = useLocalStorage('neurevo:welcomed', true);
   const autoStarted = useRef(false);
 
   // --- Local storage persistence ---
@@ -371,6 +373,41 @@ export default function App() {
       <NeuronTooltip />
       <NeuronDetailPanel />
 
+      {/* Welcome overlay — shown on first visit */}
+      {showWelcome && (
+        <div className="welcome-overlay">
+          <div className="welcome-card">
+            <div className="welcome-title">Neurevo</div>
+            <div className="welcome-subtitle">
+              Simulate real biological brains. Touch, test drugs, evolve, and discover.
+            </div>
+            <div className="welcome-actions">
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setShowWelcome(false);
+                  handleSwitchOrganism('c_elegans');
+                }}
+              >
+                Start Exploring
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={() => {
+                  setShowWelcome(false);
+                  setAppMode('evo');
+                }}
+              >
+                Watch Evolution
+              </button>
+            </div>
+            <div className="welcome-dismiss" onClick={() => setShowWelcome(false)}>
+              Press <strong>?</strong> for keyboard shortcuts
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="app-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -393,12 +430,6 @@ export default function App() {
               Drosophila
             </button>
           </div>
-          {experiment && (
-            <div style={{ display: 'flex', gap: 16, marginLeft: 8, fontSize: 12, fontFamily: 'var(--font-mono)' }}>
-              <span style={{ color: 'var(--accent-cyan)' }}>{experiment.n_neurons.toLocaleString()} neurons</span>
-              <span style={{ color: 'var(--text-label)' }}>{experiment.n_synapses.toLocaleString()} synapses</span>
-            </div>
-          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
           <div className="mode-switch">
@@ -468,7 +499,7 @@ export default function App() {
                               setEcoStats({
                                 c_elegans: statsData.by_species?.c_elegans?.count ?? statsData.c_elegans_count ?? statsData.c_elegans ?? 0,
                                 drosophila: statsData.by_species?.drosophila?.count ?? statsData.drosophila_count ?? statsData.drosophila ?? 0,
-                                food: Math.round((statsData.total_food_energy ?? 0) / 50) || statsData.total_food ?? statsData.food ?? 10,
+                                food: Math.round((statsData.total_food_energy ?? 0) / 50) || (statsData.total_food ?? statsData.food ?? 10),
                               });
                             }
                           } catch { /* stats fetch non-critical */ }
@@ -572,45 +603,65 @@ export default function App() {
             </>
           ) : experiment ? (
             <>
-              <div className="glass">
-                <div className="glass-label">Neural Activity</div>
-                <div className="stat-row"><span className="stat-label">Active neurons</span><span className="stat-value stat-cyan">{frame?.n_active ?? 0}</span></div>
-                <div className="stat-row"><span className="stat-label">Muscles</span><span className="stat-value stat-magenta">{frame ? Object.keys(frame.muscle_activations).length : 0}</span></div>
-                <div className="stat-row"><span className="stat-label">Displacement</span><span className="stat-value stat-green">{history.length > 0 ? history[history.length - 1].displacement.toFixed(4) : '—'}</span></div>
-                <div style={{ height: 36, display: 'flex', alignItems: 'flex-end', gap: 1, marginTop: 8 }}>
-                  {history.slice(-60).map((h, i) => (
-                    <div key={i} style={{ flex: 1, height: `${Math.min(100, h.n_active * 2)}%`, background: h.n_active > 10 ? `hsl(${190 - Math.min(h.n_active, 50)}, 85%, 55%)` : h.n_active > 0 ? '#1a4466' : 'rgba(255,255,255,0.015)', borderRadius: '1px 1px 0 0', minHeight: 1 }} />
-                  ))}
-                </div>
+              <div className="sidebar-tabs">
+                <button className={`sidebar-tab${sidebarTab === 'brain' ? ' active' : ''}`} onClick={() => setSidebarTab('brain')}>Brain</button>
+                <button className={`sidebar-tab${sidebarTab === 'tools' ? ' active' : ''}`} onClick={() => setSidebarTab('tools')}>Tools</button>
+                <button className={`sidebar-tab${sidebarTab === 'science' ? ' active' : ''}`} onClick={() => setSidebarTab('science')}>Science</button>
               </div>
-              <div className="glass">
-                <div className="glass-label">Interaction</div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => { markInteracted(); handlePoke(pokeSegments.tail); }}>{pokeLabels.tail}</button>
-                  <button className="btn btn-amber" style={{ flex: 1 }} onClick={() => { markInteracted(); handlePoke(pokeSegments.head); }}>{pokeLabels.head}</button>
-                </div>
-                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                  <button className="btn btn-ghost" style={{ flex: 1 }} onClick={pause}>Pause</button>
-                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={resume}>Resume</button>
-                </div>
-              </div>
-              <div className="glass">
-                <div className="glass-label">Neuron Surgery</div>
-                <div style={{ fontSize: 10, color: 'var(--text-label)', marginBottom: 4 }}>Lesion neuron</div>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <input className="input" placeholder={neuronDefaults.lesion} value={lesionInput} onChange={(e) => setLesionInput(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter' && lesionInput) { handleLesion(lesionInput); setLesionInput(''); }}} />
-                  <button className="btn btn-danger" onClick={() => { if (lesionInput) { handleLesion(lesionInput); setLesionInput(''); }}}>Cut</button>
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--text-label)', marginTop: 8, marginBottom: 4 }}>Stimulate neuron</div>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <input className="input" placeholder={neuronDefaults.stim} value={stimInput} onChange={(e) => setStimInput(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter' && stimInput) { handleStim([stimInput]); setStimInput(''); }}} />
-                  <button className="btn btn-primary" onClick={() => { if (stimInput) { handleStim([stimInput]); setStimInput(''); }}}>Zap</button>
-                </div>
-              </div>
-              <DrugTestingPanel isDemo={isDemo} expanded={drugPanelExpanded} onToggleExpanded={setDrugPanelExpanded} />
-              <NeuralMetrics />
-              <RecordingPanel />
-              <ExperimentPanel />
+
+              {sidebarTab === 'brain' && (
+                <>
+                  <div className="glass">
+                    <div className="glass-label">Neural Activity</div>
+                    <div className="stat-row"><span className="stat-label">Active neurons</span><span className="stat-value stat-cyan">{frame?.n_active ?? 0}</span></div>
+                    <div className="stat-row"><span className="stat-label">Muscles</span><span className="stat-value stat-magenta">{frame ? Object.keys(frame.muscle_activations).length : 0}</span></div>
+                    <div className="stat-row"><span className="stat-label">Displacement</span><span className="stat-value stat-green">{history.length > 0 ? history[history.length - 1].displacement.toFixed(4) : '—'}</span></div>
+                    <div style={{ height: 36, display: 'flex', alignItems: 'flex-end', gap: 1, marginTop: 8 }}>
+                      {history.slice(-60).map((h, i) => (
+                        <div key={i} style={{ flex: 1, height: `${Math.min(100, h.n_active * 2)}%`, background: h.n_active > 10 ? `hsl(${190 - Math.min(h.n_active, 50)}, 85%, 55%)` : h.n_active > 0 ? '#1a4466' : 'rgba(255,255,255,0.015)', borderRadius: '1px 1px 0 0', minHeight: 1 }} />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="glass">
+                    <div className="glass-label">Interaction</div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => { markInteracted(); handlePoke(pokeSegments.tail); }}>{pokeLabels.tail}</button>
+                      <button className="btn btn-amber" style={{ flex: 1 }} onClick={() => { markInteracted(); handlePoke(pokeSegments.head); }}>{pokeLabels.head}</button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                      <button className="btn btn-ghost" style={{ flex: 1 }} onClick={pause}>Pause</button>
+                      <button className="btn btn-primary" style={{ flex: 1 }} onClick={resume}>Resume</button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {sidebarTab === 'tools' && (
+                <>
+                  <div className="glass">
+                    <div className="glass-label">Neuron Surgery</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-label)', marginBottom: 4 }}>Lesion neuron</div>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <input className="input" placeholder={neuronDefaults.lesion} value={lesionInput} onChange={(e) => setLesionInput(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter' && lesionInput) { handleLesion(lesionInput); setLesionInput(''); }}} />
+                      <button className="btn btn-danger" onClick={() => { if (lesionInput) { handleLesion(lesionInput); setLesionInput(''); }}}>Cut</button>
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text-label)', marginTop: 8, marginBottom: 4 }}>Stimulate neuron</div>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <input className="input" placeholder={neuronDefaults.stim} value={stimInput} onChange={(e) => setStimInput(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter' && stimInput) { handleStim([stimInput]); setStimInput(''); }}} />
+                      <button className="btn btn-primary" onClick={() => { if (stimInput) { handleStim([stimInput]); setStimInput(''); }}}>Zap</button>
+                    </div>
+                  </div>
+                  <DrugTestingPanel isDemo={isDemo} expanded={drugPanelExpanded} onToggleExpanded={setDrugPanelExpanded} />
+                </>
+              )}
+
+              {sidebarTab === 'science' && (
+                <>
+                  <NeuralMetrics />
+                  <RecordingPanel />
+                  <ExperimentPanel />
+                </>
+              )}
             </>
           ) : (
             <>
@@ -656,7 +707,7 @@ export default function App() {
             <div className="glass" style={{ padding: 8, flex: 1, display: 'flex', flexDirection: 'column' }}>
               <div className="glass-label">Fitness Over Generations</div>
               <div style={{ flex: 1, minHeight: 300 }}>
-                <FitnessGraph history={fitnessHistory} width={256} height={420} />
+                <FitnessGraph history={fitnessHistory} width={220} height={420} />
               </div>
             </div>
           ) : (
