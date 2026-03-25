@@ -3,6 +3,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Sparkles } from '@react-three/drei';
 import * as THREE from 'three';
 import { WormBody } from './organism/WormBody';
+import { FlyBody3D } from './organism/FlyBody3D';
 import { NeuralNetwork3D } from './organism/NeuralNetwork3D';
 import { ConnectomeGraph3D } from './organism/ConnectomeGraph3D';
 import { SpikeParticles } from './organism/SpikeParticles';
@@ -167,6 +168,17 @@ function AmbientParticles() {
   );
 }
 
+/** Renders the appropriate body based on the current organism */
+function OrganismBody() {
+  const experiment = useSimulationStore((s) => s.experiment);
+  const organism = experiment?.organism ?? 'c_elegans';
+
+  if (organism === 'drosophila') {
+    return <FlyBody3D />;
+  }
+  return <WormBody />;
+}
+
 export function Scene() {
   return (
     <Canvas
@@ -201,8 +213,8 @@ export function Scene() {
       <Sparkles count={60} size={0.35} speed={0.06} opacity={0.15} color="#4488dd" scale={[2.0, 0.6, 1.5]} position={[0.44, 0.15, 0]} />
       <AmbientParticles />
 
-      {/* Organism + Neural Network */}
-      <WormBody />
+      {/* Organism body — switch renderer based on organism type */}
+      <OrganismBody />
       <NeuralNetwork3D />
       <ConnectomeGraph3D />
       <SpikeParticles />
