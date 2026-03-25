@@ -18,6 +18,7 @@ import { NeuronTooltip } from './components/ui/NeuronTooltip';
 import { NeuronDetailPanel } from './components/ui/NeuronDetailPanel';
 import { NeuralMetrics } from './components/ui/NeuralMetrics';
 import { RecordingPanel } from './components/ui/RecordingPanel';
+import { ExperimentPanel } from './components/ui/ExperimentPanel';
 import { useSimulationStore } from './stores/simulationStore';
 import { useEvolutionStore } from './stores/evolutionStore';
 import { GlobalErrorBoundary } from './components/ErrorBoundary';
@@ -593,6 +594,7 @@ export default function App() {
               <DrugTestingPanel isDemo={isDemo} expanded={drugPanelExpanded} onToggleExpanded={setDrugPanelExpanded} />
               <NeuralMetrics />
               <RecordingPanel />
+              <ExperimentPanel />
             </>
           ) : (
             <>

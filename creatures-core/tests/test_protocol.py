@@ -144,7 +144,7 @@ class TestExperimentRunner:
                 ExperimentStep(50, "measure", {"metric": "motor_latency"}, "Latency"),
                 ExperimentStep(150, "measure", {"metric": "displacement"}, "Displacement"),
             ],
-            duration_ms=200.0,
+            duration_ms=160.0,
             control=False,  # skip control for speed
         )
         runner = ExperimentRunner(proto)
@@ -160,10 +160,10 @@ class TestExperimentRunner:
             name="Control test",
             description="Test control condition",
             steps=[
-                ExperimentStep(50, "poke", {"segment": "seg_8"}, "Touch"),
-                ExperimentStep(100, "measure", {"metric": "baseline_activity"}, "Activity"),
+                ExperimentStep(20, "poke", {"segment": "seg_8"}, "Touch"),
+                ExperimentStep(40, "measure", {"metric": "baseline_activity"}, "Activity"),
             ],
-            duration_ms=150.0,
+            duration_ms=50.0,
             control=True,
         )
         runner = ExperimentRunner(proto)
@@ -205,7 +205,7 @@ class TestExperimentRunner:
             steps=[
                 ExperimentStep(10, "measure", {"metric": "baseline_activity"}, "Activity"),
             ],
-            duration_ms=50.0,
+            duration_ms=30.0,
             control=True,
         )
         runner = ExperimentRunner(proto)

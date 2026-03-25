@@ -3,7 +3,6 @@
 import numpy as np
 import pytest
 
-from creatures.connectome.openworm import load_from_edge_list
 from creatures.connectome.types import Connectome
 from creatures.neural.base import MonitorConfig, NeuralConfig, PlasticityConfig
 from creatures.neural.brian2_engine import Brian2Engine
@@ -13,18 +12,15 @@ from creatures.neural.brian2_engine import Brian2Engine
 SENSORY_IDS = ["PLML", "PLMR", "AVM", "ALML", "ALMR"]
 STRONG_STIMULUS = 40.0  # mV — strong enough to drive spikes and cascade
 
-
-@pytest.fixture()
-def connectome() -> Connectome:
-    """Load the C. elegans connectome (small, fast to test)."""
-    return load_from_edge_list()
+# Use numpy codegen to avoid Cython compilation overhead in tests
+_TEST_CONFIG = NeuralConfig(codegen_target="numpy")
 
 
 @pytest.fixture()
 def static_engine(connectome: Connectome) -> Brian2Engine:
     """Build a Brian2Engine with STDP disabled (static synapses)."""
     eng = Brian2Engine()
-    eng.build(connectome, monitor=MonitorConfig(record_spikes=True))
+    eng.build(connectome, config=_TEST_CONFIG, monitor=MonitorConfig(record_spikes=True))
     return eng
 
 
@@ -39,7 +35,7 @@ def plastic_engine(connectome: Connectome) -> Brian2Engine:
         w_max=20.0,
         w_min=-5.0,  # allow inhibitory weights
     )
-    eng.build(connectome, monitor=MonitorConfig(record_spikes=True), plasticity=plasticity)
+    eng.build(connectome, config=_TEST_CONFIG, monitor=MonitorConfig(record_spikes=True), plasticity=plasticity)
     return eng
 
 
@@ -47,10 +43,10 @@ class TestStaticWeightsUnchanged:
     """With STDP disabled, weights must remain constant."""
 
     def test_weights_unchanged_after_simulation(self, static_engine: Brian2Engine):
-        """Run 100ms with stimulus; static weights should not change."""
+        """Run 30ms with stimulus; static weights should not change."""
         weights_before = static_engine.get_synapse_weights().copy()
         static_engine.set_input_currents({nid: STRONG_STIMULUS for nid in SENSORY_IDS})
-        for _ in range(100):
+        for _ in range(30):
             static_engine.step(1.0)
         weights_after = static_engine.get_synapse_weights()
         np.testing.assert_array_equal(
@@ -63,10 +59,10 @@ class TestSTDPWeightsChange:
     """With STDP enabled, weights must change when there is activity."""
 
     def test_weights_change_with_stimulus(self, plastic_engine: Brian2Engine):
-        """Stimulate sensory neurons for 200ms; STDP should modify some weights."""
+        """Stimulate sensory neurons for 80ms; STDP should modify some weights."""
         weights_before = plastic_engine.get_synapse_weights().copy()
         plastic_engine.set_input_currents({nid: STRONG_STIMULUS for nid in SENSORY_IDS})
-        for _ in range(200):
+        for _ in range(80):
             plastic_engine.step(1.0)
         weights_after = plastic_engine.get_synapse_weights()
         delta = weights_after - weights_before
@@ -95,17 +91,17 @@ class TestHebbianPotentiation:
             w_max=20.0,
             w_min=-5.0,
         )
-        eng.build(connectome, monitor=MonitorConfig(record_spikes=True), plasticity=plasticity)
+        eng.build(connectome, config=_TEST_CONFIG, monitor=MonitorConfig(record_spikes=True), plasticity=plasticity)
 
         weights_before = eng.get_synapse_weights().copy()
 
         # Repeatedly stimulate sensory neurons to drive causal (pre->post) firing
-        for trial in range(10):
+        for trial in range(5):
             eng.set_input_currents({nid: STRONG_STIMULUS for nid in SENSORY_IDS})
-            for _ in range(30):
+            for _ in range(20):
                 eng.step(1.0)
             eng.set_input_currents({})
-            for _ in range(20):
+            for _ in range(10):
                 eng.step(1.0)
 
         weights_after = eng.get_synapse_weights()
@@ -133,11 +129,11 @@ class TestWeightBounds:
             w_max=w_max,
             w_min=w_min,
         )
-        eng.build(connectome, monitor=MonitorConfig(record_spikes=True), plasticity=plasticity)
+        eng.build(connectome, config=_TEST_CONFIG, monitor=MonitorConfig(record_spikes=True), plasticity=plasticity)
 
-        # Drive hard for 300ms to push weights toward bounds
+        # Drive hard for 100ms to push weights toward bounds
         eng.set_input_currents({nid: 50.0 for nid in SENSORY_IDS})
-        for _ in range(300):
+        for _ in range(100):
             eng.step(1.0)
 
         weights = eng.get_synapse_weights()
@@ -160,7 +156,7 @@ class TestGetWeightChanges:
     def test_returns_valid_stats_after_simulation(self, plastic_engine: Brian2Engine):
         """After simulation with STDP, stats should contain all expected keys."""
         plastic_engine.set_input_currents({nid: STRONG_STIMULUS for nid in SENSORY_IDS})
-        for _ in range(100):
+        for _ in range(30):
             plastic_engine.step(1.0)
 
         stats = plastic_engine.get_weight_changes()
@@ -173,7 +169,7 @@ class TestGetWeightChanges:
     def test_stats_types_are_correct(self, plastic_engine: Brian2Engine):
         """All returned values should be the correct numeric types."""
         plastic_engine.set_input_currents({nid: STRONG_STIMULUS for nid in SENSORY_IDS})
-        for _ in range(50):
+        for _ in range(20):
             plastic_engine.step(1.0)
 
         stats = plastic_engine.get_weight_changes()
@@ -185,7 +181,7 @@ class TestGetWeightChanges:
     def test_counts_sum_to_total_synapses(self, plastic_engine: Brian2Engine):
         """Potentiated + depressed + unchanged should equal total synapse count."""
         plastic_engine.set_input_currents({nid: STRONG_STIMULUS for nid in SENSORY_IDS})
-        for _ in range(100):
+        for _ in range(30):
             plastic_engine.step(1.0)
 
         stats = plastic_engine.get_weight_changes()

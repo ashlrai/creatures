@@ -78,6 +78,16 @@ class TemperatureRequest(BaseModel):
     preferred_temp: float = 20.0
 
 
+class UpgradeBrainResponse(BaseModel):
+    organism_id: str
+    species: str
+    n_neurons: int
+    n_synapses: int
+    active_neurons: int
+    sensor_groups: list[str]
+    motor_groups: list[str]
+
+
 class StepResponse(BaseModel):
     time_ms: float
     steps_run: int
@@ -179,6 +189,42 @@ async def add_organism(eco_id: str, req: AddOrganismRequest):
         "position": org.position,
         "energy": org.energy,
     }
+
+
+@router.post("/{eco_id}/upgrade-brain/{organism_id}")
+async def upgrade_brain(eco_id: str, organism_id: str, species: str = "c_elegans"):
+    """Upgrade a specific organism to have a real spiking neural network brain.
+
+    This replaces the organism's simple gradient-following movement rules with
+    a 299-neuron Brian2 simulation of the C. elegans connectome. Sensory
+    inputs from the environment are injected into biologically identified
+    sensory neurons, and motor neuron firing rates drive movement.
+
+    Returns:
+        Neural stats including neuron/synapse counts and sensor/motor mappings.
+    """
+    eco = ecosystems.get(eco_id)
+    if eco is None:
+        raise HTTPException(404, f"Ecosystem {eco_id} not found")
+
+    if organism_id not in eco.organisms:
+        raise HTTPException(404, f"Organism {organism_id} not found in ecosystem {eco_id}")
+
+    if not eco.organisms[organism_id].alive:
+        raise HTTPException(400, f"Organism {organism_id} is dead")
+
+    if organism_id in eco.neural_organisms:
+        raise HTTPException(400, f"Organism {organism_id} already has a neural brain")
+
+    try:
+        neural_org = eco.add_neural_organism(organism_id, species=species)
+    except Exception as e:
+        logger.error(f"Failed to upgrade brain for {organism_id}: {e}")
+        raise HTTPException(500, f"Failed to build neural network: {str(e)[:200]}")
+
+    stats = neural_org.get_neural_stats()
+    logger.info(f"Upgraded {organism_id} in {eco_id}: {stats['n_neurons']} neurons")
+    return UpgradeBrainResponse(**stats)
 
 
 @router.get("/{eco_id}/stats")

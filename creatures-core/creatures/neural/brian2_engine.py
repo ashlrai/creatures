@@ -31,7 +31,15 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_codegen_target(target: str) -> str:
-    """Resolve 'auto' to the best available backend."""
+    """Resolve 'auto' to the best available backend.
+
+    Checks BRIAN2_CODEGEN_TARGET env var first, allowing tests to force
+    numpy backend without modifying NeuralConfig at every call site.
+    """
+    import os
+    env_target = os.environ.get("BRIAN2_CODEGEN_TARGET")
+    if env_target:
+        return env_target
     if target == "auto":
         try:
             import Cython  # noqa: F401
@@ -270,20 +278,21 @@ class Brian2Engine(NeuralEngine):
             spike_times = np.array(self._spike_mon.t / ms)
             spike_indices = np.array(self._spike_mon.i)
             mask = spike_times >= t_before
-            step_spikes = list(set(spike_indices[mask].astype(int)))
+            masked_indices = spike_indices[mask].astype(int)
+            step_spikes = np.unique(masked_indices).tolist()
         else:
-            spike_indices = np.array([], dtype=int)
-            mask = np.array([], dtype=bool)
+            masked_indices = np.array([], dtype=int)
             step_spikes = []
 
-        # Get current voltages
-        voltages = list(float(v / mV) for v in self._neurons.v)
+        # Get current voltages (vectorized)
+        voltages = (np.array(self._neurons.v) / mV).tolist()
 
-        # Update firing rates (exponential moving average)
+        # Update firing rates (exponential moving average, vectorized)
         alpha = min(1.0, duration_ms / cfg.tau_rate)
-        spike_count = np.zeros(self.n_neurons)
-        for idx in spike_indices[mask].astype(int):
-            spike_count[idx] += 1
+        if len(masked_indices) > 0:
+            spike_count = np.bincount(masked_indices, minlength=self.n_neurons).astype(float)
+        else:
+            spike_count = np.zeros(self.n_neurons)
         instant_rate = spike_count / (duration_ms / 1000.0)  # Hz
         self._firing_rates = (1 - alpha) * self._firing_rates + alpha * instant_rate
 
@@ -298,8 +307,8 @@ class Brian2Engine(NeuralEngine):
         """Return all recorded spikes as (neuron_indices, times_ms)."""
         if self._spike_mon is None:
             return [], []
-        indices = list(int(i) for i in self._spike_mon.i)
-        times = list(float(t / ms) for t in self._spike_mon.t)
+        indices = np.array(self._spike_mon.i).astype(int).tolist()
+        times = (np.array(self._spike_mon.t) / ms).tolist()
         return indices, times
 
     def get_voltage_history(
@@ -316,13 +325,13 @@ class Brian2Engine(NeuralEngine):
         if self._voltage_mon is None:
             return {}
 
-        times = list(float(t / ms) for t in self._voltage_mon.t)
+        times = (np.array(self._voltage_mon.t) / ms).tolist()
         ids = neuron_ids or self._neuron_ids
         result = {}
         for nid in ids:
             if nid in self._id_to_idx:
                 idx = self._id_to_idx[nid]
-                voltages = list(float(v / mV) for v in self._voltage_mon.v[idx])
+                voltages = (np.array(self._voltage_mon.v[idx]) / mV).tolist()
                 result[nid] = (times, voltages)
         return result
 

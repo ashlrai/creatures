@@ -29,6 +29,17 @@ from creatures.environment.sensory_world import SensoryWorld
 
 logger = logging.getLogger(__name__)
 
+# Lazy import to avoid pulling in Brian2 unless neural organisms are used
+NeuralOrganism = None  # type: ignore[assignment]
+
+def _get_neural_organism_cls():
+    """Lazy-import NeuralOrganism to avoid Brian2 import on module load."""
+    global NeuralOrganism
+    if NeuralOrganism is None:
+        from creatures.environment.neural_organism import NeuralOrganism as _NO
+        NeuralOrganism = _NO
+    return NeuralOrganism
+
 
 class Ecosystem:
     """Manages a multi-organism ecosystem with shared environment."""
@@ -38,6 +49,7 @@ class Ecosystem:
         self.organisms: dict[str, OrganismInstance] = {}
         self.food_sources: dict[str, FoodSource] = {}
         self.world: SensoryWorld | None = None  # optional rich sensory env
+        self.neural_organisms: dict[str, object] = {}  # organism_id -> NeuralOrganism
         self.time_ms: float = 0.0
         self.events: list[dict] = []  # log of ecosystem events
         self._rng = np.random.default_rng(42)
@@ -111,10 +123,13 @@ class Ecosystem:
         if self.world is not None:
             self.world.step(dt_ms)
 
-        # 1. Move organisms (food-seeking + sensory world + random walk)
+        # 1. Move organisms (neural brain OR food-seeking + random walk)
         food_list = list(self.food_sources.values())
         for org in alive_organisms:
-            self._move_organism(org, food_list, dt_ms)
+            if org.id in self.neural_organisms:
+                self._move_neural_organism(org, dt_ms)
+            else:
+                self._move_organism(org, food_list, dt_ms)
 
         # 1b. Apply toxin damage from sensory world
         if self.world is not None:
@@ -425,3 +440,117 @@ class Ecosystem:
             }
         )
         return org
+
+    def add_neural_organism(
+        self,
+        organism_id: str,
+        species: str = "c_elegans",
+        connectome=None,
+        neural_config=None,
+    ):
+        """Upgrade an ecosystem organism to have a real neural network brain.
+
+        Args:
+            organism_id: ID of an existing organism in the ecosystem.
+            species: Species identifier (used to select connectome if none given).
+            connectome: A Connectome instance. If None, loads C. elegans default.
+            neural_config: Optional NeuralConfig override.
+
+        Returns:
+            The NeuralOrganism wrapper.
+
+        Raises:
+            KeyError: If organism_id is not found in the ecosystem.
+        """
+        if organism_id not in self.organisms:
+            raise KeyError(f"Organism {organism_id!r} not found in ecosystem")
+
+        NeuralOrganismCls = _get_neural_organism_cls()
+
+        if connectome is None:
+            from creatures.connectome.openworm import load
+            connectome = load()
+
+        neural_org = NeuralOrganismCls(
+            organism_id=organism_id,
+            species=species,
+            connectome=connectome,
+            neural_config=neural_config,
+        )
+        self.neural_organisms[organism_id] = neural_org
+
+        self.events.append(
+            {
+                "type": "brain_upgraded",
+                "time_ms": self.time_ms,
+                "organism_id": organism_id,
+                "species": species,
+                "n_neurons": neural_org.n_neurons,
+                "n_synapses": neural_org.n_synapses,
+            }
+        )
+        logger.info(
+            f"Upgraded organism {organism_id} with neural brain: "
+            f"{neural_org.n_neurons} neurons, {neural_org.n_synapses} synapses"
+        )
+        return neural_org
+
+    def _move_neural_organism(
+        self, org: OrganismInstance, dt_ms: float
+    ) -> None:
+        """Move an organism using its neural network brain.
+
+        Gathers sensory input from the SensoryWorld (or provides a minimal
+        default), feeds it through the organism's spiking neural network,
+        and applies the resulting movement command.
+        """
+        neural_org = self.neural_organisms[org.id]
+
+        # Gather sensory input
+        if self.world is not None:
+            sensory_input = self.world.sense_at(org.position)
+        else:
+            # Minimal sensory input: food gradient only
+            from creatures.environment.interactions import compute_food_gradient
+            food_list = list(self.food_sources.values())
+            grad_x, grad_y = compute_food_gradient(
+                org, food_list, self.config.food_detection_radius
+            )
+            sensory_input = {
+                "chemicals": {"food": max(0.0, 1.0 - abs(grad_x) - abs(grad_y))},
+                "temperature": None,
+                "toxin_exposure": 0.0,
+                "social": {},
+                "gradient_direction": {"food": (grad_x, grad_y)},
+            }
+
+        # Run the neural simulation and get movement
+        movement = neural_org.sense_and_act(sensory_input, dt_ms)
+
+        speed_base = self.config.move_speed.get(org.species, 0.003)
+        speed = speed_base * dt_ms
+
+        # Apply neural movement: speed modulates forward/backward,
+        # turn modulates heading
+        org.heading += movement.get("turn", 0.0)
+
+        # Neural speed scales the base movement speed
+        neural_speed = movement.get("speed", 0.0)
+        # Clamp so organism always moves at least a little (prevents stuck)
+        effective_speed = speed * max(0.2, 1.0 + neural_speed)
+
+        dx = effective_speed * math.cos(org.heading)
+        dy = effective_speed * math.sin(org.heading)
+        new_x = org.position[0] + dx
+        new_y = org.position[1] + dy
+
+        # Bounce off arena walls (circular boundary)
+        r = self.config.arena_radius
+        dist_from_center = math.sqrt(new_x * new_x + new_y * new_y)
+        if dist_from_center > r:
+            org.heading += math.pi + float(self._rng.normal(0, 0.5))
+            scale = (r * 0.95) / dist_from_center
+            new_x *= scale
+            new_y *= scale
+
+        org.position = (new_x, new_y)

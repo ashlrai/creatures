@@ -281,7 +281,7 @@ class ExperimentRunner:
         connectome = load_celegans("edge_list")
         engine = Brian2Engine()
         monitor = MonitorConfig(record_voltages=False)
-        engine.build(connectome, NeuralConfig(), monitor)
+        engine.build(connectome, NeuralConfig(codegen_target="numpy"), monitor)
 
         body = WormBody(BodyConfig(dt=1.0))
         body.reset()
