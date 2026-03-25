@@ -23,6 +23,7 @@ from creatures.experiment.protocol import (
     ExperimentStep,
     PRESET_EXPERIMENTS,
 )
+from creatures.storage.persistence import NeurevoStore
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,8 @@ protocol_router = APIRouter(prefix="/experiments", tags=["experiments"])
 
 # Shared simulation manager (injected from main.py)
 manager: SimulationManager | None = None
+# Persistence store (injected from main.py)
+store: NeurevoStore | None = None
 
 
 def get_manager() -> SimulationManager:
@@ -363,7 +366,7 @@ async def run_protocol(req: ProtocolRunRequest) -> ProtocolResultSchema:
             for m in result.control_measurements
         ]
 
-    return ProtocolResultSchema(
+    response = ProtocolResultSchema(
         protocol_name=result.protocol.name,
         description=result.protocol.description,
         n_measurements=len(measurements),
@@ -372,3 +375,30 @@ async def run_protocol(req: ProtocolRunRequest) -> ProtocolResultSchema:
         summary=result.summary,
         report_markdown=result.to_report(),
     )
+
+    # Persist the experiment result
+    if store is not None:
+        try:
+            import uuid
+            exp_id = str(uuid.uuid4())[:8]
+            store.save_experiment(
+                exp_id=exp_id,
+                name=result.protocol.name,
+                organism=result.protocol.organism,
+                config={
+                    "preset": req.preset,
+                    "duration_ms": result.protocol.duration_ms,
+                    "n_repeats": result.protocol.n_repeats,
+                    "control": result.protocol.control,
+                    "n_steps": len(result.protocol.steps),
+                },
+                results={
+                    "n_measurements": len(measurements),
+                    "summary": result.summary,
+                },
+                status="completed",
+            )
+        except Exception as exc:
+            logger.warning(f"Failed to persist experiment: {exc}")
+
+    return response

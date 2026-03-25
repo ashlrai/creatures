@@ -15,27 +15,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "creatures-core"))
 
 import asyncio
 
-from app.routers import analysis, ecosystem, evolution, experiments, export, god, metrics, morphology, neurons, pharmacology, ws
+from app.routers import analysis, ecosystem, evolution, experiments, export, god, history, metrics, morphology, neurons, pharmacology, ws
 from app.services.evolution_manager import EvolutionManager
 from app.services.simulation_manager import SimulationManager
+from creatures.storage.persistence import NeurevoStore
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize shared state on startup."""
+    # Persistence store (configurable via NEUREVO_DATA_DIR env var)
+    neurevo_store = NeurevoStore()
+
     manager = SimulationManager()
     analysis.manager = manager
     metrics.manager = manager
     experiments.manager = manager
+    experiments.store = neurevo_store
     neurons.manager = manager
     pharmacology.manager = manager
     ws.manager = manager
 
     evo_manager = EvolutionManager()
     evo_manager.set_loop(asyncio.get_running_loop())
+    evo_manager.store = neurevo_store
     evolution.manager = evo_manager
     export.manager = evo_manager
     god.manager = evo_manager
+
+    history.store = neurevo_store
 
     yield
 
@@ -68,6 +76,7 @@ app.include_router(morphology.router)
 app.include_router(neurons.router)
 app.include_router(pharmacology.router)
 app.include_router(ws.router)
+app.include_router(history.router)
 
 
 @app.get("/")

@@ -35,11 +35,44 @@ export interface EcosystemStats {
   generation: number;
 }
 
+/** Organism record returned by the massive brain-world API. */
+export interface MassiveOrganism {
+  x: number;
+  y: number;
+  species: number; // 0 = c_elegans, 1 = drosophila
+  energy: number;
+  age?: number;
+}
+
+/** Neural stats from the massive brain-world state. */
+export interface MassiveNeuralStats {
+  total_neurons: number;
+  neurons_per_organism: number;
+  n_organisms: number;
+  total_synapses: number;
+  total_fired: number;
+  mean_firing_rate: number;
+}
+
+/** Emergent behavior event. */
+export interface EmergentEvent {
+  behavior_type: string;
+  confidence: number;
+  description: string;
+  timestamp?: number;
+}
+
 interface EcosystemViewProps {
   organisms?: EcosystemOrganism[];
   food_sources?: EcosystemFood[];
   stats?: EcosystemStats;
   ecosystemId?: string | null;
+  /** When set, renders massive brain-world data instead of standard ecosystem. */
+  massiveId?: string | null;
+  massiveOrganisms?: MassiveOrganism[];
+  massiveNeuralStats?: MassiveNeuralStats | null;
+  emergentEvents?: EmergentEvent[];
+  worldType?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,10 +155,18 @@ function createMockFood(): EcosystemFood[] {
 // Component
 // ---------------------------------------------------------------------------
 
-export function EcosystemView({ organisms, food_sources, stats, ecosystemId }: EcosystemViewProps) {
+export function EcosystemView({
+  organisms, food_sources, stats, ecosystemId,
+  massiveId, massiveOrganisms, massiveNeuralStats, emergentEvents, worldType,
+}: EcosystemViewProps) {
+  const isMassive = !!massiveId;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const orgsRef = useRef<EcosystemOrganism[]>(organisms ?? createMockOrganisms());
   const foodRef = useRef<EcosystemFood[]>(food_sources ?? createMockFood());
+  const massiveOrgsRef = useRef<MassiveOrganism[]>(massiveOrganisms ?? []);
+  const neuralStatsRef = useRef<MassiveNeuralStats | null>(massiveNeuralStats ?? null);
+  const emergentRef = useRef<EmergentEvent[]>(emergentEvents ?? []);
+  const worldTypeRef = useRef<string>(worldType ?? 'soil');
   const animRef = useRef<number>(0);
   const timeRef = useRef(0);
   const [apiStats, setApiStats] = useState<EcosystemStats | null>(null);
@@ -187,6 +228,23 @@ export function EcosystemView({ organisms, food_sources, stats, ecosystemId }: E
   useEffect(() => {
     if (food_sources) foodRef.current = food_sources;
   }, [food_sources]);
+
+  // Sync massive mode props into refs
+  useEffect(() => {
+    if (massiveOrganisms) massiveOrgsRef.current = massiveOrganisms;
+  }, [massiveOrganisms]);
+
+  useEffect(() => {
+    neuralStatsRef.current = massiveNeuralStats ?? null;
+  }, [massiveNeuralStats]);
+
+  useEffect(() => {
+    emergentRef.current = emergentEvents ?? [];
+  }, [emergentEvents]);
+
+  useEffect(() => {
+    worldTypeRef.current = worldType ?? 'soil';
+  }, [worldType]);
 
   // Compute live stats from ref data
   const computeStats = useCallback((): EcosystemStats => {
@@ -275,16 +333,15 @@ export function EcosystemView({ organisms, food_sources, stats, ecosystemId }: E
     }
   }, []);
 
-  const draw = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    const cx = width / 2;
-    const cy = height / 2;
-    const t = timeRef.current;
+  // ---------------------------------------------------------------------------
+  // Draw helpers
+  // ---------------------------------------------------------------------------
 
-    // Clear
+  /** Draw the shared arena background (clear, gradient, border, grid). */
+  const drawArenaBackground = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number, cx: number, cy: number) => {
     ctx.fillStyle = '#030308';
     ctx.fillRect(0, 0, width, height);
 
-    // Arena background
     const bgGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, ARENA_RADIUS);
     bgGrad.addColorStop(0, 'rgba(6, 10, 22, 1)');
     bgGrad.addColorStop(0.8, 'rgba(4, 7, 16, 1)');
@@ -294,7 +351,6 @@ export function EcosystemView({ organisms, food_sources, stats, ecosystemId }: E
     ctx.fillStyle = bgGrad;
     ctx.fill();
 
-    // Arena border
     ctx.beginPath();
     ctx.arc(cx, cy, ARENA_RADIUS, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(40, 70, 120, 0.2)';
@@ -322,6 +378,169 @@ export function EcosystemView({ organisms, food_sources, stats, ecosystemId }: E
       ctx.stroke();
     }
     ctx.restore();
+  }, []);
+
+  /** Draw massive brain-world organisms as colored dots with neural glow. */
+  const drawMassive = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    const cx = width / 2;
+    const cy = height / 2;
+    const t = timeRef.current;
+
+    drawArenaBackground(ctx, width, height, cx, cy);
+
+    const mOrgs = massiveOrgsRef.current;
+    const ns = neuralStatsRef.current;
+    const events = emergentRef.current;
+    const wt = worldTypeRef.current;
+
+    // Mean firing rate drives "neural glow" intensity (0..1 scale, clamp)
+    const firingGlow = ns ? Math.min(1, ns.mean_firing_rate / 0.3) : 0;
+
+    // Scale factor: massive ecosystem coords are in arena units (e.g. 0..50),
+    // we map to the canvas ARENA_RADIUS circle.
+    // The backend uses arena_size (default 50), so coords range roughly -25..25
+    const scale = ARENA_RADIUS / 25;
+
+    // Draw organisms as small dots
+    for (const org of mOrgs) {
+      const ox = cx + org.x * scale;
+      const oy = cy + org.y * scale;
+
+      // Skip if outside visible area
+      const dx = ox - cx;
+      const dy = oy - cy;
+      if (dx * dx + dy * dy > ARENA_RADIUS * ARENA_RADIUS) continue;
+
+      const isCelegans = org.species === 0;
+      const baseAlpha = 0.4 + org.energy * 0.5;
+      // Neural pulse: organisms glow brighter with higher mean firing rate
+      const glowBoost = firingGlow * 0.4 * (0.7 + 0.3 * Math.sin(t * 6 + ox * 0.1 + oy * 0.1));
+      const alpha = Math.min(1, baseAlpha + glowBoost);
+
+      if (isCelegans) {
+        // Cyan dot
+        const r = 1.5 + org.energy * 0.5;
+        ctx.beginPath();
+        ctx.arc(ox, oy, r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(0, 212, 255, ${alpha})`;
+        ctx.fill();
+
+        // Neural glow halo
+        if (glowBoost > 0.1) {
+          ctx.beginPath();
+          ctx.arc(ox, oy, r + 2 + glowBoost * 3, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(0, 212, 255, ${glowBoost * 0.15})`;
+          ctx.fill();
+        }
+      } else {
+        // Amber dot
+        const r = 2 + org.energy * 0.5;
+        ctx.beginPath();
+        ctx.arc(ox, oy, r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 170, 34, ${alpha})`;
+        ctx.fill();
+
+        if (glowBoost > 0.1) {
+          ctx.beginPath();
+          ctx.arc(ox, oy, r + 2 + glowBoost * 3, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255, 170, 34, ${glowBoost * 0.15})`;
+          ctx.fill();
+        }
+      }
+    }
+
+    // --- Stats overlay (top-left) ---
+    ctx.font = '10px "SF Mono", "Fira Code", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(6, 6, 155, ns ? 80 : 52);
+
+    ctx.fillStyle = 'rgba(140, 170, 200, 0.5)';
+    ctx.fillText('MASSIVE BRAIN-WORLD', 12, 20);
+
+    ctx.fillStyle = 'rgba(0, 212, 255, 0.7)';
+    ctx.fillText(`Organisms: ${mOrgs.length}`, 12, 34);
+
+    if (ns) {
+      ctx.fillStyle = 'rgba(180, 140, 255, 0.7)';
+      ctx.fillText(`Neurons: ${ns.total_neurons.toLocaleString()}`, 12, 48);
+
+      ctx.fillStyle = 'rgba(0, 255, 136, 0.7)';
+      ctx.fillText(`Fired: ${ns.total_fired.toLocaleString()}`, 12, 62);
+
+      ctx.fillStyle = 'rgba(255, 200, 100, 0.6)';
+      ctx.fillText(`Rate: ${ns.mean_firing_rate.toFixed(3)}`, 12, 76);
+    }
+
+    // --- World type label (bottom-left) ---
+    const worldLabels: Record<string, string> = {
+      soil: 'SOIL', pond: 'POND', lab_plate: 'LAB PLATE', abstract: 'ABSTRACT',
+    };
+    ctx.font = '9px "SF Mono", "Fira Code", monospace';
+    ctx.fillStyle = 'rgba(100, 130, 170, 0.35)';
+    ctx.textAlign = 'left';
+    ctx.fillText(worldLabels[wt] ?? wt.toUpperCase(), 12, height - 12);
+
+    // --- Emergent behavior badges (top-right) ---
+    if (events.length > 0) {
+      ctx.textAlign = 'right';
+      // Show up to 3 most recent unique behavior types
+      const seen = new Set<string>();
+      const recent: EmergentEvent[] = [];
+      for (let i = events.length - 1; i >= 0 && recent.length < 3; i--) {
+        if (!seen.has(events[i].behavior_type)) {
+          seen.add(events[i].behavior_type);
+          recent.push(events[i]);
+        }
+      }
+      recent.reverse();
+
+      const badgeColors: Record<string, string> = {
+        aggregation: '255, 100, 100',
+        trail_following: '100, 200, 255',
+        avoidance_learning: '255, 200, 100',
+      };
+
+      for (let i = 0; i < recent.length; i++) {
+        const ev = recent[i];
+        const yPos = 14 + i * 18;
+        const colorRgb = badgeColors[ev.behavior_type] ?? '180, 180, 220';
+        const pulseAlpha = 0.5 + 0.3 * Math.sin(t * 4 + i);
+
+        // Pulsing indicator dot
+        ctx.beginPath();
+        ctx.arc(width - 10, yPos - 3, 3, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${colorRgb}, ${pulseAlpha})`;
+        ctx.fill();
+
+        // Label
+        ctx.font = '9px "SF Mono", "Fira Code", monospace';
+        ctx.fillStyle = `rgba(${colorRgb}, 0.7)`;
+        const label = ev.behavior_type.replace(/_/g, ' ').toUpperCase() + ' DETECTED';
+        ctx.fillText(label, width - 20, yPos);
+      }
+    }
+
+    // --- Pulsing "LIVE" dot (below emergent badges) ---
+    const dotAlpha = 0.4 + Math.sin(t * 3) * 0.3;
+    const liveY = 14 + Math.min((emergentRef.current.length > 0 ? 3 : 0), 3) * 18 + (emergentRef.current.length > 0 ? 8 : 0);
+    ctx.textAlign = 'right';
+    ctx.beginPath();
+    ctx.arc(width - 8, liveY, 3, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(0, 255, 136, ${dotAlpha})`;
+    ctx.fill();
+    ctx.font = '10px "SF Mono", "Fira Code", monospace';
+    ctx.fillStyle = 'rgba(0, 255, 136, 0.5)';
+    ctx.fillText('LIVE', width - 16, liveY + 4);
+  }, [drawArenaBackground]);
+
+  /** Draw standard (small) ecosystem. */
+  const drawStandard = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    const cx = width / 2;
+    const cy = height / 2;
+    const t = timeRef.current;
+
+    drawArenaBackground(ctx, width, height, cx, cy);
 
     // Food sources -- green pulsing dots
     const foods = foodRef.current;
@@ -329,7 +548,6 @@ export function EcosystemView({ organisms, food_sources, stats, ecosystemId }: E
       const pr = 4 + Math.sin(food.pulse) * 1.5;
       const alpha = 0.5 + food.energy * 0.4;
 
-      // Glow
       const gGrad = ctx.createRadialGradient(
         cx + food.position.x, cy + food.position.y, 0,
         cx + food.position.x, cy + food.position.y, pr * 4,
@@ -342,7 +560,6 @@ export function EcosystemView({ organisms, food_sources, stats, ecosystemId }: E
         pr * 8, pr * 8,
       );
 
-      // Core dot
       ctx.beginPath();
       ctx.arc(cx + food.position.x, cy + food.position.y, pr, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(0, 255, 136, ${alpha})`;
@@ -359,7 +576,6 @@ export function EcosystemView({ organisms, food_sources, stats, ecosystemId }: E
       const alpha = org.alive ? 1 : org.fadeAlpha;
 
       if (org.species === 'c_elegans') {
-        // Small worm-like shape (cyan)
         const color = `rgba(0, 212, 255, ${0.5 + org.energy * 0.5})`;
         const points: Vec2[] = [
           { x: ox, y: oy },
@@ -381,7 +597,6 @@ export function EcosystemView({ organisms, food_sources, stats, ecosystemId }: E
         ctx.lineCap = 'round';
         ctx.stroke();
 
-        // Head
         ctx.beginPath();
         ctx.arc(ox, oy, 2, 0, Math.PI * 2);
         ctx.fillStyle = color;
@@ -389,16 +604,13 @@ export function EcosystemView({ organisms, food_sources, stats, ecosystemId }: E
         ctx.globalAlpha = 1;
 
       } else {
-        // Drosophila -- larger fly shape (amber)
         const color = `rgba(255, 170, 34, ${0.5 + org.energy * 0.5})`;
         ctx.globalAlpha = alpha;
 
-        // Body (oval)
         ctx.save();
         ctx.translate(ox, oy);
         ctx.rotate(org.angle);
 
-        // Wings
         const wingFlap = Math.sin(t * 12 + org.id) * 0.3;
         ctx.beginPath();
         ctx.ellipse(-2, -5 + wingFlap * 2, 3, 7, -0.3 + wingFlap, 0, Math.PI * 2);
@@ -409,13 +621,11 @@ export function EcosystemView({ organisms, food_sources, stats, ecosystemId }: E
         ctx.fillStyle = `rgba(255, 200, 100, ${0.15 * alpha})`;
         ctx.fill();
 
-        // Body
         ctx.beginPath();
         ctx.ellipse(0, 0, 5, 3, 0, 0, Math.PI * 2);
         ctx.fillStyle = color;
         ctx.fill();
 
-        // Head
         ctx.beginPath();
         ctx.arc(5, 0, 2, 0, Math.PI * 2);
         ctx.fillStyle = color;
@@ -436,12 +646,11 @@ export function EcosystemView({ organisms, food_sources, stats, ecosystemId }: E
     ctx.font = '10px "SF Mono", "Fira Code", monospace';
     ctx.textAlign = 'left';
 
-    // Background panel
     ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
     ctx.fillRect(6, 6, 130, 52);
 
     ctx.fillStyle = 'rgba(140, 170, 200, 0.5)';
-    ctx.fillText(`ECOSYSTEM`, 12, 20);
+    ctx.fillText('ECOSYSTEM', 12, 20);
 
     ctx.fillStyle = 'rgba(0, 212, 255, 0.7)';
     ctx.fillText(`C.elegans: ${liveStats.c_elegans}`, 12, 34);
@@ -453,7 +662,6 @@ export function EcosystemView({ organisms, food_sources, stats, ecosystemId }: E
     ctx.textAlign = 'right';
     ctx.fillText(`POP ${total}`, width - 12, 20);
 
-    // Pulsing dot
     const dotAlpha = 0.4 + Math.sin(t * 3) * 0.3;
     ctx.beginPath();
     ctx.arc(width - 8, 30, 3, 0, Math.PI * 2);
@@ -462,7 +670,16 @@ export function EcosystemView({ organisms, food_sources, stats, ecosystemId }: E
     ctx.fillStyle = 'rgba(0, 255, 136, 0.5)';
     ctx.textAlign = 'right';
     ctx.fillText('LIVE', width - 16, 34);
-  }, [computeStats]);
+  }, [drawArenaBackground, computeStats]);
+
+  /** Top-level draw dispatcher. */
+  const draw = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    if (isMassive) {
+      drawMassive(ctx, width, height);
+    } else {
+      drawStandard(ctx, width, height);
+    }
+  }, [isMassive, drawMassive, drawStandard]);
 
   // Animation loop at ~30fps
   useEffect(() => {

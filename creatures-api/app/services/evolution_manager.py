@@ -70,6 +70,8 @@ class EvolutionManager:
         self._queues: dict[str, list[asyncio.Queue]] = {}
         # Event loop reference for thread-safe queue puts
         self._loop: asyncio.AbstractEventLoop | None = None
+        # Persistence store — injected from main.py lifespan
+        self.store: Any | None = None
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Store the main event loop for cross-thread communication."""
@@ -312,6 +314,7 @@ class EvolutionManager:
             # Attach final God Agent report
             god_agents = getattr(self, "_god_agents", {})
             god = god_agents.get(run_id)
+            final_report_text = None
             if god is not None:
                 final_report = {
                     "type": "god_final_report",
@@ -322,6 +325,10 @@ class EvolutionManager:
                 }
                 run.god_reports.append(final_report)
                 self._notify_subscribers(run_id, final_report)
+                final_report_text = god.get_report()
+
+            # Persist completed run to storage
+            self._persist_run(run, final_report_text)
 
             logger.info(
                 f"Evolution run {run_id} completed: {run.generation} generations, "
@@ -332,6 +339,51 @@ class EvolutionManager:
             run.status = "failed"
             run.error = str(e)
             logger.error(f"Evolution run {run_id} failed: {e}", exc_info=True)
+
+    def _persist_run(self, run: EvolutionRun, final_report: str | None = None) -> None:
+        """Save a completed/failed evolution run and its best genome to the store."""
+        if self.store is None:
+            return
+        try:
+            # Serialize world_log events
+            world_log_data = [e.to_dict() for e in run.world_log.events] if run.world_log.events else None
+
+            self.store.save_evolution_run(
+                run_id=run.id,
+                organism=run.config.get("organism", "c_elegans"),
+                config=run.config,
+                status=run.status,
+                generations=run.generation,
+                best_fitness=run.best_fitness,
+                world_log=world_log_data,
+                report=final_report,
+            )
+
+            # Save the best genome from the final population
+            if run.population is not None and run.population.genomes:
+                best = max(run.population.genomes, key=lambda g: g.fitness)
+                genome_data = {
+                    "neurons": [
+                        {"id": n.id, "bias": n.bias, "tau": n.tau, "type": n.type}
+                        for n in best.neurons
+                    ],
+                    "synapses": [
+                        {"pre": s.pre, "post": s.post, "weight": s.weight, "delay": s.delay}
+                        for s in best.synapses
+                    ],
+                }
+                self.store.save_genome(
+                    genome_id=f"{run.id}-best",
+                    run_id=run.id,
+                    generation=run.generation,
+                    fitness=best.fitness,
+                    n_neurons=len(best.neurons),
+                    n_synapses=len(best.synapses),
+                    data=genome_data,
+                )
+            logger.info(f"Persisted evolution run {run.id} to store")
+        except Exception as e:
+            logger.error(f"Failed to persist evolution run {run.id}: {e}")
 
     def _notify_subscribers(self, run_id: str, data: dict) -> None:
         """Push data to all subscriber queues from the background thread."""

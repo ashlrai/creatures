@@ -1,46 +1,39 @@
-# Data files (large, downloaded separately)
-data/
 
-# Python
 __pycache__/
-*.pyc
-*.pyo
-*.egg-info/
-dist/
-build/
-.eggs/
-*.egg
-
-# Virtual environments
-.venv/
-venv/
-env/
-
-# Jupyter
-.ipynb_checkpoints/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
 .DS_Store
-Thumbs.db
-
-# Node
-creatures-web/node_modules/
-creatures-web/dist/
-
-# Simulation recordings
-*.hdf5
-*.h5
-
-# Environment
+.eggs/
 .env
 .env.local
+.idea/
+.ipynb_checkpoints/
+.venv/
+.vscode/
+*.egg
+*.egg-info/
+*.h5
+*.hdf5
+*.pyc
+*.pyo
+*.swo
+*.swp
 *.TXT
+# Data files (large, downloaded separately)
+# Environment
+# IDE
+# Jupyter
+# Node
+# OS
+# Python
+# Simulation recordings
+# Virtual environments
+build/
+creatures-web/dist/
+creatures-web/node_modules/
+data/
+dist/
+env/
+evolution_results/
 node_modules/
 package-lock.json
-evolution_results/
+Thumbs.db
+venv/

@@ -63,6 +63,10 @@ export function ConnectomeExplorer() {
   }, [setSelectedNeuronGlobal]);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
+  // Spike glow tracking: maps neuron ID -> glow intensity (0..1)
+  const glowMapRef = useRef<Record<string, number>>({});
+  const lastGlowUpdateRef = useRef<number>(0);
+
   // View transform state + version counter to trigger redraws
   const viewRef = useRef({ offsetX: 0, offsetY: 0, scale: 1 });
   const [viewVersion, setViewVersion] = useState(0);
@@ -218,6 +222,38 @@ export function ConnectomeExplorer() {
     loadTypes();
   }, []);
 
+  // ── Spike glow update ────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!graph || !frame) return;
+
+    const now = performance.now();
+    const dtMs = now - (lastGlowUpdateRef.current || now);
+    lastGlowUpdateRef.current = now;
+
+    // Decay factor: glow halves every ~500ms
+    // decay = 0.5^(dt/500) = e^(-dt * ln2 / 500)
+    const decay = Math.exp(-dtMs * 0.00139); // ln(2)/500 ~ 0.00139
+
+    const glow = glowMapRef.current;
+
+    // Decay all existing entries
+    for (const id in glow) {
+      glow[id] *= decay;
+      if (glow[id] < 0.01) delete glow[id];
+    }
+
+    // Boost spiking neurons: frame.spikes contains neuron indices
+    if (frame.spikes && frame.spikes.length > 0) {
+      for (const spikeIdx of frame.spikes) {
+        if (spikeIdx >= 0 && spikeIdx < graph.nodes.length) {
+          const nodeId = graph.nodes[spikeIdx].id;
+          glow[nodeId] = Math.min((glow[nodeId] ?? 0) + 0.8, 1.0);
+        }
+      }
+    }
+  }, [frame, graph]);
+
   // ── Layout computation ───────────────────────────────────────────────────
 
   const computeLayout = useCallback((nodes: ConnectomeNode[], canvasW: number, canvasH: number) => {
@@ -336,19 +372,22 @@ export function ConnectomeExplorer() {
     }
 
     // Draw neurons
+    const glow = glowMapRef.current;
     for (const node of graph.nodes) {
       const pos = layout.get(node.id);
       if (!pos) continue;
 
       const rate = rateMap.get(node.id) ?? 0;
       const t = Math.min(rate / 80, 1);
+      const spikeGlow = glow[node.id] ?? 0;
       const baseColor = TYPE_COLORS[node.type] ?? '#666666';
       const isSelected = node.id === selectedNeuron;
       const isNeighbor = selectedNeighbors?.has(node.id) ?? false;
       const isHovered = node.id === hoveredNeuron;
 
-      // Radius: 4-8px based on firing rate
-      const radius = 4 + t * 4;
+      // Radius: 4-8px based on firing rate, boosted by spike glow
+      const baseRadius = 4 + t * 4;
+      const radius = baseRadius + spikeGlow * 4;
 
       // Dim non-related neurons when something is selected
       let alpha = 1;
@@ -356,8 +395,20 @@ export function ConnectomeExplorer() {
         alpha = 0.2;
       }
 
-      // Glow for active neurons
-      if (t > 0.2) {
+      // Spike glow: bright momentary flash when neuron fires
+      if (spikeGlow > 0.05) {
+        ctx.save();
+        ctx.globalAlpha = spikeGlow * 0.7 * alpha;
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 12 + spikeGlow * 8;
+        ctx.beginPath();
+        ctx.arc(pos.cx, pos.cy, radius * 2.0, 0, Math.PI * 2);
+        ctx.fillStyle = baseColor;
+        ctx.fill();
+        ctx.restore();
+      }
+      // Firing-rate glow (existing behavior)
+      else if (t > 0.2) {
         ctx.save();
         ctx.globalAlpha = t * 0.4 * alpha;
         ctx.shadowColor = baseColor;
@@ -374,7 +425,11 @@ export function ConnectomeExplorer() {
       ctx.beginPath();
       ctx.arc(pos.cx, pos.cy, radius, 0, Math.PI * 2);
 
-      if (t > 0.1) {
+      if (spikeGlow > 0.1) {
+        // Spiking: blend toward white for flash effect
+        const brightness = 0.6 + spikeGlow * 0.4;
+        ctx.fillStyle = lerpColor(baseColor, '#ffffff', spikeGlow * 0.5, brightness);
+      } else if (t > 0.1) {
         // Active: brighter version of type color
         const brightness = 0.4 + t * 0.6;
         ctx.fillStyle = adjustBrightness(baseColor, brightness);
@@ -648,4 +703,18 @@ function adjustBrightness(hex: string, factor: number): string {
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return `rgb(${Math.round(r * factor)}, ${Math.round(g * factor)}, ${Math.round(b * factor)})`;
+}
+
+/** Lerp between a hex color and a target hex color, then apply brightness. */
+function lerpColor(hexA: string, hexB: string, mix: number, brightness: number): string {
+  const rA = parseInt(hexA.slice(1, 3), 16);
+  const gA = parseInt(hexA.slice(3, 5), 16);
+  const bA = parseInt(hexA.slice(5, 7), 16);
+  const rB = parseInt(hexB.slice(1, 3), 16);
+  const gB = parseInt(hexB.slice(3, 5), 16);
+  const bB = parseInt(hexB.slice(5, 7), 16);
+  const r = Math.round((rA + (rB - rA) * mix) * brightness);
+  const g = Math.round((gA + (gB - gA) * mix) * brightness);
+  const b = Math.round((bA + (bB - bA) * mix) * brightness);
+  return `rgb(${Math.min(255, r)}, ${Math.min(255, g)}, ${Math.min(255, b)})`;
 }

@@ -308,7 +308,7 @@ class Brian2Engine(NeuralEngine):
         if self._spike_mon is None:
             return [], []
         indices = np.array(self._spike_mon.i).astype(int).tolist()
-        times = (np.array(self._spike_mon.t) / ms).tolist()
+        times = np.asarray(self._spike_mon.t / ms, dtype=float).tolist()
         return indices, times
 
     def get_voltage_history(

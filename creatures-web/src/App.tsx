@@ -9,7 +9,7 @@ import { GodAgentPanel } from './components/ui/GodAgentPanel';
 import { ArenaView } from './components/evolution/ArenaView';
 import { ConnectomeComparison } from './components/evolution/ConnectomeComparison';
 import { GenerationTimeline } from './components/evolution/GenerationTimeline';
-import { EcosystemView } from './components/ecosystem/EcosystemView';
+import { EcosystemView, type MassiveOrganism, type MassiveNeuralStats, type EmergentEvent } from './components/ecosystem/EcosystemView';
 import { SpeciesComparison } from './components/ui/SpeciesComparison';
 import { useSimulation } from './hooks/useSimulation';
 import { useDemoMode } from './hooks/useDemoMode';
@@ -23,6 +23,7 @@ import { ExperimentPanel } from './components/ui/ExperimentPanel';
 import { useSimulationStore } from './stores/simulationStore';
 import { useEvolutionStore } from './stores/evolutionStore';
 import { GlobalErrorBoundary } from './components/ErrorBoundary';
+import { Tutorial } from './components/ui/Tutorial';
 import {
   NeuralActivitySkeleton,
   InteractionSkeleton,
@@ -135,8 +136,18 @@ export default function App() {
   const [ecosystemId, setEcosystemId] = useState<string | null>(null);
   const [ecoStats, setEcoStats] = useState<{ c_elegans: number; drosophila: number; food: number } | null>(null);
   const [ecoLoading, setEcoLoading] = useState(false);
+  // Massive brain-world state
+  const [ecoScale, setEcoScale] = useState<'standard' | 'massive'>('standard');
+  const [massiveId, setMassiveId] = useState<string | null>(null);
+  const [massiveOrganisms, setMassiveOrganisms] = useState<MassiveOrganism[]>([]);
+  const [massiveNeuralStats, setMassiveNeuralStats] = useState<MassiveNeuralStats | null>(null);
+  const [massiveEmergent, setMassiveEmergent] = useState<EmergentEvent[]>([]);
+  const [massiveWorldType, setMassiveWorldType] = useState<string>('soil');
+  const [massivePopulation, setMassivePopulation] = useState(0);
+  const massiveStepRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [sidebarTab, setSidebarTab] = useState<'brain' | 'tools' | 'science'>('brain');
   const [showWelcome, setShowWelcome] = useLocalStorage('neurevo:welcomed', true);
+  const [showTutorial, setShowTutorial] = useState(() => !Tutorial.isComplete());
   const autoStarted = useRef(false);
 
   // --- Local storage persistence ---
@@ -310,6 +321,89 @@ export default function App() {
 
   useHashRouter(hashState, handleHashChangeWithOrganism);
 
+  // --- Massive brain-world step + poll loop ---
+  useEffect(() => {
+    if (!massiveId || ecoScale !== 'massive') {
+      // Cleanup on unmount or scale change
+      if (massiveStepRef.current) {
+        clearInterval(massiveStepRef.current);
+        massiveStepRef.current = null;
+      }
+      return;
+    }
+
+    let cancelled = false;
+
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        // Step the simulation forward
+        await fetch(`/api/ecosystem/massive/${massiveId}/step?steps=10`, { method: 'POST' });
+        if (cancelled) return;
+
+        // Get state
+        const stateRes = await fetch(`/api/ecosystem/massive/${massiveId}`);
+        if (stateRes.ok && !cancelled) {
+          const data = await stateRes.json();
+          if (data.organisms) setMassiveOrganisms(data.organisms);
+          if (data.neural_stats) setMassiveNeuralStats(data.neural_stats);
+          setMassivePopulation(data.total_alive ?? data.organisms?.length ?? 0);
+        }
+
+        // Check emergent behaviors (less frequent -- every other poll)
+        if (Math.random() < 0.5) {
+          const emRes = await fetch(`/api/ecosystem/massive/${massiveId}/emergent`);
+          if (emRes.ok && !cancelled) {
+            const emData = await emRes.json();
+            if (emData.events) setMassiveEmergent(emData.events);
+          }
+        }
+      } catch {
+        // API unavailable -- keep polling, it may recover
+      }
+    };
+
+    massiveStepRef.current = setInterval(poll, 500);
+    poll(); // Initial fetch
+
+    return () => {
+      cancelled = true;
+      if (massiveStepRef.current) {
+        clearInterval(massiveStepRef.current);
+        massiveStepRef.current = null;
+      }
+    };
+  }, [massiveId, ecoScale]);
+
+  // --- Create massive brain-world ---
+  const createMassiveEcosystem = useCallback(async (worldType: string, nOrganisms = 1000, neuronsPerOrg = 50) => {
+    setEcoLoading(true);
+    try {
+      const res = await fetch('/api/ecosystem/massive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ n_organisms: nOrganisms, neurons_per: neuronsPerOrg, world_type: worldType }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const newId = data.id ?? null;
+        setMassiveId(newId);
+        setMassiveWorldType(worldType);
+        setMassiveOrganisms([]);
+        setMassiveNeuralStats(null);
+        setMassiveEmergent([]);
+        setMassivePopulation(nOrganisms);
+        notify(`Massive brain-world created (${nOrganisms} organisms)`);
+      } else {
+        notify('Massive API unavailable -- check server');
+      }
+    } catch {
+      notify('Massive API unavailable -- check server');
+    } finally {
+      setEcoLoading(false);
+    }
+  }, []);
+
   // --- Share button handler ---
   const handleShare = useCallback(() => {
     const url = window.location.href;
@@ -408,6 +502,16 @@ export default function App() {
         </div>
       )}
 
+      {/* Interactive tutorial — shows after welcome is dismissed */}
+      {!showWelcome && showTutorial && (
+        <Tutorial
+          onComplete={() => setShowTutorial(false)}
+          onPoke={handlePoke}
+          onSetSidebarTab={setSidebarTab}
+          onSetAppMode={setAppMode}
+        />
+      )}
+
       {/* Header */}
       <header className="app-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -471,127 +575,227 @@ export default function App() {
         <div className="sidebar">
           {appMode === 'eco' ? (
             <>
+              {/* Scale selector */}
               <div className="glass">
-                <div className="glass-label">Ecosystem Controls</div>
-                <button
-                  className="btn btn-primary"
-                  style={{ width: '100%', marginBottom: 8 }}
-                  disabled={ecoLoading}
-                  onClick={async () => {
-                    setEcoLoading(true);
-                    try {
-                      const res = await fetch('/api/ecosystem', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ populations: { c_elegans: 20, drosophila: 5 } }),
-                      });
-                      if (res.ok) {
-                        const data = await res.json();
-                        const newId = data.id ?? data.ecosystem_id ?? null;
-                        setEcosystemId(newId);
-                        notify('Ecosystem created');
-                        // Fetch initial stats
-                        if (newId) {
-                          try {
-                            const statsRes = await fetch(`/api/ecosystem/${newId}/stats`);
-                            if (statsRes.ok) {
-                              const statsData = await statsRes.json();
-                              setEcoStats({
-                                c_elegans: statsData.by_species?.c_elegans?.count ?? statsData.c_elegans_count ?? statsData.c_elegans ?? 0,
-                                drosophila: statsData.by_species?.drosophila?.count ?? statsData.drosophila_count ?? statsData.drosophila ?? 0,
-                                food: Math.round((statsData.total_food_energy ?? 0) / 50) || (statsData.total_food ?? statsData.food ?? 10),
-                              });
-                            }
-                          } catch { /* stats fetch non-critical */ }
-                        }
-                      } else {
-                        notify('Ecosystem API unavailable — using local sim');
-                      }
-                    } catch {
-                      notify('Ecosystem API unavailable — using local sim');
-                    } finally {
-                      setEcoLoading(false);
-                    }
-                  }}
-                >
-                  {ecoLoading ? 'Creating...' : 'Create Ecosystem'}
-                </button>
-                {ecosystemId && (
-                  <div style={{ fontSize: 10, color: 'var(--text-label)', marginBottom: 4 }}>
-                    ID: {ecosystemId.slice(0, 8)}...
-                  </div>
-                )}
-              </div>
-              <div className="glass">
-                <div className="glass-label">Population</div>
-                <div className="stat-row">
-                  <span className="stat-label">C. elegans</span>
-                  <span className="stat-value stat-cyan">{ecoStats?.c_elegans ?? 20}</span>
-                </div>
-                <div className="stat-row">
-                  <span className="stat-label">Drosophila</span>
-                  <span className="stat-value stat-amber">{ecoStats?.drosophila ?? 5}</span>
-                </div>
-                <div className="stat-row">
-                  <span className="stat-label">Food sources</span>
-                  <span className="stat-value stat-green">{ecoStats?.food ?? 12}</span>
-                </div>
-                <div className="stat-row">
-                  <span className="stat-label">Species</span>
-                  <span className="stat-value" style={{ color: 'var(--text-secondary)' }}>2</span>
+                <div className="glass-label">Scale</div>
+                <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                  <button
+                    className={`btn ${ecoScale === 'standard' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ flex: 1, fontSize: 11 }}
+                    onClick={() => setEcoScale('standard')}
+                  >
+                    Standard (~25)
+                  </button>
+                  <button
+                    className={`btn ${ecoScale === 'massive' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ flex: 1, fontSize: 11 }}
+                    onClick={() => setEcoScale('massive')}
+                  >
+                    Massive (1K+)
+                  </button>
                 </div>
               </div>
-              <div className="glass">
-                <div className="glass-label">Environmental Events</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {([
-                    { type: 'food_scarcity', label: 'Food Scarcity', cls: 'btn-danger' },
-                    { type: 'predator_surge', label: 'Predator Surge', cls: 'btn-amber' },
-                    { type: 'mutation_burst', label: 'Mutation Burst', cls: 'btn-primary' },
-                    { type: 'climate_shift', label: 'Climate Shift', cls: 'btn-ghost' },
-                  ] as const).map(({ type, label, cls }) => (
+
+              {ecoScale === 'massive' ? (
+                <>
+                  {/* World type selector */}
+                  <div className="glass">
+                    <div className="glass-label">World Type</div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+                      {(['soil', 'pond', 'lab_plate', 'abstract'] as const).map((wt) => (
+                        <button
+                          key={wt}
+                          className={`btn ${massiveWorldType === wt ? 'btn-primary' : 'btn-ghost'}`}
+                          style={{ flex: '1 1 45%', fontSize: 10, padding: '4px 6px' }}
+                          onClick={() => setMassiveWorldType(wt)}
+                        >
+                          {wt === 'lab_plate' ? 'Lab Plate' : wt.charAt(0).toUpperCase() + wt.slice(1)}
+                        </button>
+                      ))}
+                    </div>
                     <button
-                      key={type}
-                      className={`btn ${cls}`}
+                      className="btn btn-primary"
                       style={{ width: '100%' }}
+                      disabled={ecoLoading}
+                      onClick={() => createMassiveEcosystem(massiveWorldType)}
+                    >
+                      {ecoLoading ? 'Creating...' : 'Create Brain-World'}
+                    </button>
+                    {massiveId && (
+                      <div style={{ fontSize: 10, color: 'var(--text-label)', marginTop: 4 }}>
+                        ID: {massiveId.slice(0, 12)}...
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Neural stats panel */}
+                  <div className="glass">
+                    <div className="glass-label">Neural Stats</div>
+                    <div className="stat-row">
+                      <span className="stat-label">Total neurons</span>
+                      <span className="stat-value" style={{ color: 'var(--accent-cyan)' }}>
+                        {massiveNeuralStats ? massiveNeuralStats.total_neurons.toLocaleString() : '--'}
+                      </span>
+                    </div>
+                    <div className="stat-row">
+                      <span className="stat-label">Active neurons</span>
+                      <span className="stat-value" style={{ color: 'var(--accent-green)' }}>
+                        {massiveNeuralStats
+                          ? `${((massiveNeuralStats.total_fired / Math.max(1, massiveNeuralStats.total_neurons)) * 100).toFixed(1)}%`
+                          : '--'}
+                      </span>
+                    </div>
+                    <div className="stat-row">
+                      <span className="stat-label">Mean firing rate</span>
+                      <span className="stat-value" style={{ color: 'var(--accent-amber)' }}>
+                        {massiveNeuralStats ? massiveNeuralStats.mean_firing_rate.toFixed(4) : '--'}
+                      </span>
+                    </div>
+                    <div className="stat-row">
+                      <span className="stat-label">Emergent behaviors</span>
+                      <span className="stat-value" style={{ color: 'var(--accent-magenta)' }}>
+                        {massiveEmergent.length}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Population display */}
+                  <div className="glass">
+                    <div className="glass-label">Population</div>
+                    <div className="stat-row">
+                      <span className="stat-label">Alive</span>
+                      <span className="stat-value stat-cyan">{massivePopulation.toLocaleString()}</span>
+                    </div>
+                    <div className="stat-row">
+                      <span className="stat-label">Displayed</span>
+                      <span className="stat-value" style={{ color: 'var(--text-secondary)' }}>{massiveOrganisms.length.toLocaleString()}</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Standard ecosystem controls (unchanged) */}
+                  <div className="glass">
+                    <div className="glass-label">Ecosystem Controls</div>
+                    <button
+                      className="btn btn-primary"
+                      style={{ width: '100%', marginBottom: 8 }}
+                      disabled={ecoLoading}
                       onClick={async () => {
-                        if (!ecosystemId) {
-                          notify(`${label} triggered (local)`);
-                          return;
-                        }
+                        setEcoLoading(true);
                         try {
-                          const res = await fetch(`/api/ecosystem/${ecosystemId}/event`, {
+                          const res = await fetch('/api/ecosystem', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ type }),
+                            body: JSON.stringify({ populations: { c_elegans: 20, drosophila: 5 } }),
                           });
                           if (res.ok) {
-                            notify(`${label} event triggered`);
-                            // Refresh stats
-                            try {
-                              const sr = await fetch(`/api/ecosystem/${ecosystemId}/stats`);
-                              if (sr.ok) {
-                                const sd = await sr.json();
-                                setEcoStats({
-                                  c_elegans: sd.c_elegans_count ?? sd.c_elegans ?? 0,
-                                  drosophila: sd.drosophila_count ?? sd.drosophila ?? 0,
-                                  food: sd.total_food ?? sd.food ?? 0,
-                                });
-                              }
-                            } catch { /* ignore stats fetch failure */ }
+                            const data = await res.json();
+                            const newId = data.id ?? data.ecosystem_id ?? null;
+                            setEcosystemId(newId);
+                            notify('Ecosystem created');
+                            if (newId) {
+                              try {
+                                const statsRes = await fetch(`/api/ecosystem/${newId}/stats`);
+                                if (statsRes.ok) {
+                                  const statsData = await statsRes.json();
+                                  setEcoStats({
+                                    c_elegans: statsData.by_species?.c_elegans?.count ?? statsData.c_elegans_count ?? statsData.c_elegans ?? 0,
+                                    drosophila: statsData.by_species?.drosophila?.count ?? statsData.drosophila_count ?? statsData.drosophila ?? 0,
+                                    food: Math.round((statsData.total_food_energy ?? 0) / 50) || (statsData.total_food ?? statsData.food ?? 10),
+                                  });
+                                }
+                              } catch { /* stats fetch non-critical */ }
+                            }
                           } else {
-                            notify(`${label} triggered (local)`);
+                            notify('Ecosystem API unavailable -- using local sim');
                           }
                         } catch {
-                          notify(`${label} triggered (local)`);
+                          notify('Ecosystem API unavailable -- using local sim');
+                        } finally {
+                          setEcoLoading(false);
                         }
                       }}
                     >
-                      {label}
+                      {ecoLoading ? 'Creating...' : 'Create Ecosystem'}
                     </button>
-                  ))}
-                </div>
-              </div>
+                    {ecosystemId && (
+                      <div style={{ fontSize: 10, color: 'var(--text-label)', marginBottom: 4 }}>
+                        ID: {ecosystemId.slice(0, 8)}...
+                      </div>
+                    )}
+                  </div>
+                  <div className="glass">
+                    <div className="glass-label">Population</div>
+                    <div className="stat-row">
+                      <span className="stat-label">C. elegans</span>
+                      <span className="stat-value stat-cyan">{ecoStats?.c_elegans ?? 20}</span>
+                    </div>
+                    <div className="stat-row">
+                      <span className="stat-label">Drosophila</span>
+                      <span className="stat-value stat-amber">{ecoStats?.drosophila ?? 5}</span>
+                    </div>
+                    <div className="stat-row">
+                      <span className="stat-label">Food sources</span>
+                      <span className="stat-value stat-green">{ecoStats?.food ?? 12}</span>
+                    </div>
+                    <div className="stat-row">
+                      <span className="stat-label">Species</span>
+                      <span className="stat-value" style={{ color: 'var(--text-secondary)' }}>2</span>
+                    </div>
+                  </div>
+                  <div className="glass">
+                    <div className="glass-label">Environmental Events</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {([
+                        { type: 'food_scarcity', label: 'Food Scarcity', cls: 'btn-danger' },
+                        { type: 'predator_surge', label: 'Predator Surge', cls: 'btn-amber' },
+                        { type: 'mutation_burst', label: 'Mutation Burst', cls: 'btn-primary' },
+                        { type: 'climate_shift', label: 'Climate Shift', cls: 'btn-ghost' },
+                      ] as const).map(({ type, label, cls }) => (
+                        <button
+                          key={type}
+                          className={`btn ${cls}`}
+                          style={{ width: '100%' }}
+                          onClick={async () => {
+                            if (!ecosystemId) {
+                              notify(`${label} triggered (local)`);
+                              return;
+                            }
+                            try {
+                              const res = await fetch(`/api/ecosystem/${ecosystemId}/event`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ type }),
+                              });
+                              if (res.ok) {
+                                notify(`${label} event triggered`);
+                                try {
+                                  const sr = await fetch(`/api/ecosystem/${ecosystemId}/stats`);
+                                  if (sr.ok) {
+                                    const sd = await sr.json();
+                                    setEcoStats({
+                                      c_elegans: sd.c_elegans_count ?? sd.c_elegans ?? 0,
+                                      drosophila: sd.drosophila_count ?? sd.drosophila ?? 0,
+                                      food: sd.total_food ?? sd.food ?? 0,
+                                    });
+                                  }
+                                } catch { /* ignore stats fetch failure */ }
+                              } else {
+                                notify(`${label} triggered (local)`);
+                              }
+                            } catch {
+                              notify(`${label} triggered (local)`);
+                            }
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </>
           ) : appMode === 'evo' ? (
             <>
@@ -674,7 +878,14 @@ export default function App() {
         {/* 3D Viewport / Arena */}
         <div className="viewport">
           {appMode === 'eco' ? (
-            <EcosystemView ecosystemId={ecosystemId} />
+            <EcosystemView
+              ecosystemId={ecoScale === 'standard' ? ecosystemId : undefined}
+              massiveId={ecoScale === 'massive' ? massiveId : undefined}
+              massiveOrganisms={massiveOrganisms}
+              massiveNeuralStats={massiveNeuralStats}
+              emergentEvents={massiveEmergent}
+              worldType={massiveWorldType}
+            />
           ) : appMode === 'evo' ? (
             <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
               <div style={{ flex: 1, minHeight: 0 }}>
@@ -696,11 +907,27 @@ export default function App() {
         <div className="sidebar sidebar-right">
           {appMode === 'eco' ? (
             <div className="glass" style={{ padding: 8, flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <div className="glass-label">Ecosystem Info</div>
+              <div className="glass-label">{ecoScale === 'massive' ? 'Brain-World Info' : 'Ecosystem Info'}</div>
               <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                <p style={{ margin: '0 0 8px' }}>Multi-species environment with <span style={{ color: 'var(--accent-cyan)' }}>C. elegans</span> and <span style={{ color: 'var(--accent-amber)' }}>Drosophila</span> coexisting.</p>
-                <p style={{ margin: '0 0 8px' }}>Organisms forage for <span style={{ color: 'var(--accent-green)' }}>food sources</span>, compete for resources, and evolve over generations.</p>
-                <p style={{ margin: 0, color: 'var(--text-label)' }}>Use the event triggers in the left panel to perturb the ecosystem and observe emergent behaviors.</p>
+                {ecoScale === 'massive' ? (
+                  <>
+                    <p style={{ margin: '0 0 8px' }}>Massive-scale brain-world with <span style={{ color: 'var(--accent-cyan)' }}>spiking neural networks</span> driving every organism.</p>
+                    <p style={{ margin: '0 0 8px' }}>Each organism has <span style={{ color: 'var(--accent-magenta)' }}>{massiveNeuralStats?.neurons_per_organism ?? '...'} neurons</span> connected by <span style={{ color: 'var(--accent-amber)' }}>{massiveNeuralStats ? massiveNeuralStats.total_synapses.toLocaleString() : '...'} synapses</span>.</p>
+                    <p style={{ margin: '0 0 8px' }}>World: <span style={{ color: 'var(--accent-green)' }}>{massiveWorldType.replace(/_/g, ' ')}</span></p>
+                    {massiveEmergent.length > 0 && (
+                      <p style={{ margin: '0 0 8px', color: 'var(--accent-magenta)' }}>
+                        {massiveEmergent.length} emergent behavior(s) detected.
+                      </p>
+                    )}
+                    <p style={{ margin: 0, color: 'var(--text-label)' }}>Select a world type and click "Create Brain-World" to start. Organisms make real neural decisions.</p>
+                  </>
+                ) : (
+                  <>
+                    <p style={{ margin: '0 0 8px' }}>Multi-species environment with <span style={{ color: 'var(--accent-cyan)' }}>C. elegans</span> and <span style={{ color: 'var(--accent-amber)' }}>Drosophila</span> coexisting.</p>
+                    <p style={{ margin: '0 0 8px' }}>Organisms forage for <span style={{ color: 'var(--accent-green)' }}>food sources</span>, compete for resources, and evolve over generations.</p>
+                    <p style={{ margin: 0, color: 'var(--text-label)' }}>Use the event triggers in the left panel to perturb the ecosystem and observe emergent behaviors.</p>
+                  </>
+                )}
               </div>
             </div>
           ) : appMode === 'evo' ? (
@@ -746,7 +973,9 @@ export default function App() {
       <div className="bottom-bar">
         {appMode === 'eco' ? (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-label)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
-            ECOSYSTEM LIVE — {(ecoStats?.c_elegans ?? 20) + (ecoStats?.drosophila ?? 5)} organisms
+            {ecoScale === 'massive'
+              ? `BRAIN-WORLD LIVE — ${massivePopulation.toLocaleString()} organisms — ${massiveNeuralStats ? massiveNeuralStats.total_neurons.toLocaleString() + ' neurons' : 'initializing...'}`
+              : `ECOSYSTEM LIVE — ${(ecoStats?.c_elegans ?? 20) + (ecoStats?.drosophila ?? 5)} organisms`}
           </div>
         ) : appMode === 'evo' ? (
           <GenerationTimeline />
