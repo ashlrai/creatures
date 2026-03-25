@@ -10,7 +10,9 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from creatures.environment.brain_world import BrainWorld
 from creatures.environment.ecosystem import Ecosystem, EcosystemConfig
+from creatures.environment.emergent_detector import EmergentBehaviorDetector
 from creatures.environment.sensory_world import (
     ChemicalGradient,
     SensoryWorld,
@@ -29,6 +31,11 @@ logger = logging.getLogger(__name__)
 
 # In-memory store of active ecosystems
 ecosystems: dict[str, Ecosystem] = {}
+
+# In-memory store of massive brain-worlds
+_brain_worlds: dict[str, BrainWorld] = {}
+_brain_world_detectors: dict[str, EmergentBehaviorDetector] = {}
+_brain_world_emergent: dict[str, list[dict]] = {}
 
 # Timeline history: eco_id -> list of {step, time_ms, populations}
 _timeline_history: dict[str, list[dict]] = {}
@@ -82,6 +89,13 @@ class TemperatureRequest(BaseModel):
     cold_temp: float = 15.0
     hot_temp: float = 25.0
     preferred_temp: float = 20.0
+
+
+class MassiveCreateRequest(BaseModel):
+    n_organisms: int = 10_000
+    neurons_per: int = 100
+    world_type: str = "soil"
+    arena_size: float = 50.0
 
 
 class WorldRequest(BaseModel):
@@ -548,4 +562,110 @@ async def get_timeline(eco_id: str):
         "current_step": _step_counters.get(eco_id, 0),
         "sample_interval": 100,
         "snapshots": history,
+    }
+
+
+# ======================================================================
+# Massive brain-world endpoints
+# ======================================================================
+
+
+@router.post("/massive")
+async def create_massive(req: MassiveCreateRequest):
+    """Create a massive brain-world: every organism has a spiking neural brain."""
+    bw_id = f"bw_{uuid.uuid4().hex[:8]}"
+
+    if req.n_organisms < 1 or req.n_organisms > 500_000:
+        raise HTTPException(400, "n_organisms must be between 1 and 500,000")
+    if req.neurons_per < 10 or req.neurons_per > 1000:
+        raise HTTPException(400, "neurons_per must be between 10 and 1,000")
+
+    try:
+        bw = BrainWorld(
+            n_organisms=req.n_organisms,
+            neurons_per_organism=req.neurons_per,
+            arena_size=req.arena_size,
+            world_type=req.world_type,
+        )
+    except Exception as e:
+        logger.error(f"Failed to create brain-world: {e}")
+        raise HTTPException(500, f"Failed to create brain-world: {str(e)[:200]}")
+
+    _brain_worlds[bw_id] = bw
+    arena_area = req.arena_size * req.arena_size
+    _brain_world_detectors[bw_id] = EmergentBehaviorDetector(
+        history_window=500, arena_area=arena_area
+    )
+    _brain_world_emergent[bw_id] = []
+
+    logger.info(
+        f"Created brain-world {bw_id}: {req.n_organisms} organisms x "
+        f"{req.neurons_per} neurons = {bw.engine.n_total} total"
+    )
+
+    return {
+        "id": bw_id,
+        "n_organisms": req.n_organisms,
+        "neurons_per": req.neurons_per,
+        "total_neurons": bw.engine.n_total,
+        "total_synapses": bw.engine.n_synapses,
+        "world_type": req.world_type,
+    }
+
+
+@router.post("/massive/{bw_id}/step")
+async def step_massive(bw_id: str, steps: int = 1):
+    """Advance a massive brain-world by N steps."""
+    bw = _brain_worlds.get(bw_id)
+    if bw is None:
+        raise HTTPException(404, f"Brain-world {bw_id} not found")
+
+    if steps < 1 or steps > 100_000:
+        raise HTTPException(400, "steps must be between 1 and 100,000")
+
+    detector = _brain_world_detectors.get(bw_id)
+    emergent_log = _brain_world_emergent.setdefault(bw_id, [])
+
+    last_stats = {}
+    new_emergent: list[dict] = []
+    for i in range(1, steps + 1):
+        last_stats = bw.step(dt=1.0)
+
+        # Run emergent detection every 100 steps
+        if detector and i % 100 == 0:
+            state = bw.get_emergent_state()
+            events = detector.observe(state)
+            if events:
+                new_emergent.extend(events)
+                emergent_log.extend(events)
+
+    return {
+        "id": bw_id,
+        "steps_run": steps,
+        "stats": last_stats,
+        "new_emergent_behaviors": len(new_emergent),
+    }
+
+
+@router.get("/massive/{bw_id}")
+async def get_massive(bw_id: str):
+    """Get massive brain-world state (subsampled for visualization)."""
+    bw = _brain_worlds.get(bw_id)
+    if bw is None:
+        raise HTTPException(404, f"Brain-world {bw_id} not found")
+
+    return {"id": bw_id, **bw.get_state()}
+
+
+@router.get("/massive/{bw_id}/emergent")
+async def get_massive_emergent(bw_id: str):
+    """Get detected emergent behaviors for a massive brain-world."""
+    if bw_id not in _brain_worlds:
+        raise HTTPException(404, f"Brain-world {bw_id} not found")
+
+    events = _brain_world_emergent.get(bw_id, [])
+    return {
+        "id": bw_id,
+        "total_events": len(events),
+        "events": events[-100:],  # most recent 100
     }

@@ -281,6 +281,17 @@ class VectorizedEngine:
     # Connectome-based build (placeholder for real data integration)
     # ------------------------------------------------------------------
 
+    @property
+    def n_neurons(self) -> int:
+        """Total neuron count across all organisms (matches Brian2Engine interface)."""
+        return self.n_total
+
+    def get_synapse_weights(self) -> Any:
+        """Return all synapse weights (matches Brian2Engine interface)."""
+        if self.syn_w is None:
+            return self.xp.array([])
+        return self.syn_w
+
     def build_from_connectome(
         self,
         connectome: Any,
@@ -290,13 +301,15 @@ class VectorizedEngine:
     ) -> None:
         """Build using a real connectome template replicated across N organisms.
 
-        Each organism gets a copy of the connectome's adjacency with slight
-        Gaussian noise on weights for diversity.
+        Each organism gets the connectome's topology with slight random noise
+        on weights (to create variation for evolution).  Uses
+        ``connectome.to_brian2_params()`` for the template synapse arrays and
+        numpy tiling/broadcasting — no Python loops over organisms.
 
         Parameters
         ----------
         connectome:
-            A ``Connectome`` instance with ``.neurons`` and ``.synapses``.
+            A ``Connectome`` instance (from ``creatures.connectome.types``).
         n_organisms:
             Number of organisms, each receiving a copy of the connectome.
         noise_std:
@@ -304,13 +317,15 @@ class VectorizedEngine:
         seed:
             Random seed.
         """
+        from creatures.connectome.types import Connectome as _Connectome  # noqa: F811
+
         xp = self.xp
         rng = xp.random.default_rng(seed)
 
-        n_neurons = len(connectome.neurons)
+        n_per = connectome.n_neurons
         self.n_organisms = n_organisms
-        self.n_per = n_neurons
-        self.n_total = n_organisms * n_neurons
+        self.n_per = n_per
+        self.n_total = n_organisms * n_per
 
         # State arrays
         self.v = xp.full(self.n_total, self.v_rest, dtype=xp.float64)
@@ -318,34 +333,21 @@ class VectorizedEngine:
         self.firing_rate = xp.zeros(self.n_total, dtype=xp.float64)
         self.I_ext = xp.zeros(self.n_total, dtype=xp.float64)
 
-        # Build neuron-id to index map
-        id_to_idx = {n.id: i for i, n in enumerate(connectome.neurons)}
-
-        # Template synapse arrays from the connectome
-        template_pre = []
-        template_post = []
-        template_w = []
-        for syn in connectome.synapses:
-            pre_idx = id_to_idx.get(syn.pre_neuron)
-            post_idx = id_to_idx.get(syn.post_neuron)
-            if pre_idx is not None and post_idx is not None:
-                template_pre.append(pre_idx)
-                template_post.append(post_idx)
-                template_w.append(syn.weight)
-
-        t_pre = xp.asarray(template_pre, dtype=xp.int64)
-        t_post = xp.asarray(template_post, dtype=xp.int64)
-        t_w = xp.asarray(template_w, dtype=xp.float64)
+        # Get connectome synapses via the standard Brian2-params interface
+        b2_params = connectome.to_brian2_params()
+        t_pre = xp.asarray(b2_params["i"], dtype=xp.int64)
+        t_post = xp.asarray(b2_params["j"], dtype=xp.int64)
+        t_w = xp.asarray(b2_params["w"], dtype=xp.float64)
         n_template = len(t_pre)
 
-        # Tile across organisms
+        # Tile across organisms using broadcasting — no Python loop
         offsets = xp.repeat(
-            xp.arange(n_organisms, dtype=xp.int64) * n_neurons, n_template
+            xp.arange(n_organisms, dtype=xp.int64) * n_per, n_template
         )
         self.syn_pre = xp.tile(t_pre, n_organisms) + offsets
         self.syn_post = xp.tile(t_post, n_organisms) + offsets
 
-        # Add noise to weights per organism
+        # Add per-organism multiplicative noise to weights for diversity
         base_w = xp.tile(t_w, n_organisms)
         noise = rng.normal(1.0, noise_std, size=len(base_w))
         self.syn_w = base_w * noise
@@ -356,7 +358,7 @@ class VectorizedEngine:
             "VectorizedEngine built from connectome: %d organisms x %d "
             "neurons = %d total, %d synapses",
             n_organisms,
-            n_neurons,
+            n_per,
             self.n_total,
             self.n_synapses,
         )

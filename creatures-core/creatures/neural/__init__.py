@@ -8,7 +8,20 @@ __all__ = [
     "PlasticityConfig",
     "SimulationState",
     "create_engine",
+    "recommended_engine",
 ]
+
+
+def recommended_engine(n_organisms: int, neurons_per: int) -> str:
+    """Recommend the best engine for a given scale.
+
+    Returns: "brian2" for precise single-organism work,
+             "vectorized" for large-scale simulations
+    """
+    total = n_organisms * neurons_per
+    if total <= 1000:
+        return "brian2"  # precision mode
+    return "vectorized"  # scale mode
 
 
 def create_engine(backend: str = "auto") -> NeuralEngine:

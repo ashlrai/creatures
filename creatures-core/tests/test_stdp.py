@@ -55,6 +55,7 @@ class TestStaticWeightsUnchanged:
         )
 
 
+@pytest.mark.slow
 class TestSTDPWeightsChange:
     """With STDP enabled, weights must change when there is activity."""
 
@@ -73,6 +74,7 @@ class TestSTDPWeightsChange:
         )
 
 
+@pytest.mark.slow
 class TestHebbianPotentiation:
     """Pre-before-post pairing should strengthen synapses (classical Hebbian)."""
 
@@ -115,6 +117,7 @@ class TestHebbianPotentiation:
         )
 
 
+@pytest.mark.slow
 class TestWeightBounds:
     """STDP weight changes must respect w_min and w_max bounds."""
 

@@ -304,6 +304,7 @@ class TestDirectionalResponse:
 # Test 5: Ecosystem with neural organisms runs for 100 steps
 # -------------------------------------------------------------------------
 
+@pytest.mark.slow
 class TestEcosystemIntegration:
     def test_ecosystem_runs_with_neural_organisms(self, connectome, neural_config):
         """Ecosystem with 2 neural organisms should run 100 steps without error."""

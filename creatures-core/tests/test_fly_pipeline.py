@@ -155,6 +155,7 @@ class TestFlyBody:
         assert body.sensor_neuron_map == {}
 
 
+@pytest.mark.slow
 class TestFlyEndToEnd:
     """End-to-end integration test: connectome -> brain -> body."""
 

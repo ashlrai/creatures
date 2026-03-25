@@ -126,6 +126,7 @@ class TestPresetExperiments:
 # ── Running Experiments ─────────────────────────────────────────────
 
 
+@pytest.mark.slow
 class TestExperimentRunner:
     """Tests for running experiment protocols against real simulation.
 

@@ -2,6 +2,8 @@
 
 Provides session-scoped connectome fixtures and forces numpy codegen
 to avoid Cython compilation overhead during testing.
+
+Use ``pytest --runslow`` to include tests marked ``@pytest.mark.slow``.
 """
 
 import os
@@ -15,6 +17,18 @@ from creatures.connectome.types import Connectome
 # Force numpy codegen for all tests — avoids Cython compilation overhead
 # which dominates test runtime. Production code can still use "auto" or "cython".
 os.environ.setdefault("BRIAN2_CODEGEN_TARGET", "numpy")
+
+
+def pytest_addoption(parser):
+    parser.addoption("--runslow", action="store_true", default=False, help="run slow tests")
+
+
+def pytest_collection_modifyitems(config, items):
+    if not config.getoption("--runslow"):
+        skip_slow = pytest.mark.skip(reason="need --runslow option to run")
+        for item in items:
+            if "slow" in item.keywords:
+                item.add_marker(skip_slow)
 
 
 @pytest.fixture(scope="session")
