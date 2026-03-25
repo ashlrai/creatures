@@ -363,3 +363,23 @@ async def get_discovery(discovery_id: str):
                     hypothesis_statement=d.hypothesis.statement,
                 )
     raise HTTPException(404, f"Discovery {discovery_id} not found")
+
+
+@router.get("/share/{discovery_id}")
+async def get_shareable_discovery(discovery_id: str):
+    """Get a shareable discovery with evidence."""
+    for engine in _discovery_sessions.values():
+        for d in engine.discoveries:
+            if d.id == discovery_id:
+                return {
+                    "id": d.id,
+                    "title": d.title,
+                    "description": d.description,
+                    "significance": d.significance,
+                    "category": d.hypothesis.category,
+                    "timestamp": d.timestamp,
+                    "evidence": d.evidence,
+                    "hypothesis_statement": d.hypothesis.statement,
+                    "share_url": f"/app#/discovery/{discovery_id}",
+                }
+    raise HTTPException(404, f"Discovery {discovery_id} not found")

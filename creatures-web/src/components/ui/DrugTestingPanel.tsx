@@ -232,7 +232,8 @@ export function DrugTestingPanel({ isDemo, expanded: controlledExpanded, onToggl
 
       {expanded && (
         <>
-          {!canApply && (
+          {/* Status message: connected shows nothing, demo shows hint, disconnected shows guidance */}
+          {!connected && isDemo && (
             <div style={{
               fontSize: 10,
               color: 'var(--accent-amber)',
@@ -242,21 +243,20 @@ export function DrugTestingPanel({ isDemo, expanded: controlledExpanded, onToggl
               marginBottom: 8,
               textAlign: 'center',
             }}>
-              Connect to server for live drug testing
+              Demo mode — drugs use WebSocket simulation
             </div>
           )}
-
-          {canApply && !connected && isDemo && (
+          {!connected && !isDemo && (
             <div style={{
               fontSize: 10,
-              color: 'var(--accent-amber)',
+              color: 'var(--text-label)',
               padding: '4px 8px',
-              background: 'rgba(255, 170, 34, 0.06)',
+              background: 'rgba(255, 255, 255, 0.03)',
               borderRadius: 6,
               marginBottom: 8,
               textAlign: 'center',
             }}>
-              Demo mode — drugs will use WebSocket commands
+              Start a simulation to test drugs
             </div>
           )}
 

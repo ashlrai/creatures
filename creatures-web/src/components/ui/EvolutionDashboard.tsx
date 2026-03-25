@@ -59,6 +59,7 @@ export function EvolutionDashboard({ showConnectomeComparison, onToggleConnectom
   const nGenerations = currentRun?.n_generations ?? 100;
 
   const [exporting, setExporting] = useState(false);
+  const [controlLoading, setControlLoading] = useState(false);
 
   const handleExportReport = useCallback(async () => {
     setExporting(true);
@@ -273,25 +274,66 @@ export function EvolutionDashboard({ showConnectomeComparison, onToggleConnectom
         <div className="glass-label">Controls</div>
         <div style={{ display: 'flex', gap: 6 }}>
           {status === 'idle' || status === 'completed' ? (
-            <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => start()}>
-              {status === 'completed' ? 'Restart' : 'Start Evolution'}
+            <button
+              className="btn btn-primary"
+              style={{ flex: 1 }}
+              disabled={controlLoading}
+              onClick={async () => { setControlLoading(true); try { await start(); } finally { setControlLoading(false); } }}
+            >
+              {controlLoading ? (
+                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <span className="experiment-spinner" />
+                  Starting...
+                </span>
+              ) : status === 'completed' ? 'Restart' : 'Start Evolution'}
             </button>
           ) : status === 'running' ? (
-            <button className="btn btn-amber" style={{ flex: 1 }} onClick={pause}>
-              Pause
+            <button
+              className="btn btn-amber"
+              style={{ flex: 1 }}
+              disabled={controlLoading}
+              onClick={async () => { setControlLoading(true); try { await pause(); } finally { setControlLoading(false); } }}
+            >
+              {controlLoading ? 'Pausing...' : 'Pause'}
             </button>
           ) : (
             <>
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={resume}>
-                Resume
+              <button
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                disabled={controlLoading}
+                onClick={async () => { setControlLoading(true); try { await resume(); } finally { setControlLoading(false); } }}
+              >
+                {controlLoading ? 'Resuming...' : 'Resume'}
               </button>
-              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => start()}>
+              <button
+                className="btn btn-ghost"
+                style={{ flex: 1 }}
+                disabled={controlLoading}
+                onClick={async () => { setControlLoading(true); try { await start(); } finally { setControlLoading(false); } }}
+              >
                 Restart
               </button>
             </>
           )}
         </div>
       </div>
+
+      {/* Spinner keyframes (shared with ExperimentPanel) */}
+      <style>{`
+        .experiment-spinner {
+          display: inline-block;
+          width: 12px;
+          height: 12px;
+          border: 2px solid rgba(255,255,255,0.15);
+          border-top-color: var(--accent-cyan);
+          border-radius: 50%;
+          animation: exp-spin 0.6s linear infinite;
+        }
+        @keyframes exp-spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
 
       {/* Compare Connectomes */}
       {onToggleConnectomeComparison && (

@@ -1,5 +1,60 @@
 import { Component, type ReactNode } from 'react';
 
+// ── Lightweight error boundary for sidebar panels ───────────────────────────
+// Prevents a single failing panel from crashing the entire sidebar.
+
+interface PanelErrorBoundaryProps {
+  children: ReactNode;
+  name?: string;
+}
+
+interface PanelErrorBoundaryState {
+  hasError: boolean;
+  errorMessage: string | null;
+}
+
+export class PanelErrorBoundary extends Component<PanelErrorBoundaryProps, PanelErrorBoundaryState> {
+  state: PanelErrorBoundaryState = { hasError: false, errorMessage: null };
+
+  static getDerivedStateFromError(error: Error): PanelErrorBoundaryState {
+    return { hasError: true, errorMessage: error.message };
+  }
+
+  componentDidCatch(error: Error) {
+    console.warn(`[PanelErrorBoundary${this.props.name ? `: ${this.props.name}` : ''}]`, error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div
+          className="glass"
+          style={{
+            padding: '8px 10px',
+            fontSize: 10,
+            color: 'var(--text-label)',
+            textAlign: 'center',
+          }}
+        >
+          <div style={{ marginBottom: 4, color: 'rgba(255, 100, 100, 0.6)' }}>
+            {this.props.name ?? 'Panel'} failed to render
+          </div>
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: 9, padding: '2px 8px' }}
+            onClick={() => this.setState({ hasError: false, errorMessage: null })}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ── Global error boundary ───────────────────────────────────────────────────
+
 interface ErrorBoundaryProps {
   children: ReactNode;
 }

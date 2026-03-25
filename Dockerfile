@@ -7,7 +7,7 @@ COPY creatures-web/ ./
 RUN npm run build
 
 # Stage 2: Python API
-FROM python:3.13-slim AS api
+FROM python:3.12-slim AS api
 WORKDIR /app
 
 # Install system dependencies

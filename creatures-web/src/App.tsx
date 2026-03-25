@@ -22,8 +22,9 @@ import { RecordingPanel } from './components/ui/RecordingPanel';
 import { ExperimentPanel } from './components/ui/ExperimentPanel';
 import { useSimulationStore } from './stores/simulationStore';
 import { useEvolutionStore } from './stores/evolutionStore';
-import { GlobalErrorBoundary } from './components/ErrorBoundary';
+import { GlobalErrorBoundary, PanelErrorBoundary } from './components/ErrorBoundary';
 import { Tutorial } from './components/ui/Tutorial';
+import { SharedView, isShareRoute } from './components/ui/SharedView';
 import {
   NeuralActivitySkeleton,
   InteractionSkeleton,
@@ -123,6 +124,9 @@ export default function App() {
   const history = useSimulationStore((s) => s.frameHistory);
   const connectionStatus = useSimulationStore((s) => s.connectionStatus);
   const reconnectAttempts = useSimulationStore((s) => s.reconnectAttempts);
+
+  // Shared view detection -- if the URL hash matches a share route, show SharedView
+  const [showSharedView, setShowSharedView] = useState(() => isShareRoute(window.location.hash));
 
   const [appMode, setAppMode] = useState<'sim' | 'evo' | 'eco'>('sim');
   const [lesionInput, setLesionInput] = useState('');
@@ -307,11 +311,17 @@ export default function App() {
     }
   }, [handleHashChange, savedOrganism, handleSwitchOrganism]);
 
-  // Listen for eco hash on popstate/hashchange
+  // Listen for eco hash and share routes on popstate/hashchange
   useEffect(() => {
     const handler = () => {
-      const hash = window.location.hash.replace(/^#\/?/, '');
-      if (hash === 'eco') {
+      const hash = window.location.hash;
+      if (isShareRoute(hash)) {
+        setShowSharedView(true);
+        return;
+      }
+      setShowSharedView(false);
+      const path = hash.replace(/^#\/?/, '');
+      if (path === 'eco') {
         setAppMode('eco');
       }
     };
@@ -458,6 +468,16 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [markInteracted, handlePoke, toggleEvolutionMode]);
+
+  // If the URL is a share link, render only the shared view
+  if (showSharedView) {
+    return (
+      <SharedView onExit={() => {
+        setShowSharedView(false);
+        window.location.hash = '#/sim/c_elegans';
+      }} />
+    );
+  }
 
   return (
     <div className="app-root">
@@ -619,7 +639,12 @@ export default function App() {
                       disabled={ecoLoading}
                       onClick={() => createMassiveEcosystem(massiveWorldType)}
                     >
-                      {ecoLoading ? 'Creating...' : 'Create Brain-World'}
+                      {ecoLoading ? (
+                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                          <span className="experiment-spinner" />
+                          Creating...
+                        </span>
+                      ) : 'Create Brain-World'}
                     </button>
                     {massiveId && (
                       <div style={{ fontSize: 10, color: 'var(--text-label)', marginTop: 4 }}>
@@ -717,7 +742,12 @@ export default function App() {
                         }
                       }}
                     >
-                      {ecoLoading ? 'Creating...' : 'Create Ecosystem'}
+                      {ecoLoading ? (
+                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                          <span className="experiment-spinner" />
+                          Creating...
+                        </span>
+                      ) : 'Create Ecosystem'}
                     </button>
                     {ecosystemId && (
                       <div style={{ fontSize: 10, color: 'var(--text-label)', marginBottom: 4 }}>
@@ -861,9 +891,15 @@ export default function App() {
 
               {sidebarTab === 'science' && (
                 <>
-                  <NeuralMetrics />
-                  <RecordingPanel />
-                  <ExperimentPanel />
+                  <PanelErrorBoundary name="Neural Metrics">
+                    <NeuralMetrics />
+                  </PanelErrorBoundary>
+                  <PanelErrorBoundary name="Recording">
+                    <RecordingPanel />
+                  </PanelErrorBoundary>
+                  <PanelErrorBoundary name="Experiments">
+                    <ExperimentPanel />
+                  </PanelErrorBoundary>
                 </>
               )}
             </>
@@ -941,7 +977,9 @@ export default function App() {
             experiment ? (
               <>
                 <ConnectomeExplorer />
-                <SpeciesComparison />
+                <PanelErrorBoundary name="Species Comparison">
+                  <SpeciesComparison />
+                </PanelErrorBoundary>
               </>
             ) : <ConnectomeSkeleton />
           )}
