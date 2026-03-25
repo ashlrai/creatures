@@ -355,6 +355,7 @@ export function FlyBody3D() {
     const rates = frame?.firing_rates ?? [];
     const spikes = new Set(frame?.spikes ?? []);
     const com = frame?.center_of_mass ?? null;
+    let movementSpeed = 0;
 
     // -- Position & orientation interpolation --
     if (groupRef.current) {
@@ -371,11 +372,12 @@ export function FlyBody3D() {
           smoothPos.current[2],
         );
 
-        // Yaw from movement direction
-        const dx = com[0] - prevCom.current[0];
-        const dz = com[2] - prevCom.current[2];
-        const speed = Math.sqrt(dx * dx + dz * dz);
-        if (speed > 1e-6) {
+        // Yaw from movement direction (cache prev for wing flap later)
+        const prevComSnap = prevCom.current;
+        const dx = com[0] - prevComSnap[0];
+        const dz = com[2] - prevComSnap[2];
+        movementSpeed = Math.sqrt(dx * dx + dz * dz);
+        if (movementSpeed > 1e-6) {
           const targetYaw = Math.atan2(dz, dx);
           smoothYaw.current += (targetYaw - smoothYaw.current) * 0.05;
           groupRef.current.rotation.y = -smoothYaw.current;
@@ -490,11 +492,8 @@ export function FlyBody3D() {
       gc.needsUpdate = true;
     }
 
-    // -- Wing flap animation --
-    const com2 = frame?.center_of_mass;
-    const dx = com2 ? com2[0] - prevCom.current[0] : 0;
-    const speed = Math.abs(dx);
-    const flapAmplitude = 0.3 + Math.min(speed * 500, 0.7); // 0.3..1.0
+    // -- Wing flap animation (use movementSpeed from yaw calc above) --
+    const flapAmplitude = 0.3 + Math.min(movementSpeed * 500, 0.7); // 0.3..1.0
     const wingAngle = Math.sin(t * 25) * flapAmplitude;
 
     wingRefs.current.forEach((wing, i) => {
