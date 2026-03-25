@@ -17,6 +17,12 @@ from creatures.environment.sensory_world import (
     TemperatureField,
     ToxicZone,
 )
+from creatures.environment.worlds import (
+    AbstractWorld,
+    LabPlateWorld,
+    PondWorld,
+    SoilWorld,
+)
 
 router = APIRouter(prefix="/api/ecosystem", tags=["ecosystem"])
 logger = logging.getLogger(__name__)
@@ -76,6 +82,12 @@ class TemperatureRequest(BaseModel):
     cold_temp: float = 15.0
     hot_temp: float = 25.0
     preferred_temp: float = 20.0
+
+
+class WorldRequest(BaseModel):
+    type: Literal["soil", "pond", "lab_plate", "abstract"] = "soil"
+    challenge: str | None = None  # for abstract world: "maze", "foraging", "memory", "social"
+    size: float | None = None  # optional size override
 
 
 class UpgradeBrainResponse(BaseModel):
@@ -475,6 +487,49 @@ async def get_world(eco_id: str):
         return {"eco_id": eco_id, "world": None, "message": "No sensory world configured"}
 
     return {"eco_id": eco_id, "world": eco.world.get_state()}
+
+
+@router.post("/{eco_id}/world")
+async def set_world(eco_id: str, req: WorldRequest):
+    """Set the world type for an ecosystem.
+
+    Replaces any existing sensory world with a specialized environment.
+    Supported types: soil, pond, lab_plate, abstract.
+    """
+    eco = ecosystems.get(eco_id)
+    if eco is None:
+        raise HTTPException(404, f"Ecosystem {eco_id} not found")
+
+    world_type = req.type
+    if world_type == "soil":
+        size = req.size or 10.0
+        world = SoilWorld(size=size)
+    elif world_type == "pond":
+        world = PondWorld()
+    elif world_type == "lab_plate":
+        world = LabPlateWorld()
+    elif world_type == "abstract":
+        challenge = req.challenge or "maze"
+        if challenge not in ("maze", "foraging", "memory", "social"):
+            raise HTTPException(
+                400, f"Unknown challenge '{challenge}'. "
+                     f"Options: maze, foraging, memory, social"
+            )
+        size = req.size or 10.0
+        world = AbstractWorld(challenge=challenge, size=size)
+    else:
+        raise HTTPException(400, f"Unknown world type '{world_type}'")
+
+    # Attach the specialized world -- it quacks like SensoryWorld
+    # (has sense_at, step, get_state) so the ecosystem can use it
+    eco.world = world  # type: ignore[assignment]
+    logger.info(f"Set world type '{world_type}' for ecosystem {eco_id}")
+
+    return {
+        "eco_id": eco_id,
+        "world_type": world_type,
+        "world": world.get_state(),
+    }
 
 
 # --- Timeline endpoint for dashboard ---
