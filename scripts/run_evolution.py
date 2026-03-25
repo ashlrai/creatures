@@ -209,6 +209,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.organism == "drosophila":
         from creatures.connectome.flywire import load as load_fly
         connectome = load_fly("locomotion", max_neurons=500, min_synapse_count=5)
+    elif args.organism == "zebrafish":
+        from creatures.connectome.zebrafish import load as load_zebrafish
+        connectome = load_zebrafish(circuit="mauthner")
     else:
         raise ValueError(f"Unknown organism: {args.organism}")
     t_load = time.time() - t0

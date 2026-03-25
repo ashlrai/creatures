@@ -58,6 +58,12 @@ class SimulationManager:
                 max_neurons=config.max_neurons,
             )
             body = FlyBody(BodyConfig(dt=0.5), connectome=connectome)
+        elif config.organism == "zebrafish":
+            from creatures.connectome.zebrafish import load as load_zebrafish
+            from creatures.body.fish_body import FishBody
+            circuit = config.connectome_source if config.connectome_source != "edge_list" else "mauthner"
+            connectome = load_zebrafish(circuit=circuit)
+            body = FishBody(BodyConfig(dt=1.0))
         else:
             raise ValueError(f"Organism '{config.organism}' not yet supported")
 

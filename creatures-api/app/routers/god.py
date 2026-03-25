@@ -243,3 +243,123 @@ async def manual_intervene(req: InterventionRequest):
         god_reports.append(god_event)
 
     return {"applied": applied, "run_id": req.run_id}
+
+
+# ── Discovery endpoints ──────────────────────────────────────────────
+
+# In-memory store for discovery sessions (persists for the lifetime of
+# the API process).  A production deployment would back this with a DB.
+_discovery_sessions: dict[str, Any] = {}
+
+
+class DiscoverRequest(BaseModel):
+    organism: str = "c_elegans"
+    max_hypotheses: int | None = None
+
+
+class DiscoveryResponse(BaseModel):
+    session_id: str
+    status: str
+    n_hypotheses: int
+    n_discoveries: int
+    report: str
+
+
+class DiscoverySummary(BaseModel):
+    id: str
+    title: str
+    significance: float
+    category: str
+    timestamp: str
+
+
+class DiscoveryDetail(BaseModel):
+    id: str
+    title: str
+    description: str
+    significance: float
+    category: str
+    timestamp: str
+    evidence: dict[str, Any]
+    hypothesis_statement: str
+
+
+@router.post("/discover", response_model=DiscoveryResponse)
+async def start_discovery(req: DiscoverRequest):
+    """Start an autonomous discovery session.
+
+    Generates hypotheses about the specified organism's neural circuit,
+    runs experiments, and returns a scientific report of findings.
+    """
+    import asyncio
+
+    from creatures.discovery.engine import DiscoveryEngine
+
+    session_id = str(uuid.uuid4())[:8]
+
+    engine = DiscoveryEngine()
+
+    # Run the CPU-heavy discovery in a thread pool so we don't block
+    # the async event loop.
+    loop = asyncio.get_running_loop()
+
+    def _run() -> None:
+        engine.generate_hypotheses(req.organism)
+        # Optionally limit how many we test
+        if req.max_hypotheses is not None:
+            engine.hypotheses = engine.hypotheses[: req.max_hypotheses]
+        engine.run_all()
+
+    await loop.run_in_executor(None, _run)
+
+    # Persist results for later retrieval
+    _discovery_sessions[session_id] = engine
+
+    report = engine.generate_report()
+
+    return DiscoveryResponse(
+        session_id=session_id,
+        status="complete",
+        n_hypotheses=len(engine.hypotheses),
+        n_discoveries=len(engine.discoveries),
+        report=report,
+    )
+
+
+@router.get("/discoveries", response_model=list[DiscoverySummary])
+async def list_discoveries():
+    """List all discoveries across all sessions."""
+    all_discoveries: list[DiscoverySummary] = []
+    for engine in _discovery_sessions.values():
+        for d in engine.discoveries:
+            all_discoveries.append(
+                DiscoverySummary(
+                    id=d.id,
+                    title=d.title,
+                    significance=d.significance,
+                    category=d.hypothesis.category,
+                    timestamp=d.timestamp,
+                )
+            )
+    # Sort by significance descending
+    all_discoveries.sort(key=lambda x: -x.significance)
+    return all_discoveries
+
+
+@router.get("/discoveries/{discovery_id}", response_model=DiscoveryDetail)
+async def get_discovery(discovery_id: str):
+    """Get detailed information about a specific discovery."""
+    for engine in _discovery_sessions.values():
+        for d in engine.discoveries:
+            if d.id == discovery_id:
+                return DiscoveryDetail(
+                    id=d.id,
+                    title=d.title,
+                    description=d.description,
+                    significance=d.significance,
+                    category=d.hypothesis.category,
+                    timestamp=d.timestamp,
+                    evidence=d.evidence,
+                    hypothesis_statement=d.hypothesis.statement,
+                )
+    raise HTTPException(404, f"Discovery {discovery_id} not found")

@@ -34,6 +34,11 @@ from creatures.experiment.runner import CouplingConfig, SimFrame, SimulationRunn
 from creatures.neural.base import MonitorConfig, NeuralConfig
 from creatures.neural.brian2_engine import Brian2Engine
 from creatures.neural.pharmacology import PharmacologyEngine
+from creatures.analysis.statistics import (
+    StatisticalResult,
+    compare_conditions,
+    generate_stats_report,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +197,7 @@ class ExperimentResult:
     frames: list[SimFrame]
     weight_changes: dict | None  # if STDP was on
     summary: dict  # computed statistics
+    statistics: list[StatisticalResult] = field(default_factory=list)  # per-metric stat tests
 
     def to_report(self) -> str:
         """Generate a markdown scientific report from the results."""
@@ -247,6 +253,10 @@ class ExperimentResult:
             else:
                 lines.append(f"- **{key}:** {value}")
         lines.append("")
+
+        # Statistical analysis (p-values, effect sizes, confidence intervals)
+        if self.statistics:
+            lines.append(generate_stats_report(self.statistics))
 
         # Weight changes from STDP
         if self.weight_changes:
@@ -513,6 +523,9 @@ class ExperimentRunner:
         # Compute summary statistics
         summary = self._compute_summary(all_exp_measurements, control_measurements)
 
+        # Compute per-metric statistical tests (experimental vs control)
+        stat_results = self._compute_statistics(all_exp_measurements, control_measurements)
+
         return ExperimentResult(
             protocol=self.protocol,
             measurements=final_measurements,
@@ -520,6 +533,7 @@ class ExperimentRunner:
             frames=all_frames,
             weight_changes=last_weight_changes,
             summary=summary,
+            statistics=stat_results,
         )
 
     def _compute_summary(
@@ -574,6 +588,59 @@ class ExperimentRunner:
         )
 
         return summary
+
+    def _compute_statistics(
+        self,
+        all_exp: list[list[MeasurementResult]],
+        control: list[MeasurementResult] | None,
+    ) -> list[StatisticalResult]:
+        """Compute per-metric statistical tests (experimental vs control).
+
+        For each metric that appears in both experimental and control
+        measurements, runs an automatic statistical comparison.  Requires
+        at least 2 values per group; metrics with insufficient data are
+        silently skipped.
+        """
+        if not control or not all_exp:
+            return []
+
+        # Gather all unique metrics
+        metrics_seen: set[str] = set()
+        for trial_measurements in all_exp:
+            for m in trial_measurements:
+                if isinstance(m.value, (int, float)):
+                    metrics_seen.add(m.metric)
+
+        results: list[StatisticalResult] = []
+        for metric in sorted(metrics_seen):
+            # Collect experimental values across all trials
+            exp_values: list[float] = []
+            for trial_measurements in all_exp:
+                for m in trial_measurements:
+                    if m.metric == metric and isinstance(m.value, (int, float)):
+                        exp_values.append(float(m.value))
+
+            # Collect control values
+            ctrl_values: list[float] = [
+                float(m.value) for m in control
+                if m.metric == metric and isinstance(m.value, (int, float))
+            ]
+
+            # Need at least 2 observations per group for a valid test
+            if len(exp_values) < 2 or len(ctrl_values) < 2:
+                continue
+
+            try:
+                stat_result = compare_conditions(exp_values, ctrl_values)
+                # Annotate description with metric name
+                stat_result.description = (
+                    f"{metric}: {stat_result.description}"
+                )
+                results.append(stat_result)
+            except (ValueError, Exception) as e:
+                logger.warning(f"Statistics for metric '{metric}' failed: {e}")
+
+        return results
 
 
 # ── Preset Experiments ──────────────────────────────────────────────
