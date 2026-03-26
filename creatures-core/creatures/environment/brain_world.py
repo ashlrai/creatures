@@ -1,13 +1,17 @@
 """Unified brain + ecosystem: every organism has a spiking neural brain.
 
-Connects VectorizedEngine (massively parallel LIF neurons) to
+Connects VectorizedEngine (massively parallel LIF/Izhikevich neurons) to
 MassiveEcosystem (100K+ organisms as numpy arrays) so that organisms
 make decisions using real spiking neural networks.
 
 Pipeline each step:
     Environment state -> sensory neurons -> interneurons -> motor neurons -> movement
 
-Scale target: 10K organisms x 100 neurons = 1M neurons at ~20 FPS.
+Supports MLX (Apple Silicon GPU), CuPy (NVIDIA GPU), and numpy (CPU).
+
+Scale targets:
+    numpy:  10K organisms x 100 neurons = 1M neurons at ~20 FPS
+    MLX:    100K organisms x 100 neurons = 10M neurons at ~10 FPS
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ import numpy as np
 
 from creatures.environment.massive_ecosystem import MassiveEcosystem
 from creatures.environment.worlds import SoilWorld, PondWorld, LabPlateWorld
-from creatures.neural.vectorized_engine import VectorizedEngine
+from creatures.neural.vectorized_engine import NeuronModel, VectorizedEngine
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +51,15 @@ class BrainWorld:
         arena_size: float = 50.0,
         world_type: str = "soil",
         seed: int = 42,
+        use_gpu: bool = True,
+        neuron_model: NeuronModel | str = NeuronModel.LIF,
+        connectome: Any = None,
     ) -> None:
-        self.engine = VectorizedEngine()
-        self.engine.build(n_organisms, neurons_per_organism, seed=seed)
+        self.engine = VectorizedEngine(use_gpu=use_gpu, neuron_model=neuron_model)
+        if connectome is not None:
+            self.engine.build_from_connectome(connectome, n_organisms, seed=seed)
+        else:
+            self.engine.build(n_organisms, neurons_per_organism, seed=seed)
         self.ecosystem = MassiveEcosystem(n_organisms, arena_size, seed=seed)
         self.world = self._create_world(world_type, arena_size)
 
@@ -136,14 +146,19 @@ class BrainWorld:
     # ------------------------------------------------------------------
 
     def _inject_sensory_input(self, alive: np.ndarray) -> None:
-        """Convert environment signals to neural currents for all organisms."""
+        """Convert environment signals to neural currents for all organisms.
+
+        Builds the full I_ext array in numpy, then converts to backend
+        format in one shot (avoids per-element MLX conversions).
+        """
         eco = self.ecosystem
         n = eco.n
         org_idx = self._org_indices
 
+        # Build I_ext as numpy, convert at the end
+        I_ext_np = np.zeros(self.engine.n_total, dtype=np.float32)
+
         # --- Food proximity signal ---
-        # Distance from each organism to each food source
-        # Use alive food only, subsample if too many to avoid memory explosion
         food_alive_idx = np.where(eco.food_alive)[0]
         if len(food_alive_idx) > 0:
             max_food = min(len(food_alive_idx), 500)
@@ -152,108 +167,94 @@ class BrainWorld:
             else:
                 food_sample = food_alive_idx
 
-            # (n_org, n_food_sample) distance matrix via broadcasting
             dx = eco.x[:, None] - eco.food_x[food_sample][None, :]
             dy = eco.y[:, None] - eco.food_y[food_sample][None, :]
             dist = np.sqrt(dx * dx + dy * dy)
-            nearest_dist = np.min(dist, axis=1)  # (n_org,)
+            nearest_dist = np.min(dist, axis=1)
 
-            # Signal strength: closer = stronger, range 0-30 mV
             food_signal = np.clip(1.0 - nearest_dist / 5.0, 0.0, 1.0) * 30.0
-            food_signal *= alive  # zero for dead organisms
+            food_signal *= alive
 
-            # Direction to nearest food for chemical gradient
             nearest_idx = np.argmin(dist, axis=1)
             best_dx = dx[org_idx, nearest_idx]
             best_dy = dy[org_idx, nearest_idx]
             best_dist = nearest_dist + 1e-8
 
-            # Chemical signal: differential based on heading
-            # Organisms facing food get stronger signal on "left" chemical neurons
             heading = eco.heading
-            # Dot product of heading with food direction = alignment
-            food_dir_x = -best_dx / best_dist  # toward food
+            food_dir_x = -best_dx / best_dist
             food_dir_y = -best_dy / best_dist
             alignment = np.cos(heading) * food_dir_x + np.sin(heading) * food_dir_y
             chemical_signal = np.clip(alignment, -1.0, 1.0) * 20.0 * alive
 
-            # --- Inject into sensory neurons (vectorized over all organisms) ---
             # Food channel
             food_start, food_end = self.sensory_channels["food"]
-            food_neuron_offsets = np.arange(food_start, food_end)
-            # Global indices: (n_org, n_food_neurons) via broadcasting
-            global_food = (org_idx[:, None] * self.n_per + food_neuron_offsets[None, :])
-            self.engine.I_ext[global_food.ravel()] = np.repeat(
-                food_signal, food_end - food_start
-            )
+            food_offsets = np.arange(food_start, food_end)
+            global_food = (org_idx[:, None] * self.n_per + food_offsets[None, :]).ravel()
+            I_ext_np[global_food] = np.repeat(food_signal, food_end - food_start)
 
-            # Chemical channel (differential: stronger for aligned organisms)
+            # Chemical channel
             chem_start, chem_end = self.sensory_channels["chemical"]
             chem_offsets = np.arange(chem_start, chem_end)
-            global_chem = (org_idx[:, None] * self.n_per + chem_offsets[None, :])
-            self.engine.I_ext[global_chem.ravel()] = np.repeat(
-                chemical_signal, chem_end - chem_start
-            )
+            global_chem = (org_idx[:, None] * self.n_per + chem_offsets[None, :]).ravel()
+            I_ext_np[global_chem] = np.repeat(chemical_signal, chem_end - chem_start)
 
-        # --- Danger signal (low energy = danger) ---
+        # --- Danger signal ---
         danger_signal = np.clip(1.0 - eco.energy / 50.0, 0.0, 1.0) * 25.0 * alive
         danger_start, danger_end = self.sensory_channels["danger"]
         danger_offsets = np.arange(danger_start, danger_end)
-        global_danger = (org_idx[:, None] * self.n_per + danger_offsets[None, :])
-        self.engine.I_ext[global_danger.ravel()] = np.repeat(
-            danger_signal, danger_end - danger_start
-        )
+        global_danger = (org_idx[:, None] * self.n_per + danger_offsets[None, :]).ravel()
+        I_ext_np[global_danger] = np.repeat(danger_signal, danger_end - danger_start)
 
-        # --- Temperature signal (from world if available) ---
-        # Use a simple y-based gradient as proxy (cooler at top, warmer at bottom)
+        # --- Temperature signal ---
         half = eco.arena_size / 2.0
-        temp_normalized = (eco.y + half) / eco.arena_size  # 0-1
-        temp_signal = temp_normalized * 15.0 * alive  # 0-15 mV
+        temp_normalized = (eco.y + half) / eco.arena_size
+        temp_signal = temp_normalized * 15.0 * alive
         temp_start, temp_end = self.sensory_channels["temperature"]
         temp_offsets = np.arange(temp_start, temp_end)
-        global_temp = (org_idx[:, None] * self.n_per + temp_offsets[None, :])
-        self.engine.I_ext[global_temp.ravel()] = np.repeat(
-            temp_signal, temp_end - temp_start
-        )
+        global_temp = (org_idx[:, None] * self.n_per + temp_offsets[None, :]).ravel()
+        I_ext_np[global_temp] = np.repeat(temp_signal, temp_end - temp_start)
+
+        # Convert to backend format in one shot
+        self.engine.I_ext = self.engine.xp.array(I_ext_np)
 
     # ------------------------------------------------------------------
     # Motor decoding (loops over neuron indices, NOT organisms)
     # ------------------------------------------------------------------
 
     def _decode_motor_output(self, alive: np.ndarray) -> None:
-        """Convert motor neuron firing rates to movement commands."""
+        """Convert motor neuron firing rates to movement commands.
+
+        Reads firing rates from the engine (may be MLX/CuPy arrays),
+        converts to numpy for ecosystem movement computation.
+        """
         eco = self.ecosystem
         n = eco.n
         org_idx = self._org_indices
 
-        # Read motor neuron firing rates for all organisms
-        # Loop over small number of neuron indices (~7 each), not organisms
+        # Read firing rates — convert to numpy if needed
+        fr = self.engine._to_numpy(self.engine.firing_rate)
+
+        # Pool motor neuron rates (loop over ~7 neuron indices, not organisms)
         forward_rate = np.zeros(n)
         for n_idx in self.motor_forward:
-            global_indices = org_idx * self.n_per + n_idx
-            forward_rate += self.engine.firing_rate[global_indices]
+            forward_rate += fr[org_idx * self.n_per + n_idx]
 
         backward_rate = np.zeros(n)
         for n_idx in self.motor_backward:
-            global_indices = org_idx * self.n_per + n_idx
-            backward_rate += self.engine.firing_rate[global_indices]
+            backward_rate += fr[org_idx * self.n_per + n_idx]
 
         turn_rate = np.zeros(n)
         for n_idx in self.motor_turn:
-            global_indices = org_idx * self.n_per + n_idx
-            turn_rate += self.engine.firing_rate[global_indices]
+            turn_rate += fr[org_idx * self.n_per + n_idx]
 
-        # Convert to movement (only for alive organisms)
         alive_f = alive.astype(np.float64)
         speed = (forward_rate - backward_rate) * 0.0005 * alive_f
         turn = turn_rate * 0.005 * alive_f
 
-        # Override ecosystem's simple movement with brain-driven movement
         eco.heading += turn
         eco.x += np.cos(eco.heading) * speed
         eco.y += np.sin(eco.heading) * speed
 
-        # Wrap around arena
         half = eco.arena_size / 2.0
         eco.x = ((eco.x + half) % eco.arena_size) - half
         eco.y = ((eco.y + half) % eco.arena_size) - half
@@ -266,14 +267,20 @@ class BrainWorld:
         """Get state for visualization."""
         eco_state = self.ecosystem.get_state_summary()
         eco_state["time_ms"] = self.time_ms
-        eco_state["step"] = self._step_count
+        eco_state["step_count"] = self._step_count
+        eco_state["n_alive"] = eco_state.get("total_alive", 0)
+        eco_state["n_total"] = self.ecosystem.n
+        fired_np = self.engine._to_numpy(self.engine.fired)
+        fr_np = self.engine._to_numpy(self.engine.firing_rate)
         eco_state["neural_stats"] = {
             "total_neurons": self.engine.n_total,
             "neurons_per_organism": self.n_per,
             "n_organisms": self.engine.n_organisms,
             "total_synapses": self.engine.n_synapses,
-            "total_fired": int(np.sum(self.engine.fired)),
-            "mean_firing_rate": float(np.mean(self.engine.firing_rate)),
+            "backend": self.engine._backend,
+            "neuron_model": self.engine._neuron_model.value,
+            "total_fired": int(np.sum(fired_np)),
+            "mean_firing_rate": float(np.mean(fr_np)),
         }
         return eco_state
 

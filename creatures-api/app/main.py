@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "creatures-core"))
 
 import asyncio
 
-from app.routers import analysis, ecosystem, evolution, experiments, export, export_advanced, god, history, metrics, morphology, neurons, pharmacology, ws
+from app.routers import analysis, consciousness, ecosystem, evolution, experiments, export, export_advanced, god, history, metrics, morphology, neurons, pharmacology, ws
 from app.services.evolution_manager import EvolutionManager
 from app.services.simulation_manager import SimulationManager
 from creatures.storage.persistence import NeurevoStore
@@ -29,6 +29,7 @@ async def lifespan(app: FastAPI):
 
     manager = SimulationManager()
     analysis.manager = manager
+    consciousness.manager = manager
     metrics.manager = manager
     experiments.manager = manager
     experiments.store = neurevo_store
@@ -67,6 +68,7 @@ app.add_middleware(
 )
 
 app.include_router(analysis.router)
+app.include_router(consciousness.router)
 app.include_router(metrics.router)
 app.include_router(ecosystem.router)
 app.include_router(evolution.router)
