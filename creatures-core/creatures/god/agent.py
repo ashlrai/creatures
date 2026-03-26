@@ -21,6 +21,10 @@ class GodConfig:
     intervention_interval: int = 10  # intervene every N generations
     temperature: float = 0.7
     max_tokens: int = 4096
+    # LLM provider: "auto" detects Ollama first, then API
+    provider: str = "auto"  # "auto", "ollama", "xai", "openai"
+    ollama_host: str = "http://localhost:11434"
+    ollama_model: str = "llama3.1:70b"
 
 
 class GodAgent:
@@ -159,40 +163,22 @@ Workspace Theory). Make interventions that will produce genuine scientific insig
 about how neural circuits evolve, learn, and develop consciousness-like properties."""
 
     async def _call_llm(self, prompt: str) -> str:
-        """Call the xAI API (OpenAI-compatible)."""
-        try:
-            import httpx
+        """Call LLM via configured provider (auto-detects Ollama → API → fallback)."""
+        from creatures.god.llm_providers import LLMConfig, call_llm
 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.config.api_base}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self.config.api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": self.config.model,
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": (
-                                    "You are the God Agent — an AI overseeing the "
-                                    "evolution of virtual organisms with real biological "
-                                    "neural networks. Respond with valid JSON only. "
-                                    "Keep analysis concise (2-3 sentences). "
-                                    "Keep report under 100 words."
-                                ),
-                            },
-                            {"role": "user", "content": prompt},
-                        ],
-                        "temperature": self.config.temperature,
-                        "max_tokens": self.config.max_tokens,
-                        "response_format": {"type": "json_object"},
-                    },
-                    timeout=30.0,
-                )
-                data = response.json()
-                return data["choices"][0]["message"]["content"]
+        llm_config = LLMConfig(
+            provider=self.config.provider,
+            api_key=self.config.api_key,
+            api_base=self.config.api_base,
+            model=self.config.model,
+            ollama_host=self.config.ollama_host,
+            ollama_model=self.config.ollama_model,
+            temperature=self.config.temperature,
+            max_tokens=self.config.max_tokens,
+        )
+
+        try:
+            return await call_llm(prompt, llm_config)
         except Exception:
             return json.dumps(self._fallback_intervention())
 

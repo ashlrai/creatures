@@ -13,6 +13,8 @@ export function useSimulation() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const lastSimIdRef = useRef<string | null>(null);
+  const pendingFrameRef = useRef<SimulationFrame | null>(null);
+  const rafIdRef = useRef<number>(0);
   const store = useSimulationStore();
 
   const createExperiment = useCallback(async (organism = 'c_elegans') => {
@@ -95,15 +97,24 @@ export function useSimulation() {
         const data = JSON.parse(evt.data);
         // Route typed messages
         if (data.type === 'weight_snapshot') {
-          // Will be consumed by stdpStore when it exists
           window.dispatchEvent(new CustomEvent('neurevo-weight-snapshot', { detail: data }));
         } else if (data.type === 'error') {
           console.warn('[WS] Backend error:', data.message);
         } else {
-          // Default: treat as SimulationFrame
-          const frame: SimulationFrame = data;
-          store.setFrame(frame);
-          useTransportStore.getState().pushFrame(frame);
+          // Buffer the latest frame — only apply once per browser frame (RAF throttle)
+          // This prevents 60+ store updates/sec from causing 49 component re-renders each
+          pendingFrameRef.current = data as SimulationFrame;
+          if (!rafIdRef.current) {
+            rafIdRef.current = requestAnimationFrame(() => {
+              const f = pendingFrameRef.current;
+              if (f) {
+                store.setFrame(f);
+                useTransportStore.getState().pushFrame(f);
+                pendingFrameRef.current = null;
+              }
+              rafIdRef.current = 0;
+            });
+          }
         }
       } catch (err) {
         console.warn('Failed to parse frame:', err);

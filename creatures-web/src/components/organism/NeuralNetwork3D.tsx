@@ -208,6 +208,9 @@ export function NeuralNetwork3D() {
     return { positions: pos, colors: col, baseColors: baseCols, haloPositions: hPos, haloColors: hCol };
   }, [neurons, neuronTypes]);
 
+  // Cache spike set to avoid allocation every frame
+  const spikeSetRef = useRef(new Set<number>());
+
   // Animate colors based on firing rates + spikes
   useFrame(() => {
     if (!pointsRef.current || !frame?.firing_rates || !colors || !baseColors) return;
@@ -217,7 +220,9 @@ export function NeuralNetwork3D() {
     if (!colorAttr) return;
 
     const rates = frame.firing_rates;
-    const spikes = new Set(frame.spikes ?? []);
+    const spikeSet = spikeSetRef.current;
+    spikeSet.clear();
+    if (frame.spikes) for (const s of frame.spikes) spikeSet.add(s);
     const arr = colorAttr.array as Float32Array;
 
     // Halo layer
@@ -228,7 +233,7 @@ export function NeuralNetwork3D() {
     for (let i = 0; i < Math.min(neurons.length, rates.length); i++) {
       const rate = rates[i];
       const intensity = Math.min(rate / 80, 1); // more sensitive threshold
-      const isSpiking = spikes.has(i);
+      const isSpiking = spikeSet.has(i);
 
       // Spike flash: immediate 3-5x brightness boost
       const spikeFlash = isSpiking ? 2.5 : 0;
