@@ -149,6 +149,7 @@ export function useSimulation() {
     return () => {
       lastSimIdRef.current = null; // prevent reconnect on unmount
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
       wsRef.current?.close();
     };
   }, []);

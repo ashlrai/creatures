@@ -75,7 +75,8 @@ class GodAgent:
         - hypothesis: str (scientific question to test)
         - explanation: str (why these changes)
         """
-        if not self.config.api_key:
+        # Only skip LLM if provider is explicitly "fallback" (not auto/ollama)
+        if self.config.provider == "fallback":
             intervention = self._fallback_intervention()
             self.history.append(intervention)
             return intervention

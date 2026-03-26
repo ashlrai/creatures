@@ -109,6 +109,18 @@ function WorldEnvironment({ worldType }: { worldType: string }) {
 }
 
 function GardenElements() {
+  const layout = useMemo(() => ({
+    leaves: Array.from({ length: 6 }, (_, i) => {
+      const angle = (i / 6) * Math.PI * 2 + 0.3;
+      const r = 0.1 + Math.random() * 0.15;
+      return { x: Math.cos(angle) * r, z: Math.sin(angle) * r, angle, w: 0.02 + Math.random() * 0.02, h: 0.03 + Math.random() * 0.02 };
+    }),
+    rocks: Array.from({ length: 10 }, () => ({
+      x: (Math.random() - 0.5) * 0.4, z: (Math.random() - 0.5) * 0.4,
+      rx: Math.random(), ry: Math.random(), size: 0.003 + Math.random() * 0.004,
+    })),
+  }), []);
+
   return (
     <group position={[0.3, 0, 0]}>
       {/* Scattered food sources — small, worm-scale */}
@@ -129,37 +141,34 @@ function GardenElements() {
           />
         </mesh>
       ))}
-      {/* Leaf debris on ground */}
-      {Array.from({ length: 6 }, (_, i) => {
-        const angle = (i / 6) * Math.PI * 2 + 0.3;
-        const r = 0.1 + Math.random() * 0.15;
-        return (
-          <mesh key={`leaf-${i}`} position={[Math.cos(angle) * r, 0.001, Math.sin(angle) * r]}
-            rotation={[-Math.PI / 2 + 0.05, angle + 0.5, 0]}>
-            <planeGeometry args={[0.02 + Math.random() * 0.02, 0.03 + Math.random() * 0.02]} />
-            <meshStandardMaterial color="#2a4a1a" roughness={0.8} side={THREE.DoubleSide}
-              transparent opacity={0.6} />
-          </mesh>
-        );
-      })}
-      {/* Tiny rocks for texture */}
-      {Array.from({ length: 10 }, (_, i) => {
-        const x = (Math.random() - 0.5) * 0.4;
-        const z = (Math.random() - 0.5) * 0.4;
-        return (
-          <mesh key={`rock-${i}`} position={[x, -0.003, z]}
-            rotation={[Math.random(), Math.random(), 0]}>
-            <dodecahedronGeometry args={[0.003 + Math.random() * 0.004, 0]} />
-            <meshStandardMaterial color="#3a3a2a" roughness={0.95} />
-          </mesh>
-        );
-      })}
+      {/* Leaf debris on ground (memoized positions) */}
+      {layout.leaves.map((l, i) => (
+        <mesh key={`leaf-${i}`} position={[l.x, 0.001, l.z]}
+          rotation={[-Math.PI / 2 + 0.05, l.angle + 0.5, 0]}>
+          <planeGeometry args={[l.w, l.h]} />
+          <meshStandardMaterial color="#2a4a1a" roughness={0.8} side={THREE.DoubleSide}
+            transparent opacity={0.6} />
+        </mesh>
+      ))}
+      {/* Tiny rocks (memoized positions) */}
+      {layout.rocks.map((r, i) => (
+        <mesh key={`rock-${i}`} position={[r.x, -0.003, r.z]}
+          rotation={[r.rx, r.ry, 0]}>
+          <dodecahedronGeometry args={[r.size, 0]} />
+          <meshStandardMaterial color="#3a3a2a" roughness={0.95} />
+        </mesh>
+      ))}
     </group>
   );
 }
 
 function PondElements() {
   const waterRef = useRef<THREE.Mesh>(null);
+  const pebbles = useMemo(() =>
+    Array.from({ length: 8 }, (_, i) => {
+      const angle = (i / 8) * Math.PI * 2;
+      return { x: Math.cos(angle) * (0.3 + Math.random() * 0.5), z: Math.sin(angle) * (0.3 + Math.random() * 0.5), size: 0.01 + Math.random() * 0.015 };
+    }), []);
 
   useFrame(({ clock }) => {
     if (!waterRef.current) return;
@@ -169,47 +178,35 @@ function PondElements() {
 
   return (
     <group>
-      {/* Water surface */}
       <mesh ref={waterRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
         <planeGeometry args={[6, 6]} />
-        <meshStandardMaterial
-          color="#1a4466"
-          transparent
-          opacity={0.3}
-          roughness={0.1}
-          metalness={0.2}
-          side={THREE.DoubleSide}
-        />
+        <meshStandardMaterial color="#1a4466" transparent opacity={0.3} roughness={0.1} metalness={0.2} side={THREE.DoubleSide} />
       </mesh>
-      {/* Pebbles */}
-      {Array.from({ length: 8 }, (_, i) => {
-        const angle = (i / 8) * Math.PI * 2;
-        const r = 0.3 + Math.random() * 0.5;
-        return (
-          <mesh key={i} position={[Math.cos(angle) * r, -0.005, Math.sin(angle) * r]}>
-            <sphereGeometry args={[0.01 + Math.random() * 0.015, 6, 6]} />
-            <meshStandardMaterial color="#4a4a3a" roughness={0.9} />
-          </mesh>
-        );
-      })}
+      {pebbles.map((p, i) => (
+        <mesh key={i} position={[p.x, -0.005, p.z]}>
+          <sphereGeometry args={[p.size, 6, 6]} />
+          <meshStandardMaterial color="#4a4a3a" roughness={0.9} />
+        </mesh>
+      ))}
     </group>
   );
 }
 
 function SoilElements() {
+  const rocks = useMemo(() =>
+    Array.from({ length: 12 }, () => ({
+      x: (Math.random() - 0.5) * 1.5, z: (Math.random() - 0.5) * 1.5,
+      rx: Math.random(), ry: Math.random(), size: 0.008 + Math.random() * 0.01,
+    })), []);
+
   return (
     <group>
-      {/* Small rocks/debris */}
-      {Array.from({ length: 12 }, (_, i) => {
-        const x = (Math.random() - 0.5) * 1.5;
-        const z = (Math.random() - 0.5) * 1.5;
-        return (
-          <mesh key={i} position={[x, -0.005, z]} rotation={[Math.random(), Math.random(), 0]}>
-            <dodecahedronGeometry args={[0.008 + Math.random() * 0.01, 0]} />
-            <meshStandardMaterial color="#3a2a1a" roughness={0.95} />
-          </mesh>
-        );
-      })}
+      {rocks.map((r, i) => (
+        <mesh key={i} position={[r.x, -0.005, r.z]} rotation={[r.rx, r.ry, 0]}>
+          <dodecahedronGeometry args={[r.size, 0]} />
+          <meshStandardMaterial color="#3a2a1a" roughness={0.95} />
+        </mesh>
+      ))}
     </group>
   );
 }

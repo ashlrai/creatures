@@ -517,14 +517,14 @@ class VectorizedEngine:
         pre_fired = self.fired[self.syn_pre].astype(fdtype)
         post_fired = self.fired[self.syn_post].astype(fdtype)
 
-        # Update traces on spike: pre-synaptic spike → increment apre
-        self.apre = self.apre + pre_fired * self.stdp_a_plus
-        self.apost = self.apost + post_fired * self.stdp_a_minus
+        # Update traces on spike
+        self.apre = self.apre + pre_fired * self.stdp_a_plus    # positive trace
+        self.apost = self.apost + post_fired * self.stdp_a_minus  # positive trace
 
-        # Weight updates:
-        # Pre spike → LTD (add apost, which is negative)
-        # Post spike → LTP (add apre, which is positive)
-        dw = pre_fired * self.apost + post_fired * self.apre
+        # Weight updates (canonical STDP):
+        # Post spike → LTP: post fires after pre → strengthen (add apre)
+        # Pre spike → LTD: pre fires after post → weaken (subtract apost)
+        dw = post_fired * self.apre - pre_fired * self.apost
         self.syn_w = self.syn_w + dw
 
         # Clip weights
