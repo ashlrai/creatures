@@ -45,6 +45,13 @@ class Genome:
     weights: np.ndarray  # float64 (n_synapses,) — THE EVOLVABLE PART
     synapse_types: np.ndarray  # int8 (n_synapses,) 0=chemical, 1=electrical
 
+    # Per-neuron Izhikevich parameters (evolvable when using Izhikevich model)
+    # If None, defaults from IZHIKEVICH_PRESETS are used.
+    iz_a: np.ndarray | None = None  # float64 (n_neurons,)
+    iz_b: np.ndarray | None = None
+    iz_c: np.ndarray | None = None
+    iz_d: np.ndarray | None = None
+
     # Template origin
     template_name: str = ""
 
@@ -81,6 +88,33 @@ class Genome:
                 weight_list.append(s.weight * pre_neuron.sign)
                 type_list.append(0 if s.synapse_type == SynapseType.CHEMICAL else 1)
 
+        n = len(neuron_ids)
+
+        # Initialize Izhikevich params from neuron types
+        # Map neurotransmitter / type to Izhikevich preset
+        iz_a = np.full(n, 0.02, dtype=np.float64)
+        iz_b = np.full(n, 0.2, dtype=np.float64)
+        iz_c = np.full(n, -65.0, dtype=np.float64)
+        iz_d = np.full(n, 8.0, dtype=np.float64)
+
+        for i, nid in enumerate(neuron_ids):
+            neuron = connectome.neurons.get(nid)
+            if neuron is None:
+                continue
+            nt = (neuron.neurotransmitter or "").lower()
+            # GABAergic → fast spiking interneuron
+            if nt in ("gaba",):
+                iz_a[i], iz_b[i], iz_c[i], iz_d[i] = 0.1, 0.2, -65.0, 2.0
+            # Cholinergic excitatory → regular spiking
+            elif nt in ("acetylcholine", "ach"):
+                iz_a[i], iz_b[i], iz_c[i], iz_d[i] = 0.02, 0.2, -65.0, 8.0
+            # Glutamatergic → intrinsically bursting
+            elif nt in ("glutamate",):
+                iz_a[i], iz_b[i], iz_c[i], iz_d[i] = 0.02, 0.2, -55.0, 4.0
+            # Dopaminergic / serotonergic → thalamo-cortical (modulatory)
+            elif nt in ("dopamine", "serotonin"):
+                iz_a[i], iz_b[i], iz_c[i], iz_d[i] = 0.02, 0.25, -65.0, 0.05
+
         return cls(
             id=str(uuid.uuid4())[:8],
             parent_ids=(),
@@ -92,6 +126,10 @@ class Genome:
             post_indices=np.array(post_list, dtype=np.int32),
             weights=np.array(weight_list, dtype=np.float64),
             synapse_types=np.array(type_list, dtype=np.int8),
+            iz_a=iz_a,
+            iz_b=iz_b,
+            iz_c=iz_c,
+            iz_d=iz_d,
             template_name=connectome.name,
         )
 
@@ -127,7 +165,7 @@ class Genome:
         boundaries.  We convert numpy arrays to lists so the dict is safe
         for ``multiprocessing.Pool.map``.
         """
-        return {
+        d = {
             "id": self.id,
             "parent_ids": self.parent_ids,
             "generation": self.generation,
@@ -142,6 +180,12 @@ class Genome:
             "fitness": self.fitness,
             "metadata": self.metadata,
         }
+        if self.iz_a is not None:
+            d["iz_a"] = self.iz_a.tolist()
+            d["iz_b"] = self.iz_b.tolist()
+            d["iz_c"] = self.iz_c.tolist()
+            d["iz_d"] = self.iz_d.tolist()
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> Genome:
@@ -150,7 +194,7 @@ class Genome:
         Converts lists back to numpy arrays and enum values back to
         ``NeuronType`` instances.
         """
-        return cls(
+        g = cls(
             id=d["id"],
             parent_ids=tuple(d["parent_ids"]),
             generation=d["generation"],
@@ -165,6 +209,12 @@ class Genome:
             fitness=d.get("fitness", 0.0),
             metadata=d.get("metadata", {}),
         )
+        if "iz_a" in d:
+            g.iz_a = np.array(d["iz_a"], dtype=np.float64)
+            g.iz_b = np.array(d["iz_b"], dtype=np.float64)
+            g.iz_c = np.array(d["iz_c"], dtype=np.float64)
+            g.iz_d = np.array(d["iz_d"], dtype=np.float64)
+        return g
 
     def clone(self) -> Genome:
         """Deep copy with new ID."""
@@ -179,6 +229,10 @@ class Genome:
             post_indices=self.post_indices.copy(),
             weights=self.weights.copy(),
             synapse_types=self.synapse_types.copy(),
+            iz_a=self.iz_a.copy() if self.iz_a is not None else None,
+            iz_b=self.iz_b.copy() if self.iz_b is not None else None,
+            iz_c=self.iz_c.copy() if self.iz_c is not None else None,
+            iz_d=self.iz_d.copy() if self.iz_d is not None else None,
             template_name=self.template_name,
             fitness=0.0,
         )

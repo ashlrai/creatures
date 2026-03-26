@@ -28,6 +28,11 @@ class MutationConfig:
     add_neuron_rate: float = 0.01
     remove_neuron_rate: float = 0.005
 
+    # Izhikevich per-neuron parameter mutations
+    iz_perturb_rate: float = 0.05       # fraction of neurons to perturb per generation
+    iz_perturb_sigma: float = 0.002     # small perturbation to (a,b), larger to (c,d)
+    iz_cd_perturb_sigma: float = 1.0    # c,d have larger natural range
+
     # Constraints
     max_neurons: int = 500
     max_synapses: int = 10000
@@ -159,6 +164,42 @@ def remove_neuron(genome: Genome, config: MutationConfig, rng: np.random.Generat
     return True
 
 
+def mutate_izhikevich(genome: Genome, config: MutationConfig, rng: np.random.Generator) -> None:
+    """Perturb per-neuron Izhikevich (a,b,c,d) parameters.
+
+    Small perturbations allow evolution to discover novel firing patterns
+    beyond the standard presets. Parameters are biologically constrained:
+      a ∈ [0.001, 0.3]   — recovery time constant
+      b ∈ [0.01, 0.5]    — recovery sensitivity
+      c ∈ [-80, -30]      — reset voltage (mV)
+      d ∈ [0.01, 20]      — reset recovery boost
+    """
+    if genome.iz_a is None:
+        return
+
+    n = genome.n_neurons
+    mask = rng.random(n) < config.iz_perturb_rate
+
+    if not np.any(mask):
+        return
+
+    n_perturb = int(np.sum(mask))
+
+    # Perturb a, b (small scale)
+    genome.iz_a[mask] += rng.normal(0, config.iz_perturb_sigma, n_perturb)
+    genome.iz_b[mask] += rng.normal(0, config.iz_perturb_sigma, n_perturb)
+
+    # Perturb c, d (larger scale)
+    genome.iz_c[mask] += rng.normal(0, config.iz_cd_perturb_sigma, n_perturb)
+    genome.iz_d[mask] += rng.normal(0, config.iz_cd_perturb_sigma, n_perturb)
+
+    # Clamp to biological range
+    np.clip(genome.iz_a, 0.001, 0.3, out=genome.iz_a)
+    np.clip(genome.iz_b, 0.01, 0.5, out=genome.iz_b)
+    np.clip(genome.iz_c, -80.0, -30.0, out=genome.iz_c)
+    np.clip(genome.iz_d, 0.01, 20.0, out=genome.iz_d)
+
+
 def mutate(genome: Genome, config: MutationConfig, rng: np.random.Generator) -> Genome:
     """Apply all mutation operators to a genome clone."""
     child = genome.clone()
@@ -166,6 +207,9 @@ def mutate(genome: Genome, config: MutationConfig, rng: np.random.Generator) -> 
 
     # Weight mutations (almost always)
     mutate_weights(child, config, rng)
+
+    # Izhikevich parameter mutations (if present)
+    mutate_izhikevich(child, config, rng)
 
     # Topology mutations (rare)
     if rng.random() < config.add_synapse_rate:

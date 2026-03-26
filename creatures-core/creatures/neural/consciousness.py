@@ -519,9 +519,14 @@ def compute_pci(
 
     n_time, n_neurons = mat.shape
 
-    # Binarize
+    # Binarize — use the matrix values directly if already binary (0/1),
+    # otherwise threshold at the median of nonzero values
     if threshold is None:
-        threshold = max(0.5, np.mean(mat) + np.std(mat))
+        nonzero = mat[mat > 0]
+        if len(nonzero) > 0:
+            threshold = np.median(nonzero) * 0.5
+        else:
+            threshold = 0.5
     binary = (mat >= threshold).astype(np.uint8)
 
     # Flatten spatiotemporal matrix to 1D bit string (column-major for spatial spread)
@@ -557,41 +562,36 @@ def compute_pci(
 
 
 def _lempel_ziv_complexity(s: np.ndarray) -> int:
-    """Compute Lempel-Ziv complexity of a binary sequence.
+    """Compute Lempel-Ziv complexity of a binary sequence (LZ76).
 
-    Counts the number of distinct substrings encountered when parsing
-    the sequence left to right (LZ76 algorithm).
+    Uses set-based substring lookup for O(n log n) average performance
+    instead of O(n²k) brute-force scanning.
     """
     n = len(s)
     if n == 0:
         return 0
 
-    complexity = 1
+    # Convert to bytes for fast substring matching
+    s_bytes = bytes(s.astype(np.uint8))
+    seen: set[bytes] = set()
+    complexity = 0
     i = 0
-    k = 1
-    l = 1
 
-    while i + k <= n:
-        # Check if s[i:i+k] is a substring of s[0:i+l-1]
-        substring = s[i:i + k]
-        prefix = s[:i + l - 1]
-
-        found = False
-        for j in range(len(prefix) - k + 1):
-            if np.array_equal(prefix[j:j + k], substring):
-                found = True
-                break
-
-        if found:
-            k += 1
-            if i + k > n:
+    while i < n:
+        # Find the shortest substring starting at i not yet seen
+        k = 1
+        while i + k <= n:
+            substr = s_bytes[i:i + k]
+            if substr not in seen:
+                seen.add(substr)
                 complexity += 1
+                i += k
                 break
+            k += 1
         else:
+            # Reached end of string
             complexity += 1
-            i += k
-            k = 1
-            l = 1
+            break
 
     return complexity
 

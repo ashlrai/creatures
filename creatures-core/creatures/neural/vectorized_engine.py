@@ -105,6 +105,24 @@ class VectorizedEngine:
         self.syn_post: Any = None
         self.syn_w: Any = None
 
+        # Spike history recording (rolling buffer)
+        self._spike_indices: list[int] = []
+        self._spike_times_ms: list[float] = []
+        self._spike_buffer_max: int = 500_000  # max spikes to keep
+        self._time_ms: float = 0.0
+        self._record_spikes: bool = True
+
+        # STDP state (None = disabled)
+        self.enable_stdp: bool = False
+        self.apre: Any = None   # pre-synaptic trace, shape (n_synapses,)
+        self.apost: Any = None  # post-synaptic trace, shape (n_synapses,)
+        self.stdp_tau_pre: float = 20.0   # ms
+        self.stdp_tau_post: float = 20.0  # ms
+        self.stdp_a_plus: float = 0.01
+        self.stdp_a_minus: float = 0.012
+        self.stdp_w_min: float = -10.0
+        self.stdp_w_max: float = 10.0
+
         # LIF parameters (defaults from NeuralConfig in base.py)
         self.v_rest: float = -52.0
         self.v_thresh: float = -45.0
@@ -175,9 +193,9 @@ class VectorizedEngine:
         if self._backend == "mlx":
             return out.at[indices].add(values)
         else:
-            result = out.copy()
-            self.xp.add.at(result, indices, values)
-            return result
+            # np.add.at modifies in-place — no copy needed
+            self.xp.add.at(out, indices, values)
+            return out
 
     def _make_rng(self, seed: int) -> Any:
         """Create a random number generator."""
@@ -221,7 +239,7 @@ class VectorizedEngine:
     def _to_numpy(self, arr: Any) -> np.ndarray:
         """Convert any backend array to numpy."""
         if self._backend == "mlx":
-            return np.array(arr.tolist())
+            return np.asarray(arr, copy=False)
         if self._backend == "cupy":
             return arr.get()
         return arr
@@ -364,10 +382,14 @@ class VectorizedEngine:
     def step(self) -> dict[str, Any]:
         """Advance ALL organisms by one timestep."""
         if self._neuron_model == NeuronModel.IZHIKEVICH:
-            return self._step_izhikevich()
-        return self._step_lif()
+            self._step_izhikevich()
+        else:
+            self._step_lif()
 
-    def _step_lif(self) -> dict[str, Any]:
+        # Post-step: STDP, spike recording, stats
+        return self._post_step()
+
+    def _step_lif(self) -> None:
         """LIF neuron model step."""
         xp = self.xp
         fdtype = self._float_dtype
@@ -391,18 +413,7 @@ class VectorizedEngine:
         instant = self.fired.astype(fdtype) / (self.dt / 1000.0)
         self.firing_rate = (1.0 - alpha) * self.firing_rate + alpha * instant
 
-        # 5. Force evaluation (MLX lazy eval)
-        self._eval(self.v, self.fired, self.firing_rate)
-
-        # 6. Summary
-        fired_count = int(xp.sum(self.fired).item() if self._backend == "mlx" else xp.sum(self.fired))
-
-        return {
-            "total_fired": fired_count,
-            "fire_rate_percent": fired_count / max(self.n_total, 1) * 100,
-        }
-
-    def _step_izhikevich(self) -> dict[str, Any]:
+    def _step_izhikevich(self) -> None:
         """Izhikevich neuron model step.
 
         Equations (Izhikevich 2003):
@@ -439,16 +450,100 @@ class VectorizedEngine:
         instant = self.fired.astype(fdtype) / (self.dt / 1000.0)
         self.firing_rate = (1.0 - alpha) * self.firing_rate + alpha * instant
 
-        # 5. Force evaluation
+    def _post_step(self) -> dict[str, Any]:
+        """Post-step processing: STDP, spike recording, statistics."""
+        xp = self.xp
+
+        # Force evaluation before reading results (MLX lazy eval)
         self._eval(self.v, self.u, self.fired, self.firing_rate)
 
-        # 6. Summary
-        fired_count = int(xp.sum(self.fired).item() if self._backend == "mlx" else xp.sum(self.fired))
+        # STDP weight update
+        if self.enable_stdp and self.apre is not None:
+            self._step_stdp()
+
+        # Record spikes
+        fired_count = int(xp.sum(self.fired).item() if self._backend == "mlx"
+                          else xp.sum(self.fired))
+
+        if self._record_spikes and fired_count > 0:
+            fired_np = self._to_numpy(self.fired)
+            spike_neurons = np.where(fired_np)[0]
+            self._spike_indices.extend(spike_neurons.tolist())
+            self._spike_times_ms.extend([self._time_ms] * len(spike_neurons))
+
+            # Trim rolling buffer
+            if len(self._spike_indices) > self._spike_buffer_max:
+                excess = len(self._spike_indices) - self._spike_buffer_max
+                self._spike_indices = self._spike_indices[excess:]
+                self._spike_times_ms = self._spike_times_ms[excess:]
+
+        self._time_ms += self.dt
 
         return {
             "total_fired": fired_count,
             "fire_rate_percent": fired_count / max(self.n_total, 1) * 100,
         }
+
+    # ------------------------------------------------------------------
+    # STDP (Spike-Timing-Dependent Plasticity)
+    # ------------------------------------------------------------------
+
+    def init_stdp(self) -> None:
+        """Initialize STDP trace arrays. Call after build()."""
+        xp = self.xp
+        fdtype = self._float_dtype
+        self.enable_stdp = True
+        self.apre = xp.zeros(self.n_synapses, dtype=fdtype)
+        self.apost = xp.zeros(self.n_synapses, dtype=fdtype)
+        self._eval(self.apre, self.apost)
+        logger.info("STDP enabled: %d synapses with online learning", self.n_synapses)
+
+    def _step_stdp(self) -> None:
+        """Update synaptic weights via STDP.
+
+        Pre-before-post → potentiation (strengthen)
+        Post-before-pre → depression (weaken)
+        """
+        xp = self.xp
+        fdtype = self._float_dtype
+
+        # Decay traces
+        decay_pre = 1.0 - self.dt / self.stdp_tau_pre
+        decay_post = 1.0 - self.dt / self.stdp_tau_post
+        self.apre = self.apre * decay_pre
+        self.apost = self.apost * decay_post
+
+        # Get pre/post firing states for each synapse
+        pre_fired = self.fired[self.syn_pre].astype(fdtype)
+        post_fired = self.fired[self.syn_post].astype(fdtype)
+
+        # Update traces on spike: pre-synaptic spike → increment apre
+        self.apre = self.apre + pre_fired * self.stdp_a_plus
+        self.apost = self.apost + post_fired * self.stdp_a_minus
+
+        # Weight updates:
+        # Pre spike → LTD (add apost, which is negative)
+        # Post spike → LTP (add apre, which is positive)
+        dw = pre_fired * self.apost + post_fired * self.apre
+        self.syn_w = self.syn_w + dw
+
+        # Clip weights
+        self.syn_w = xp.clip(self.syn_w, self.stdp_w_min, self.stdp_w_max)
+
+        self._eval(self.apre, self.apost, self.syn_w)
+
+    # ------------------------------------------------------------------
+    # Spike history
+    # ------------------------------------------------------------------
+
+    def get_spike_history(self) -> tuple[list[int], list[float]]:
+        """Return recorded spike indices and times (ms)."""
+        return (self._spike_indices, self._spike_times_ms)
+
+    def clear_spike_history(self) -> None:
+        """Clear the spike recording buffer."""
+        self._spike_indices = []
+        self._spike_times_ms = []
 
     # ------------------------------------------------------------------
     # Per-organism queries
@@ -470,7 +565,9 @@ class VectorizedEngine:
         """Set external input current for one neuron in one organism."""
         idx = organism_idx * self.n_per + neuron_idx
         if self._backend == "mlx":
-            self.I_ext = self.I_ext.at[idx].add(current - self.I_ext[idx].item())
+            # MLX has no .set(); subtract old value then add new
+            old_val = float(self.I_ext[idx].item())
+            self.I_ext = self.I_ext.at[idx].add(current - old_val)
         else:
             self.I_ext[idx] = current
 
@@ -488,12 +585,10 @@ class VectorizedEngine:
         flat = flat[valid]
 
         if self._backend == "mlx":
-            xp = self.xp
-            idx = xp.array(flat.astype(np.int32))
-            vals = xp.full((len(flat),), current, dtype=self._float_dtype)
-            # Zero out then add
-            self.I_ext = xp.zeros(self.n_total, dtype=self._float_dtype).at[idx].add(vals)
-            self._eval(self.I_ext)
+            # Build I_ext in numpy, convert once (MLX lacks .set())
+            I_np = self._to_numpy(self.I_ext).copy()
+            I_np[flat] = current
+            self.I_ext = self.xp.array(I_np)
         else:
             self.I_ext[flat] = current
 
