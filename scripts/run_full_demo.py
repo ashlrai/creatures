@@ -231,6 +231,29 @@ def demo_massive_ecosystem():
     print(f"  Alive:      {state['n_alive']:,}")
 
 
+def demo_neural_development():
+    """Demo 6: Grow a brain from progenitor cells."""
+    banner("DEMO 6: NEURAL DEVELOPMENT (Grow a Brain)")
+
+    from creatures.development.engine import DevelopmentEngine, DevelopmentConfig
+
+    config = DevelopmentConfig(target_neurons=200, initial_progenitors=8)
+    dev = DevelopmentEngine(config)
+
+    t0 = time.perf_counter()
+    dev.run(n_steps=600, verbose=False)
+    elapsed = time.perf_counter() - t0
+
+    state = dev.get_state()
+    connectome = dev.to_connectome()
+
+    print(f"  Started:    8 progenitor cells")
+    print(f"  Grew to:    {state['n_neurons']} neurons, {state['n_synapses']} synapses")
+    print(f"  Stable:     {state['n_stable_synapses']} ({state['n_stable_synapses']*100//max(state['n_synapses'],1)}%)")
+    print(f"  Time:       {elapsed:.1f}s")
+    print(f"  Connectome: {connectome.n_neurons} neurons, {len(connectome.synapses)} synapses")
+
+
 def main():
     print("\n" + "=" * 70)
     print("  NEUREVO PLATFORM DEMONSTRATION")
@@ -243,6 +266,7 @@ def main():
         ("Learning Ecosystem", demo_learning_ecosystem),
         ("Consciousness Evolution", demo_consciousness_evolution),
         ("Massive Ecosystem", demo_massive_ecosystem),
+        ("Neural Development", demo_neural_development),
     ]
 
     total_t0 = time.perf_counter()
