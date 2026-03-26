@@ -13,7 +13,7 @@ from creatures.neural.brian2_engine import Brian2Engine
 from creatures.neural.base import MonitorConfig, NeuralConfig
 
 _FLY_DATA = Path(__file__).resolve().parents[2] / "data" / "flywire" / "proofread_connections_783.feather"
-pytestmark = pytest.mark.skipif(not _FLY_DATA.exists(), reason="FlyWire data files not available")
+pytestmark = pytest.mark.skipif(not _FLY_DATA.exists(), reason="FlyWire data not available")
 
 
 class TestFlyWireLoader:

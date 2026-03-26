@@ -7,16 +7,18 @@ Use ``pytest --runslow`` to include tests marked ``@pytest.mark.slow``.
 """
 
 import os
+from pathlib import Path
 
 import pytest
 
-from creatures.connectome.openworm import load_from_edge_list
 from creatures.connectome.types import Connectome
 
 
-# Force numpy codegen for all tests — avoids Cython compilation overhead
-# which dominates test runtime. Production code can still use "auto" or "cython".
+# Force numpy codegen for all tests
 os.environ.setdefault("BRIAN2_CODEGEN_TARGET", "numpy")
+
+_DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "openworm"
+_HAS_DATA = (_DATA_DIR / "CElegansNeuronTables.xls").exists()
 
 
 def pytest_addoption(parser):
@@ -34,6 +36,9 @@ def pytest_collection_modifyitems(config, items):
 @pytest.fixture(scope="session")
 def connectome() -> Connectome:
     """Load the C. elegans connectome once for the entire test session."""
+    if not _HAS_DATA:
+        pytest.skip("Connectome data files not available (CElegansNeuronTables.xls)")
+    from creatures.connectome.openworm import load_from_edge_list
     return load_from_edge_list()
 
 
