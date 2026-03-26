@@ -2,8 +2,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/Tests-255%20passing-brightgreen.svg)](https://github.com/ashlrai/creatures/actions)
-[![Endpoints](https://img.shields.io/badge/API-70%20endpoints-orange.svg)](https://neurevo.dev)
+[![Tests](https://img.shields.io/badge/Tests-291%20passing-brightgreen.svg)](https://github.com/ashlrai/creatures/actions)
+[![Endpoints](https://img.shields.io/badge/API-122%2B%20endpoints-orange.svg)](https://neurevo.dev)
 [![Brian2](https://img.shields.io/badge/Brian2-SNN-blueviolet.svg)](https://brian2.readthedocs.io/)
 [![MuJoCo](https://img.shields.io/badge/MuJoCo-Physics-red.svg)](https://mujoco.org/)
 
@@ -26,7 +26,14 @@ make dev          # API on :8420, frontend on :5173
 Open [http://localhost:5173](http://localhost:5173) to see the live simulation.
 
 ```bash
-make test         # 255 tests across core, API, and frontend
+make test         # 291 tests across core, API, and frontend
+```
+
+## Pre-demo Health Check
+
+```bash
+python scripts/preflight.py                          # Check Railway production
+python scripts/preflight.py --url http://localhost:8420  # Check local
 ```
 
 ---
@@ -55,7 +62,7 @@ Populate an arena with multiple organisms. Predator/prey dynamics, food webs, re
                          |    (Frontend)     |   3D bodies, spike particles,
                          +---------+---------+   neuron tooltips, dashboards
                                    |
-                              WS / REST  (70 endpoints)
+                              WS / REST  (122+ endpoints)
                                    |
                          +---------+---------+
                          |   creatures-api   |   FastAPI + WebSocket
@@ -66,7 +73,7 @@ Populate an arena with multiple organisms. Predator/prey dynamics, food webs, re
                 |                  |                  |
        +--------+-------+ +-------+--------+ +-------+--------+
        |  Neural Engine  | |  Physics Body  | |   Ecosystem    |
-       |  (Brian2 SNN)   | |   (MuJoCo)     | |  (Multi-org)   |
+       | Brian2 / MLX GPU| |   (MuJoCo)     | |  (Multi-org)   |
        +--------+--------+ +-------+--------+ +-------+--------+
                 |                  |                  |
        +--------+--------+ +------+--------+  +------+--------+
@@ -95,9 +102,9 @@ creatures/
 │       ├── analysis/           # Circuit analysis, community detection, motifs
 │       ├── reporting/          # PDF/HTML scientific reports
 │       └── ml/                 # ML-accelerated optimization
-├── creatures-api/              # FastAPI server (70 endpoints)
+├── creatures-api/              # FastAPI server (122+ endpoints)
 │   └── app/
-│       ├── routers/            # REST + WebSocket (12 router modules)
+│       ├── routers/            # REST + WebSocket (14 router modules)
 │       └── services/           # Simulation & evolution managers
 ├── creatures-web/              # React + Three.js + TypeScript frontend
 │   └── src/
@@ -110,9 +117,26 @@ creatures/
 
 ---
 
+## Consciousness Metrics
+
+Neurevo computes four complementary consciousness metrics in real time, inspired by Integrated Information Theory and Global Workspace Theory:
+
+- **Integrated Information (IIT phi)** -- measures irreducible cause-effect structure across neural partitions
+- **Neural Complexity (CN)** -- quantifies the balance between integration and segregation in spike trains
+- **Perturbational Complexity Index (PCI)** -- compresses the spatiotemporal response to a virtual perturbation
+- **Global Workspace Ignition** -- detects broadcast events where localized activity rapidly becomes network-wide
+
+**Adaptive neuron sampling** scales with network size: small connectomes (C. elegans) are analyzed exhaustively, while larger networks (Drosophila) use stratified sampling to keep computation under budget.
+
+Metrics are computed both **server-side** (full-fidelity, Brian2 spike data) and **client-side** (lightweight JavaScript fallback when the backend is unavailable). The system degrades gracefully -- if the server is unreachable, the frontend synthesizes plausible values from local simulation state.
+
+**Consciousness-driven evolution:** fitness evaluation includes a consciousness component (`w_consciousness=0.3` by default) so that organisms with richer integrated information are preferentially selected during NEAT evolution.
+
+---
+
 ## API Reference
 
-70 endpoints across REST and WebSocket. Key routes:
+122+ endpoints across REST and WebSocket. See [API.md](API.md) for the complete reference. Key routes:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -221,17 +245,18 @@ Simulation validated against published C. elegans behavioral data:
 
 | Layer | Technology |
 |-------|------------|
-| Neural simulation | [Brian2](https://brian2.readthedocs.io/) with Cython backend (4x speedup) |
+| Neural simulation | [Brian2](https://brian2.readthedocs.io/) with Cython backend (4x speedup), [MLX](https://ml-explore.github.io/mlx/) GPU (Apple Silicon, 19x faster) |
 | Physics engine | [MuJoCo](https://mujoco.org/) -- WormBody + NeuroMechFly |
 | Neuroevolution | NEAT with organism-agnostic fitness functions |
-| Backend | [FastAPI](https://fastapi.tiangolo.com/) + WebSocket (70 endpoints) |
+| Backend | [FastAPI](https://fastapi.tiangolo.com/) + WebSocket (122+ endpoints) |
 | Frontend | [React 18](https://react.dev/) + [Three.js](https://threejs.org/) + TypeScript |
 | State management | [Zustand](https://zustand-demo.pmnd.rs/) |
 | AI God Agent | [xAI Grok](https://x.ai/) -- evolution oversight + rich narratives |
 | Connectome data | [OpenWorm](https://openworm.org/) (C. elegans), [FlyWire](https://flywire.ai/) v783 (Drosophila) |
 | Gene expression | [CeNGEN](https://cengen.org/) single-cell RNA-seq (101 neuron classes) |
+| Consciousness | IIT phi, CN, PCI, GW Ignition -- adaptive sampling |
 | Build tooling | Vite, Cython, Make |
-| Testing | pytest (Python), Vitest (TypeScript) |
+| Testing | pytest (291 passing) |
 
 ---
 
