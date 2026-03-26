@@ -30,11 +30,11 @@ function SmoothCamera() {
       // Snap camera to organism with consistent framing angle
       targetRef.current.copy(desired);
       controlsRef.current.target.copy(desired);
-      // Position camera directly in front and slightly above the organism
+      // Position camera close, slightly above and in front
       camera.position.set(
-        desired.x,
-        desired.y + 0.1,
-        desired.z + 0.3,
+        desired.x + 0.05,
+        desired.y + 0.05,
+        desired.z + 0.15,
       );
       hasSnapped.current = true;
     } else {
@@ -83,7 +83,7 @@ export function Scene({ worldType }: SceneProps) {
   return (
     <Canvas
       shadows
-      camera={{ position: [0.45, 0.035, 0.2], fov: 50, near: 0.005, far: 15 }}
+      camera={{ position: [0.5, 0.04, 0.15], fov: 55, near: 0.005, far: 15 }}
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
       dpr={[1, 1.5]}
       flat={false}

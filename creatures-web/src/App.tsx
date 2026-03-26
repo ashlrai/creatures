@@ -245,18 +245,31 @@ export default function App() {
     : { lesion: 'AVAL', stim: 'PLML' };
   const organismLabel = isFly ? 'fly' : 'worm';
 
-  // Auto-start demo on page load — no welcome screen, immediate wow factor
+  // Auto-start: try live backend first, fall back to demo
   useEffect(() => {
     if (autoStarted.current) return;
     autoStarted.current = true;
-    startDemo(savedOrganism).then(() => {
-      const store = useSimulationStore.getState();
-      store.setPoke(savedOrganism === 'drosophila' ? 'Thorax' : 'seg_8');
-      // Auto-select a prominent neuron so the oscilloscope shows data immediately
-      store.setSelectedNeuron(savedOrganism === 'drosophila' ? 'N0' : 'AVAL');
+
+    const initSimulation = async () => {
+      try {
+        // Try to create a real experiment on the backend
+        const exp = await createExperiment(savedOrganism);
+        connect(exp.id);
+        const store = useSimulationStore.getState();
+        store.setPoke(savedOrganism === 'drosophila' ? 'Thorax' : 'seg_8');
+        store.setSelectedNeuron(savedOrganism === 'drosophila' ? 'N0' : 'AVAL');
+      } catch {
+        // Backend unavailable — fall back to demo mode
+        await startDemo(savedOrganism);
+        const store = useSimulationStore.getState();
+        store.setPoke(savedOrganism === 'drosophila' ? 'Thorax' : 'seg_8');
+        store.setSelectedNeuron(savedOrganism === 'drosophila' ? 'N0' : 'AVAL');
+      }
       setShowHint(true);
-    });
-  }, [startDemo]);
+    };
+
+    initSimulation();
+  }, [createExperiment, connect, startDemo]);
 
   // Auto-poke periodically in demo mode to keep the organism visually active
   useEffect(() => {
