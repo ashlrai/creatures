@@ -30,11 +30,11 @@ function SmoothCamera() {
       // Snap camera to organism with consistent framing angle
       targetRef.current.copy(desired);
       controlsRef.current.target.copy(desired);
-      // Position camera close, slightly above and in front
+      // Frame organism: small Y offset (1.5x organism height), moderate Z distance
       camera.position.set(
-        desired.x + 0.05,
-        desired.y + 0.05,
-        desired.z + 0.15,
+        desired.x,
+        desired.y + 0.025,
+        desired.z + 0.2,
       );
       hasSnapped.current = true;
     } else {
@@ -46,7 +46,7 @@ function SmoothCamera() {
   return (
     <OrbitControls
       ref={controlsRef}
-      target={[0.45, 0.015, 0]}
+      target={[0.45, 0.04, 0]}
       minDistance={0.08}
       maxDistance={1.5}
       enableDamping
@@ -83,7 +83,7 @@ export function Scene({ worldType }: SceneProps) {
   return (
     <Canvas
       shadows
-      camera={{ position: [0.5, 0.04, 0.15], fov: 55, near: 0.005, far: 15 }}
+      camera={{ position: [0.45, 0.06, 0.15], fov: 55, near: 0.005, far: 15 }}
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
       dpr={[1, 1.5]}
       flat={false}
