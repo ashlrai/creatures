@@ -2,6 +2,7 @@
 FROM node:20-alpine AS frontend
 WORKDIR /app/creatures-web
 COPY creatures-web/package*.json ./
+COPY .npmrc ./
 RUN npm install
 COPY creatures-web/ ./
 RUN npm run build
