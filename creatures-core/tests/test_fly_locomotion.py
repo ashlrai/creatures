@@ -12,6 +12,14 @@ import math
 import numpy as np
 import pytest
 
+try:
+    import flygym
+    _HAS_FLYGYM = True
+except ImportError:
+    _HAS_FLYGYM = False
+
+pytestmark = pytest.mark.skipif(not _HAS_FLYGYM, reason="flygym/MuJoCo not available")
+
 from creatures.body.base import BodyConfig
 from creatures.body.fly_body import FlyBody
 from creatures.body.fly_neuron_map import apply_tripod_gait

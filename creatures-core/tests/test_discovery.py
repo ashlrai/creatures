@@ -14,7 +14,12 @@ import pytest
 # Force numpy codegen (redundant with conftest but explicit for clarity)
 os.environ.setdefault("BRIAN2_CODEGEN_TARGET", "numpy")
 
+from pathlib import Path
+
 from creatures.discovery.engine import Discovery, DiscoveryEngine, Hypothesis
+
+_DATA = Path(__file__).resolve().parents[2] / "data" / "openworm" / "CElegansNeuronTables.xls"
+pytestmark = pytest.mark.skipif(not _DATA.exists(), reason="Connectome data not available")
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────
