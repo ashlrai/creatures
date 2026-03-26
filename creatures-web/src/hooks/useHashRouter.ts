@@ -1,13 +1,20 @@
 import { useEffect, useRef } from 'react';
+import {
+  isShareStateRoute,
+  extractSharePayload,
+  decodeState,
+  type ShareableState,
+} from '../utils/shareableState';
 
 /**
  * Hash-based routing for shareable URLs.
  *
  * Patterns:
- *   #/app/sim/c_elegans      — simulation mode, C. elegans
- *   #/app/sim/drosophila     — simulation mode, fruit fly
- *   #/app/evo                — evolution mode
- *   #/app/evo/compare        — evolution mode + connectome comparison
+ *   #/app/sim/c_elegans        — simulation mode, C. elegans
+ *   #/app/sim/drosophila       — simulation mode, fruit fly
+ *   #/app/evo                  — evolution mode
+ *   #/app/evo/compare          — evolution mode + connectome comparison
+ *   #/app/share/{encoded}      — shareable experiment state
  *
  * The root hash (#/ or empty) is reserved for the marketing homepage.
  */
@@ -21,6 +28,9 @@ export interface HashState {
 function parseHash(hash: string): HashState | null {
   const path = hash.replace(/^#\/?/, '');
   if (!path) return null;
+
+  // Share state routes are handled separately via onShareState callback
+  if (isShareStateRoute(hash)) return null;
 
   // Strip /app prefix if present
   const stripped = path.startsWith('app/') ? path.slice(4) : path;
@@ -47,12 +57,27 @@ function buildHash(state: HashState): string {
 export function useHashRouter(
   currentState: HashState,
   onHashChange: (state: HashState) => void,
+  onShareState?: (state: ShareableState) => void,
 ) {
   const suppressRef = useRef(0);
 
   // On mount: read hash and push state to app
   useEffect(() => {
-    const initial = parseHash(window.location.hash);
+    const hash = window.location.hash;
+
+    // Check for shareable state route first
+    if (isShareStateRoute(hash) && onShareState) {
+      const payload = extractSharePayload(hash);
+      if (payload) {
+        const decoded = decodeState(payload);
+        if (decoded) {
+          onShareState(decoded);
+          return;
+        }
+      }
+    }
+
+    const initial = parseHash(hash);
     if (initial) {
       onHashChange(initial);
     }
@@ -62,6 +87,9 @@ export function useHashRouter(
 
   // When app state changes, update the hash (suppress the resulting hashchange)
   useEffect(() => {
+    // Don't overwrite a share state URL while it's being applied
+    if (isShareStateRoute(window.location.hash)) return;
+
     const newHash = buildHash(currentState);
     if (window.location.hash !== newHash) {
       suppressRef.current += 1;
@@ -76,10 +104,25 @@ export function useHashRouter(
         suppressRef.current -= 1;
         return;
       }
-      const parsed = parseHash(window.location.hash);
+
+      const hash = window.location.hash;
+
+      // Handle share state routes
+      if (isShareStateRoute(hash) && onShareState) {
+        const payload = extractSharePayload(hash);
+        if (payload) {
+          const decoded = decodeState(payload);
+          if (decoded) {
+            onShareState(decoded);
+            return;
+          }
+        }
+      }
+
+      const parsed = parseHash(hash);
       if (parsed) onHashChange(parsed);
     };
     window.addEventListener('hashchange', handler);
     return () => window.removeEventListener('hashchange', handler);
-  }, [onHashChange]);
+  }, [onHashChange, onShareState]);
 }

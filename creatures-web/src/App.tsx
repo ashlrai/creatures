@@ -17,6 +17,9 @@ import { useSimulation } from './hooks/useSimulation';
 import { useDemoMode } from './hooks/useDemoMode';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useHashRouter, type HashState } from './hooks/useHashRouter';
+import { VideoRecorder } from './components/ui/VideoRecorder';
+import { SharePanel } from './components/ui/SharePanel';
+import type { ShareableState } from './utils/shareableState';
 import { NeuronTooltip } from './components/ui/NeuronTooltip';
 import { NeuronDetailPanel } from './components/ui/NeuronDetailPanel';
 import { NeuralMetrics } from './components/ui/NeuralMetrics';
@@ -45,6 +48,7 @@ import { PhasePortrait3D } from './components/ui/PhasePortrait3D';
 import { ExperimentComparison } from './components/ui/ExperimentComparison';
 import { EnvironmentEditor } from './components/ui/EnvironmentEditor';
 import { MotifAnalyzer } from './components/ui/MotifAnalyzer';
+import { NeuralDecoder } from './components/ui/NeuralDecoder';
 import { useSimulationStore } from './stores/simulationStore';
 import { useEvolutionStore } from './stores/evolutionStore';
 import { PanelErrorBoundary } from './components/ErrorBoundary';
@@ -164,7 +168,7 @@ export default function App() {
   const [showConnectomeComparison, setShowConnectomeComparison] = useState(false);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const [shareCopied, setShareCopied] = useState(false);
+  const [showSharePanel, setShowSharePanel] = useState(false);
   const [ecosystemId, setEcosystemId] = useState<string | null>(null);
   const [ecoStats, setEcoStats] = useState<{ c_elegans: number; drosophila: number; food: number } | null>(null);
   const [ecoLoading, setEcoLoading] = useState(false);
@@ -339,6 +343,57 @@ export default function App() {
     }
   }, [handleHashChange, savedOrganism, handleSwitchOrganism]);
 
+  // Handle shareable state URLs: decode and apply experiment configuration
+  const handleShareState = useCallback((shared: ShareableState) => {
+    // Apply organism
+    if (shared.organism && shared.organism !== currentOrganism) {
+      handleSwitchOrganism(shared.organism);
+    }
+    // Apply mode
+    setAppMode(shared.appMode);
+    // Apply research mode
+    if (shared.researchMode !== researchMode) {
+      useUIPreferencesStore.getState().toggleResearchMode();
+    }
+    // Apply circuit modifications
+    if (shared.modifications && shared.modifications.length > 0) {
+      const modStore = useCircuitModificationStore.getState();
+      for (const mod of shared.modifications) {
+        modStore.addModification({
+          type: mod.type as 'lesion' | 'stimulate' | 'silence' | 'record',
+          neuronIds: mod.neuronIds,
+          params: {},
+        });
+        // Also send the actual commands to the backend
+        for (const nid of mod.neuronIds) {
+          if (mod.type === 'lesion') {
+            sendCommand({ type: 'lesion_neuron', neuron_id: nid });
+          } else if (mod.type === 'stimulate') {
+            sendCommand({ type: 'stimulate', neuron_ids: [nid], current: 25 });
+          }
+        }
+      }
+    }
+    // Apply drug state
+    if (shared.drugState?.compound) {
+      sendCommand({
+        type: 'apply_drug',
+        compound: shared.drugState.compound,
+        dose: shared.drugState.dose ?? 1,
+      });
+    }
+    // Apply parameters
+    if (shared.parameters) {
+      for (const [key, value] of Object.entries(shared.parameters)) {
+        sendCommand({ type: 'set_param', key, value });
+      }
+    }
+    // Clear the share hash so normal routing resumes
+    const modeHash = shared.appMode === 'evo' ? '#/app/evo' : `#/app/sim/${shared.organism}`;
+    window.location.hash = modeHash;
+    notify('Shared experiment state applied');
+  }, [currentOrganism, researchMode, handleSwitchOrganism, sendCommand]);
+
   // Listen for eco hash and share routes on popstate/hashchange
   useEffect(() => {
     const handler = () => {
@@ -357,7 +412,7 @@ export default function App() {
     return () => window.removeEventListener('hashchange', handler);
   }, []);
 
-  useHashRouter(hashState, handleHashChangeWithOrganism);
+  useHashRouter(hashState, handleHashChangeWithOrganism, handleShareState);
 
   // --- Massive brain-world step + poll loop ---
   useEffect(() => {
@@ -442,17 +497,26 @@ export default function App() {
     }
   }, []);
 
+  // --- Build current shareable state ---
+  const buildShareableState = useCallback((): ShareableState => {
+    const modStore = useCircuitModificationStore.getState();
+    const modifications = modStore.modifications.map((m) => ({
+      type: m.type,
+      neuronIds: m.neuronIds,
+    }));
+    return {
+      organism: currentOrganism,
+      modifications,
+      parameters: {}, // Parameters are sent directly; we track what's been modified
+      drugState: null, // Drug state is ephemeral; captured if available
+      appMode,
+      researchMode,
+    };
+  }, [currentOrganism, appMode, researchMode]);
+
   // --- Share button handler ---
   const handleShare = useCallback(() => {
-    const url = window.location.href;
-    navigator.clipboard.writeText(url).then(() => {
-      setShareCopied(true);
-      setTimeout(() => setShareCopied(false), 2000);
-    }).catch(() => {
-      // Fallback for browsers that block clipboard API
-      setNotification('Copy this URL to share: ' + url);
-      setTimeout(() => setNotification(null), 4000);
-    });
+    setShowSharePanel(true);
   }, []);
 
   const handleLesion = useCallback((id: string) => {
@@ -644,13 +708,14 @@ export default function App() {
           </button>
           <ConnectionIndicator status={connectionStatus} connected={connected} attempts={reconnectAttempts} />
           {frame && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-label)' }}>{frame.t_ms.toFixed(0)}ms</span>}
+          <VideoRecorder />
           <button
             className="btn btn-ghost"
             style={{ fontSize: 11, padding: '3px 10px', position: 'relative' }}
             onClick={handleShare}
-            title="Copy shareable link"
+            title="Share experiment state"
           >
-            {shareCopied ? 'Link copied!' : 'Share'}
+            Share
           </button>
         </div>
       </header>
@@ -999,6 +1064,9 @@ export default function App() {
                   <PanelErrorBoundary name="Compare Experiments">
                     <ExperimentComparison />
                   </PanelErrorBoundary>
+                  <PanelErrorBoundary name="Neural Decoder">
+                    <NeuralDecoder />
+                  </PanelErrorBoundary>
                 </>
               )}
             </>
@@ -1142,10 +1210,19 @@ export default function App() {
             <div className="shortcuts-row"><kbd>,</kbd> / <kbd>.</kbd><span>Step back / forward</span></div>
             <div className="shortcuts-row"><kbd>[</kbd> / <kbd>]</kbd><span>Speed down / up</span></div>
             <div className="shortcuts-row"><kbd>L</kbd><span>Toggle loop</span></div>
+            <div className="shortcuts-row"><kbd>Ctrl+Shift+R</kbd><span>Record video</span></div>
             <div className="shortcuts-row"><kbd>?</kbd><span>Show / hide shortcuts</span></div>
             <div className="shortcuts-row"><kbd>Esc</kbd><span>Close panels</span></div>
           </div>
         </div>
+      )}
+
+      {/* Share experiment panel */}
+      {showSharePanel && (
+        <SharePanel
+          state={buildShareableState()}
+          onClose={() => setShowSharePanel(false)}
+        />
       )}
 
       {/* Protocol timeline & results — positioned above bottom bar */}
