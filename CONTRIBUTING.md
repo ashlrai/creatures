@@ -20,7 +20,7 @@ make setup    # Creates Python venv, installs dependencies, compiles Cython, run
 3. Run the full test suite to verify everything works:
 
 ```bash
-make test     # 255 tests across creatures-core and creatures-web
+make test     # 291 tests across creatures-core and creatures-web
 ```
 
 ## Development Workflow
@@ -36,7 +36,7 @@ git checkout -b feature/your-feature-name
 3. Run tests and ensure they pass:
 
 ```bash
-# Full Python test suite (255 tests)
+# Full Python test suite (291 tests)
 PYTHONPATH="creatures-core:creatures-api" .venv/bin/python -m pytest creatures-core/tests/ -v
 
 # Frontend type check and tests
@@ -56,7 +56,7 @@ git commit -m "Add description of what changed and why"
 | Directory | Language | Purpose |
 |-----------|----------|---------|
 | `creatures-core/` | Python | Core library: connectome loaders (OpenWorm, FlyWire), Brian2 neural engine, MuJoCo bodies (WormBody, NeuroMechFly), NEAT evolution, pharmacology, ecosystem, circuit analysis, God Agent |
-| `creatures-api/` | Python | FastAPI server with 70 REST + WebSocket endpoints across 12 router modules |
+| `creatures-api/` | Python | FastAPI server with 122+ REST + WebSocket endpoints across 12 router modules |
 | `creatures-web/` | TypeScript | React 18 + Three.js frontend: 3D bodies, spike particles, neuron detail panel, dose-response charts, narrative feed, ecosystem view |
 | `scripts/` | Python | CLI tools for evolution, validation, and reporting |
 | `notebooks/` | Jupyter | Interactive demos and exploration |
@@ -73,7 +73,7 @@ git commit -m "Add description of what changed and why"
 ### Python (creatures-core, creatures-api)
 
 - Python 3.13+
-- Follow PEP 8 style guidelines
+- Follow PEP 8 style guidelines; `ruff` is used for linting (all checks must pass)
 - Use type hints for all function signatures
 - Write docstrings for public functions and classes
 - Keep functions focused -- one function, one responsibility
@@ -222,7 +222,7 @@ Add test cases in `creatures-core/tests/test_analysis.py`.
 
 ## Testing
 
-All contributions should include tests. The test suite currently has 255 tests across 14 test files.
+All contributions should include tests. The test suite currently has 291 tests across 14 test files.
 
 ```bash
 # Full Python test suite
@@ -239,7 +239,25 @@ cd creatures-web && npx tsc --noEmit
 
 # Frontend tests
 cd creatures-web && npm test
+
+# Frontend production build verification
+cd creatures-web && npm run build
+
+# Python linting
+ruff check creatures-core/ creatures-api/
+
+# Deployment preflight (checks endpoints, test count, build, etc.)
+python scripts/preflight.py
 ```
+
+For the full list of API endpoints, see [API.md](API.md).
+
+## Areas Where Help Is Needed
+
+- **Consciousness metrics**: the integrated information (Phi) partition search is currently greedy; a proper MIP (minimum information partition) solver would improve accuracy
+- **Distributed fitness evaluation**: evolving larger populations would benefit from parallel/distributed fitness evaluation
+- **Additional connectomes**: a zebrafish brain loader is partially implemented and needs completion
+- **Frontend code-splitting**: the main App chunk is ~675KB and should be split for faster initial load
 
 ## Pull Request Guidelines
 
