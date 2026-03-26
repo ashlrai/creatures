@@ -14,7 +14,8 @@ import { useSimulationStore } from '../../stores/simulationStore';
  * Also tries the backend API when available for more precise results.
  */
 
-const API_BASE = (import.meta as any).env?.VITE_API_URL || '/api';
+const RAILWAY_API = 'https://creatures-production.up.railway.app';
+const API_BASE = (import.meta as any).env?.VITE_API_URL || (typeof window !== 'undefined' && window.location.hostname === 'neurevo.dev' ? RAILWAY_API : '/api');
 
 interface Metrics {
   phi: number;
