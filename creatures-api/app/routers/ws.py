@@ -82,7 +82,7 @@ async def simulation_ws(websocket: WebSocket, sim_id: str):
                     manager.start(sim, data.get("speed", 1.0))
                 elif cmd_type == "speed":
                     value = float(data.get("value", 1.0))
-                    manager.start(sim, value)
+                    manager.set_speed(sim, value)
                 elif cmd_type == "lesion_neuron":
                     nid = data.get("neuron_id")
                     if nid and sim.engine:

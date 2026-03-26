@@ -33,7 +33,8 @@ class SimulationInstance:
     connectome: object  # Connectome
     pharma_engine: object | None = None  # PharmacologyEngine, lazily created
     status: str = "ready"  # ready, running, paused, stopped
-    subscribers: list = field(default_factory=list)
+    speed: float = 1.0  # multiplier read by run_loop each iteration
+    subscribers: dict = field(default_factory=dict)
     _task: asyncio.Task | None = None
 
 
@@ -116,10 +117,11 @@ class SimulationManager:
     async def run_loop(self, sim: SimulationInstance, speed: float = 1.0) -> None:
         """Run the simulation loop, broadcasting frames to subscribers."""
         sim.status = "running"
-        step_interval = 1.0 / (30 * speed)  # target 30 fps at 1x speed
+        sim.speed = speed
 
         try:
             while sim.status == "running":
+                step_interval = 1.0 / (30 * max(sim.speed, 0.01))  # re-read each iteration
                 frame_data = sim.runner.step()
 
                 # Build frame for broadcast
@@ -143,7 +145,7 @@ class SimulationManager:
                 # dead consumer never blocks the simulation loop.  If the
                 # queue is full the oldest frame is discarded to make room.
                 dead = []
-                for i, (ws, queue) in enumerate(sim.subscribers):
+                for ws_id, (ws, queue) in list(sim.subscribers.items()):
                     try:
                         try:
                             queue.put_nowait(frame)
@@ -155,9 +157,9 @@ class SimulationManager:
                                 pass
                             queue.put_nowait(frame)
                     except Exception:
-                        dead.append(i)
-                for i in reversed(dead):
-                    sim.subscribers.pop(i)
+                        dead.append(ws_id)
+                for ws_id in dead:
+                    del sim.subscribers[ws_id]
 
                 await asyncio.sleep(step_interval)
 
@@ -166,9 +168,14 @@ class SimulationManager:
         finally:
             sim.status = "paused"
 
+    def set_speed(self, sim: SimulationInstance, speed: float) -> None:
+        """Update the speed of a running simulation."""
+        sim.speed = speed
+
     def start(self, sim: SimulationInstance, speed: float = 1.0) -> None:
         """Start the simulation loop as an async task."""
         if sim._task and not sim._task.done():
+            sim.speed = speed
             return
         sim._task = asyncio.create_task(self.run_loop(sim, speed))
 
