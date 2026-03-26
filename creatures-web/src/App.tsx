@@ -35,6 +35,7 @@ import { NeuronDetail } from './components/ui/NeuronDetail';
 import { STDPDashboard } from './components/ui/STDPDashboard';
 import { OptogeneticsPanel } from './components/ui/OptogeneticsPanel';
 import { MutualInfoMatrix } from './components/ui/MutualInfoMatrix';
+import { ConsciousnessDashboard } from './components/ui/ConsciousnessDashboard';
 import { TransferEntropyNetwork } from './components/ui/TransferEntropyNetwork';
 import { CausalDashboard } from './components/ui/CausalDashboard';
 import { ProtocolTimeline } from './components/ui/ProtocolTimeline';
@@ -1153,6 +1154,9 @@ export default function App() {
                     </PanelErrorBoundary>
                     <PanelErrorBoundary name="PSD">
                       <PowerSpectralDensity />
+                    </PanelErrorBoundary>
+                    <PanelErrorBoundary name="Consciousness">
+                      <ConsciousnessDashboard />
                     </PanelErrorBoundary>
                     <PanelErrorBoundary name="Mutual Information">
                       <MutualInfoMatrix />

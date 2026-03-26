@@ -165,26 +165,27 @@ def compute_phi(
     selected = candidates[diverse_idx]
     spike_matrix = spike_mat_full[:, diverse_idx]
 
-    # Compute MI for the whole system (past → future, 1-bin lag)
+    # Use Gaussian approximation of MI via covariance (practical IIT)
+    # This captures temporal correlations due to synaptic connections.
+    # MI_gauss = 0.5 * log(det(cov_past) * det(cov_future) / det(cov_joint))
+
     past = spike_matrix[:-1]  # (n_bins-1, k)
     future = spike_matrix[1:]  # (n_bins-1, k)
 
-    whole_mi = _time_lagged_mi(past, future)
+    whole_mi = _gaussian_mi(past, future)
 
-    # Greedy partition search
+    # Greedy partition search for minimum information partition
     best_partition_mi = whole_mi
     best_partition = None
 
     for _ in range(n_partitions):
-        # Random bipartition
         perm = rng.permutation(top_k)
         split = max(2, rng.integers(top_k // 4, 3 * top_k // 4 + 1))
         part_a = perm[:split]
         part_b = perm[split:]
 
-        # MI for each partition independently
-        mi_a = _time_lagged_mi(past[:, part_a], future[:, part_a])
-        mi_b = _time_lagged_mi(past[:, part_b], future[:, part_b])
+        mi_a = _gaussian_mi(past[:, part_a], future[:, part_a])
+        mi_b = _gaussian_mi(past[:, part_b], future[:, part_b])
         partition_mi = mi_a + mi_b
 
         if partition_mi < best_partition_mi:
@@ -206,6 +207,45 @@ def compute_phi(
         "n_analyzed": top_k,
         "selected_neurons": selected.tolist(),
     }
+
+
+def _gaussian_mi(x: np.ndarray, y: np.ndarray) -> float:
+    """Compute mutual information under Gaussian approximation.
+
+    MI_gauss = 0.5 * [log det(Σ_x) + log det(Σ_y) - log det(Σ_xy)]
+
+    This is the standard practical approximation for IIT and captures
+    temporal correlations between neural populations.
+    """
+    n_samples, n_x = x.shape
+    _, n_y = y.shape
+    if n_samples < 10 or n_x == 0 or n_y == 0:
+        return 0.0
+
+    # Add small regularization to prevent singular covariance
+    eps = 1e-6
+
+    # Covariance of x
+    cov_x = np.cov(x.T) + eps * np.eye(n_x)
+    # Covariance of y
+    cov_y = np.cov(y.T) + eps * np.eye(n_y)
+    # Joint covariance
+    xy = np.hstack([x, y])
+    cov_xy = np.cov(xy.T) + eps * np.eye(n_x + n_y)
+
+    # Handle scalar covariance (1 neuron)
+    if n_x == 1:
+        cov_x = cov_x.reshape(1, 1)
+    if n_y == 1:
+        cov_y = cov_y.reshape(1, 1)
+
+    # log det via slogdet for numerical stability
+    _, logdet_x = np.linalg.slogdet(cov_x)
+    _, logdet_y = np.linalg.slogdet(cov_y)
+    _, logdet_xy = np.linalg.slogdet(cov_xy)
+
+    mi = 0.5 * (logdet_x + logdet_y - logdet_xy)
+    return max(0.0, float(mi))
 
 
 def _time_lagged_mi(past: np.ndarray, future: np.ndarray, n_bins: int = 8) -> float:
