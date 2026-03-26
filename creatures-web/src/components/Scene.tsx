@@ -30,13 +30,11 @@ function SmoothCamera() {
       // Snap camera to organism with consistent framing angle
       targetRef.current.copy(desired);
       controlsRef.current.target.copy(desired);
-      // Position camera at a 45-degree upper-right diagonal from organism
-      const dist = 0.25;
-      const height = 0.08;
+      // Position camera directly in front and slightly above the organism
       camera.position.set(
-        desired.x + dist * 0.7,
-        desired.y + height,
-        desired.z + dist * 0.7,
+        desired.x,
+        desired.y + 0.1,
+        desired.z + 0.3,
       );
       hasSnapped.current = true;
     } else {

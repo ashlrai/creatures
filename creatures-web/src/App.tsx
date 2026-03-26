@@ -990,6 +990,11 @@ export default function App() {
                 <>
                   <div className="glass">
                     <div className="glass-label">Neural Activity</div>
+                    <div style={{ fontSize: 9, color: 'rgba(140,170,200,0.4)', fontFamily: 'monospace', marginBottom: 4 }}>
+                      {experiment?.organism === 'drosophila' ? 'Drosophila melanogaster' :
+                       experiment?.organism === 'zebrafish' ? 'Danio rerio (larval)' : 'Caenorhabditis elegans'}
+                      {' · '}{experiment?.n_neurons ?? '?'} neurons · {experiment?.n_synapses?.toLocaleString() ?? '?'} synapses
+                    </div>
                     <div className="stat-row"><span className="stat-label">Active neurons</span><span className="stat-value stat-cyan">{frame?.n_active ?? 0}</span></div>
                     <div className="stat-row"><span className="stat-label">Muscles</span><span className="stat-value stat-magenta">{frame ? Object.keys(frame.muscle_activations).length : 0}</span></div>
                     <div className="stat-row"><span className="stat-label">Displacement</span><span className="stat-value stat-green">{history.length > 0 ? history[history.length - 1].displacement.toFixed(4) : '—'}</span></div>
