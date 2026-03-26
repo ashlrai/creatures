@@ -27,12 +27,13 @@ COPY creatures-api/ creatures-api/
 # Copy frontend build
 COPY --from=frontend /app/creatures-web/dist creatures-web/dist
 
-# Copy scripts and landing page
+# Copy scripts, landing page, and API docs
 COPY scripts/ scripts/
 COPY landing/ landing/
+COPY API.md API.md
 
 # Create data directories (connectome data downloaded at runtime if needed)
-RUN mkdir -p data/openworm data/flywire
+RUN mkdir -p data/openworm data/flywire neurevo_data/god_agent_logs
 
 # Environment
 ENV PYTHONPATH="/app/creatures-core:/app/creatures-api"
