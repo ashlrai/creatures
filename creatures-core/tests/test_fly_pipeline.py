@@ -5,11 +5,15 @@ Tests the full flow: FlyWire connectome -> Brian2 network -> FlyBody -> Simulati
 
 import pytest
 import numpy as np
+from pathlib import Path
 
 from creatures.connectome.flywire import load as load_fly, NEUROPIL_PRESETS
 from creatures.connectome.types import NeuronType
 from creatures.neural.brian2_engine import Brian2Engine
 from creatures.neural.base import MonitorConfig, NeuralConfig
+
+_FLY_DATA = Path(__file__).resolve().parents[2] / "data" / "flywire" / "proofread_connections_783.feather"
+pytestmark = pytest.mark.skipif(not _FLY_DATA.exists(), reason="FlyWire data files not available")
 
 
 class TestFlyWireLoader:

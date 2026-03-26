@@ -2,6 +2,10 @@
 
 import numpy as np
 import pytest
+from pathlib import Path
+
+_DATA = Path(__file__).resolve().parents[2] / "data" / "openworm" / "CElegansNeuronTables.xls"
+pytestmark = pytest.mark.skipif(not _DATA.exists(), reason="Connectome data files not available")
 
 from creatures.connectome.types import Connectome
 from creatures.evolution.analytics import (

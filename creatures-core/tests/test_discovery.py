@@ -14,7 +14,12 @@ import pytest
 # Force numpy codegen (redundant with conftest but explicit for clarity)
 os.environ.setdefault("BRIAN2_CODEGEN_TARGET", "numpy")
 
+from pathlib import Path
+
 from creatures.discovery.engine import Discovery, DiscoveryEngine, Hypothesis
+
+_DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "openworm"
+_HAS_DATA = (_DATA_DIR / "CElegansNeuronTables.xls").exists()
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────
@@ -24,6 +29,9 @@ from creatures.discovery.engine import Discovery, DiscoveryEngine, Hypothesis
 def engine() -> DiscoveryEngine:
     """Create a DiscoveryEngine with no API key."""
     return DiscoveryEngine(xai_api_key=None)
+
+
+pytestmark = pytest.mark.skipif(not _HAS_DATA, reason="Connectome data files not available")
 
 
 # ── Hypothesis generation ────────────────────────────────────────────
@@ -42,7 +50,7 @@ class TestHypothesisGeneration:
             assert isinstance(h, Hypothesis)
             assert h.id
             assert h.statement
-            assert h.category in ("circuit", "drug", "learning")
+            assert h.category in ("circuit", "drug", "learning", "consciousness")
             assert 0.0 <= h.priority <= 1.0
             assert h.status == "pending"
             assert isinstance(h.experiment, dict)
