@@ -73,7 +73,7 @@ function ConnectionIndicator({ status, connected, attempts, isDemo }: {
   attempts: number;
   isDemo?: boolean;
 }) {
-  if (isDemo) {
+  if (isDemo && !connected) {
     return (
       <>
         <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#6688cc', boxShadow: '0 0 6px #6688cc' }} />
