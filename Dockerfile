@@ -1,9 +1,8 @@
 # Stage 1: Frontend build
 FROM node:20-alpine AS frontend
 WORKDIR /app/creatures-web
-COPY creatures-web/package*.json ./
-COPY .npmrc ./
-RUN npm install
+COPY creatures-web/package*.json creatures-web/.npmrc* ./
+RUN npm install --legacy-peer-deps
 COPY creatures-web/ ./
 RUN npm run build
 
