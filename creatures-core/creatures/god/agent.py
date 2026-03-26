@@ -266,7 +266,12 @@ about how neural circuits evolve, learn, and develop consciousness-like properti
             recent_bests = [
                 o["stats"].get("best_fitness", 0) for o in self.observations[-5:]
             ]
-            if max(recent_bests) - min(recent_bests) < 0.1:
+            # Check if fitness is actually improving (monotonic upward trend)
+            improving = all(
+                recent_bests[i] <= recent_bests[i + 1]
+                for i in range(len(recent_bests) - 1)
+            ) and recent_bests[-1] > recent_bests[0]
+            if not improving and max(recent_bests) - min(recent_bests) < 0.1:
                 interventions.append(
                     {
                         "type": "evolution",

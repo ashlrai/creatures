@@ -69,7 +69,7 @@ async def call_llm(prompt: str, config: LLMConfig) -> str:
     elif provider in ("xai", "openai"):
         return await _call_openai_compatible(prompt, config)
     else:
-        return json.dumps(_heuristic_fallback())
+        raise RuntimeError("No LLM provider available")
 
 
 async def _call_ollama(prompt: str, config: LLMConfig) -> str:
@@ -97,7 +97,7 @@ async def _call_ollama(prompt: str, config: LLMConfig) -> str:
             return data.get("response", "{}")
     except Exception as e:
         logger.warning(f"Ollama call failed: {e}")
-        return json.dumps(_heuristic_fallback())
+        raise RuntimeError(f"Ollama call failed: {e}") from e
 
 
 async def _call_openai_compatible(prompt: str, config: LLMConfig) -> str:
@@ -106,7 +106,7 @@ async def _call_openai_compatible(prompt: str, config: LLMConfig) -> str:
 
     api_key = config.api_key or os.environ.get("XAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        return json.dumps(_heuristic_fallback())
+        raise RuntimeError("No API key available")
 
     try:
         async with httpx.AsyncClient() as client:
@@ -133,7 +133,7 @@ async def _call_openai_compatible(prompt: str, config: LLMConfig) -> str:
             return data["choices"][0]["message"]["content"]
     except Exception as e:
         logger.warning(f"API call failed: {e}")
-        return json.dumps(_heuristic_fallback())
+        raise RuntimeError(f"API call failed: {e}") from e
 
 
 def _heuristic_fallback() -> dict:
