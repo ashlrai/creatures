@@ -130,10 +130,15 @@ def load_from_edge_list(data_dir: str | Path | None = None) -> Connectome:
     xls_path = data_dir / "CElegansNeuronTables.xls"
 
     if not xls_path.exists():
-        raise FileNotFoundError(
-            f"CElegansNeuronTables.xls not found at {xls_path}. "
-            "Run the download script or place the file manually."
-        )
+        # Auto-download from OpenWorm GitHub
+        logger.info("Downloading CElegansNeuronTables.xls from OpenWorm...")
+        data_dir.mkdir(parents=True, exist_ok=True)
+        import requests as _req
+        url = "https://raw.githubusercontent.com/openworm/c302/master/c302/CElegansNeuronTables.xls"
+        resp = _req.get(url, timeout=30)
+        resp.raise_for_status()
+        xls_path.write_bytes(resp.content)
+        logger.info(f"Downloaded {len(resp.content)} bytes to {xls_path}")
 
     # Load edge list
     conn_df = pd.read_excel(xls_path, sheet_name="Connectome")
