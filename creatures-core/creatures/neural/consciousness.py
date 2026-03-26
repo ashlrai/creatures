@@ -34,6 +34,38 @@ logger = logging.getLogger(__name__)
 
 
 # ======================================================================
+# Shared helpers
+# ======================================================================
+
+def _build_spike_matrix(
+    spike_indices: np.ndarray,
+    spike_times_ms: np.ndarray,
+    neuron_ids: np.ndarray,
+    n_bins: int,
+    bin_ms: float,
+) -> np.ndarray:
+    """Build a binary (n_bins, n_neurons) spike matrix from raw spike data.
+
+    Args:
+        spike_indices: Neuron index for each spike.
+        spike_times_ms: Time (ms) for each spike.
+        neuron_ids: Array of neuron IDs to include (column order).
+        n_bins: Number of time bins.
+        bin_ms: Width of each time bin in ms.
+
+    Returns:
+        Binary float32 matrix of shape (n_bins, len(neuron_ids)).
+    """
+    mat = np.zeros((n_bins, len(neuron_ids)), dtype=np.float32)
+    remap = {nid: i for i, nid in enumerate(neuron_ids)}
+    for idx, t in zip(spike_indices, spike_times_ms):
+        if idx in remap:
+            b = min(int(t / bin_ms), n_bins - 1)
+            mat[b, remap[idx]] = 1.0
+    return mat
+
+
+# ======================================================================
 # Data structures
 # ======================================================================
 
@@ -140,12 +172,9 @@ def compute_phi(
         candidates = active_neurons
 
     # Build spike matrix for candidates
-    spike_mat_full = np.zeros((n_bins, len(candidates)), dtype=np.float32)
-    cand_remap = {nid: i for i, nid in enumerate(candidates)}
-    for idx, t in zip(spike_indices, spike_times_ms):
-        if idx in cand_remap:
-            b = min(int(t / bin_ms), n_bins - 1)
-            spike_mat_full[b, cand_remap[idx]] = 1.0
+    spike_mat_full = _build_spike_matrix(
+        spike_indices, spike_times_ms, candidates, n_bins, bin_ms,
+    )
 
     # Select top_k neurons with most diverse patterns (highest entropy)
     entropies = np.zeros(len(candidates))
@@ -479,12 +508,9 @@ def compute_neural_complexity(
 
     # Build binary spike matrix
     n_bins = max(int(duration_ms / bin_ms), 2)
-    spike_matrix = np.zeros((n_bins, top_k), dtype=np.float32)
-    neuron_remap = {nid: i for i, nid in enumerate(selected)}
-    for idx, t in zip(spike_indices, spike_times_ms):
-        if idx in neuron_remap:
-            b = min(int(t / bin_ms), n_bins - 1)
-            spike_matrix[b, neuron_remap[idx]] = 1.0
+    spike_matrix = _build_spike_matrix(
+        spike_indices, spike_times_ms, selected, n_bins, bin_ms,
+    )
 
     max_scale = min(max_scale, top_k // 2)
     profile = []
@@ -709,12 +735,9 @@ def compute_all_consciousness_metrics(
             selected = unique
             n_k = len(selected)
 
-        mat = np.zeros((n_bins, n_k), dtype=np.float32)
-        remap = {nid: i for i, nid in enumerate(selected)}
-        for idx, t in zip(spike_indices, spike_times_ms):
-            if idx in remap:
-                b = min(int(t / bin_ms), n_bins - 1)
-                mat[b, remap[idx]] = 1.0
+        mat = _build_spike_matrix(
+            spike_indices, spike_times_ms, selected, n_bins, bin_ms,
+        )
 
         pci_result = compute_pci(mat)
 
