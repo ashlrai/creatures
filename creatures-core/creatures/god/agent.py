@@ -17,7 +17,7 @@ from typing import Any
 class GodConfig:
     api_key: str | None = None  # xAI API key (from env XAI_API_KEY)
     api_base: str = "https://api.x.ai/v1"  # xAI endpoint
-    model: str = "grok-3-mini"  # or grok-3
+    model: str = "grok-4-1-fast-reasoning"
     intervention_interval: int = 10  # intervene every N generations
     temperature: float = 0.7
     max_tokens: int = 4096
