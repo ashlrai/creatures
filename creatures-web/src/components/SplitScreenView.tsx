@@ -24,27 +24,39 @@ import { useSimulationStore } from '../stores/simulationStore';
 function WorldCamera() {
   const frame = useSimulationStore((s) => s.frame);
   const controlsRef = useRef<any>(null);
-  const targetRef = useRef(new THREE.Vector3(0, 0.05, 0));
+  const targetRef = useRef(new THREE.Vector3(0.3, 0.02, 0));
+  const hasSnapped = useRef(false);
 
   useFrame(({ camera }) => {
-    if (!frame?.center_of_mass || !controlsRef.current) return;
-    const [x, y, z] = frame.center_of_mass;
-    const desired = new THREE.Vector3(x, z + 0.03, -y);
-    targetRef.current.lerp(desired, 0.04);
-    controlsRef.current.target.copy(targetRef.current);
+    if (!controlsRef.current) return;
+
+    if (frame?.center_of_mass) {
+      const [x, y, z] = frame.center_of_mass;
+      const desired = new THREE.Vector3(x, z + 0.02, -y);
+
+      if (!hasSnapped.current) {
+        targetRef.current.copy(desired);
+        controlsRef.current.target.copy(desired);
+        camera.position.set(desired.x + 0.1, desired.y + 0.1, desired.z + 0.2);
+        hasSnapped.current = true;
+      } else {
+        targetRef.current.lerp(desired, 0.04);
+        controlsRef.current.target.copy(targetRef.current);
+      }
+    }
   });
 
   return (
     <OrbitControls
       ref={controlsRef}
-      target={[0, 0.05, 0]}
-      minDistance={0.15}
+      target={[0.3, 0.02, 0]}
+      minDistance={0.08}
       maxDistance={3}
       enableDamping
       dampingFactor={0.08}
       rotateSpeed={0.4}
       autoRotate
-      autoRotateSpeed={0.15}
+      autoRotateSpeed={0.12}
       maxPolarAngle={Math.PI * 0.48}
     />
   );
@@ -77,14 +89,13 @@ function WorldEnvironment({ worldType }: { worldType: string }) {
       <fog attach="fog" args={[fogColor, 0.5, 4]} />
 
       {/* Ground plane */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-        <planeGeometry args={[8, 8]} />
-        <meshStandardMaterial
-          color={groundColor}
-          roughness={0.9}
-          metalness={0.0}
-        />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0.3, -0.01, 0]} receiveShadow>
+        <planeGeometry args={[6, 6]} />
+        <meshStandardMaterial color={groundColor} roughness={0.9} metalness={0.0} />
       </mesh>
+
+      {/* Subtle grid for scale reference */}
+      <gridHelper args={[3, 30, '#0a1520', '#060c15']} position={[0.3, -0.009, 0]} />
 
       {/* Environment-specific elements */}
       {worldType === 'garden' && <GardenElements />}
@@ -305,10 +316,9 @@ export function SplitScreenView({ worldType = 'garden' }: SplitScreenViewProps) 
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: `${splitRatio * 100}% ${(1 - splitRatio) * 100}%`,
+      gridTemplateColumns: `1fr 2px 1fr`,
       width: '100%',
       height: '100%',
-      gap: 2,
       background: '#020305',
     }}>
       {/* LEFT: World View — organism in environment */}
@@ -316,7 +326,7 @@ export function SplitScreenView({ worldType = 'garden' }: SplitScreenViewProps) 
         <ViewLabel text="World View" />
         <Canvas
           shadows
-          camera={{ position: [0.3, 0.15, 0.4], fov: 50, near: 0.005, far: 15 }}
+          camera={{ position: [0.1, 0.08, 0.25], fov: 45, near: 0.005, far: 15 }}
           {...canvasProps}
           style={{ background: '#050808' }}
         >
@@ -349,6 +359,9 @@ export function SplitScreenView({ worldType = 'garden' }: SplitScreenViewProps) 
           <PostProcessing />
         </Canvas>
       </div>
+
+      {/* Divider */}
+      <div style={{ background: 'rgba(80,120,200,0.2)', width: 2 }} />
 
       {/* RIGHT: Brain View — neural activity */}
       <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 4 }}>
