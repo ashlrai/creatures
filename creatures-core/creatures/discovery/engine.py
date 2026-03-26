@@ -208,10 +208,79 @@ class DiscoveryEngine:
             )
         )
 
+        # ── Consciousness hypotheses ─────────────────────────────────
+        # Test how different perturbations affect Integrated Information (Φ)
+        hypotheses.append(Hypothesis(
+            id="consciousness_hub_lesion",
+            statement=(
+                "Lesioning the most connected hub neuron will reduce "
+                "Integrated Information (Φ) more than lesioning a peripheral neuron"
+            ),
+            category="consciousness",
+            experiment={
+                "type": "consciousness_comparison",
+                "perturbation": "lesion_hub",
+                "hub_neuron": hubs[0]["id"] if hubs else None,
+                "peripheral_neuron": hubs[-1]["id"] if len(hubs) > 1 else None,
+                "metric": "phi",
+                "duration_ms": 500,
+            },
+            priority=0.95,
+        ))
+
+        hypotheses.append(Hypothesis(
+            id="consciousness_inhibition",
+            statement=(
+                "Removing all inhibitory (GABA) neurons will decrease Φ, "
+                "because balanced excitation-inhibition is critical for integration"
+            ),
+            category="consciousness",
+            experiment={
+                "type": "consciousness_comparison",
+                "perturbation": "remove_inhibitory",
+                "metric": "phi",
+                "duration_ms": 500,
+            },
+            priority=0.90,
+        ))
+
+        hypotheses.append(Hypothesis(
+            id="consciousness_stdp_learning",
+            statement=(
+                "STDP learning increases Φ over time as synapses "
+                "strengthen correlated pathways, increasing integration"
+            ),
+            category="consciousness",
+            experiment={
+                "type": "consciousness_learning",
+                "metric": "phi",
+                "duration_ms": 1000,
+                "learning_steps": 500,
+            },
+            priority=0.85,
+        ))
+
+        hypotheses.append(Hypothesis(
+            id="consciousness_complexity_vs_phi",
+            statement=(
+                "Neural Complexity (CN) and Φ are positively correlated: "
+                "brains with richer dynamics have higher integrated information"
+            ),
+            category="consciousness",
+            experiment={
+                "type": "consciousness_correlation",
+                "metrics": ["phi", "complexity", "pci"],
+                "n_samples": 10,
+                "duration_ms": 500,
+            },
+            priority=0.80,
+        ))
+
         # Sort by priority descending
         hypotheses.sort(key=lambda h: -h.priority)
         self.hypotheses = hypotheses
-        logger.info("Generated %d hypotheses", len(hypotheses))
+        logger.info("Generated %d hypotheses (%d consciousness)", len(hypotheses),
+                     sum(1 for h in hypotheses if h.category == "consciousness"))
         return hypotheses
 
     # ── Experiment runners ───────────────────────────────────────────
@@ -232,6 +301,8 @@ class DiscoveryEngine:
                 return self._run_drug_experiment(hypothesis)
             elif hypothesis.experiment["type"] == "learning_comparison":
                 return self._run_learning_experiment(hypothesis)
+            elif hypothesis.experiment["type"].startswith("consciousness"):
+                return self._run_consciousness_experiment(hypothesis)
             else:
                 return {"error": f"Unknown experiment type: {hypothesis.experiment['type']}"}
         except Exception as exc:
@@ -524,6 +595,182 @@ class DiscoveryEngine:
                 max(stdp_improvement_pct, final_comparison_pct), 2
             ),
         }
+
+    # ── Consciousness experiments ───────────────────────────────────
+
+    def _run_consciousness_experiment(self, hypothesis: Hypothesis) -> dict:
+        """Run a consciousness-related experiment using VectorizedEngine.
+
+        Measures Φ (Integrated Information) before and after perturbation.
+        """
+        from creatures.neural.consciousness import compute_phi
+        from creatures.neural.vectorized_engine import NeuronModel, VectorizedEngine
+
+        exp = hypothesis.experiment
+        connectome = self._load_connectome()
+        duration_ms = exp.get("duration_ms", 500)
+
+        def _measure_phi(conn, duration=500, enable_stdp=False):
+            """Run a simulation and measure Φ."""
+            engine = VectorizedEngine(use_gpu=True, neuron_model=NeuronModel.IZHIKEVICH)
+            engine.build_single_connectome(conn)
+            if enable_stdp:
+                engine.init_stdp()
+
+            rng = np.random.default_rng(42)
+            n = engine.n_total
+            for step_i in range(int(duration / engine.dt)):
+                noise = np.zeros(n, dtype=np.float32)
+                noise[rng.choice(n, max(1, n // 10), replace=False)] = \
+                    rng.uniform(8, 20, max(1, n // 10)).astype(np.float32)
+                phase = step_i * engine.dt * 2 * np.pi / 80
+                q = max(1, n // 4)
+                for r in range(4):
+                    s, e = r * q, min((r + 1) * q, n)
+                    noise[s:e] += 10.0 * (1 + np.sin(phase + r * np.pi / 2))
+                engine.I_ext = engine.xp.array(noise)
+                engine.step()
+
+            indices, times = engine.get_spike_history()
+            if len(indices) < 50:
+                return {"phi": 0.0, "n_spikes": len(indices)}
+
+            result = compute_phi(
+                np.array(indices), np.array(times), n, duration,
+                bin_ms=5.0, top_k=20, n_partitions=30,
+            )
+            result["n_spikes"] = len(indices)
+            return result
+
+        exp_type = exp["type"]
+
+        if exp_type == "consciousness_comparison":
+            # Measure Φ for control, then perturbed
+            control_phi = _measure_phi(connectome, duration_ms)
+
+            # Apply perturbation
+            perturbed = connectome  # default: same
+            perturbation = exp.get("perturbation", "")
+
+            if perturbation == "lesion_hub" and exp.get("hub_neuron"):
+                # Remove hub neuron's synapses
+                hub_id = exp["hub_neuron"]
+                perturbed_synapses = [
+                    s for s in connectome.synapses
+                    if s.pre_id != hub_id and s.post_id != hub_id
+                ]
+                from creatures.connectome.types import Connectome as CT
+                perturbed = CT(
+                    name=f"{connectome.name}_lesion_{hub_id}",
+                    neurons=connectome.neurons,
+                    synapses=perturbed_synapses,
+                    metadata=connectome.metadata,
+                )
+
+            elif perturbation == "remove_inhibitory":
+                # Remove all GABA neurons
+                gaba_ids = {
+                    nid for nid, n in connectome.neurons.items()
+                    if n.neurotransmitter and "gaba" in n.neurotransmitter.lower()
+                }
+                perturbed_neurons = {
+                    nid: n for nid, n in connectome.neurons.items()
+                    if nid not in gaba_ids
+                }
+                perturbed_synapses = [
+                    s for s in connectome.synapses
+                    if s.pre_id not in gaba_ids and s.post_id not in gaba_ids
+                ]
+                from creatures.connectome.types import Connectome as CT
+                perturbed = CT(
+                    name=f"{connectome.name}_no_gaba",
+                    neurons=perturbed_neurons,
+                    synapses=perturbed_synapses,
+                    metadata=connectome.metadata,
+                )
+
+            perturbed_phi = _measure_phi(perturbed, duration_ms)
+
+            delta = perturbed_phi["phi"] - control_phi["phi"]
+            delta_pct = (delta / max(control_phi["phi"], 0.001)) * 100
+
+            return {
+                "control_phi": control_phi["phi"],
+                "perturbed_phi": perturbed_phi["phi"],
+                "delta_phi": delta,
+                "delta_percent": round(delta_pct, 2),
+                "perturbation": perturbation,
+                "significant": abs(delta_pct) > self.EFFECT_SIZE_THRESHOLD,
+                "hypothesis_id": hypothesis.id,
+            }
+
+        elif exp_type == "consciousness_learning":
+            # Measure Φ before and after STDP learning
+            before = _measure_phi(connectome, duration_ms, enable_stdp=False)
+            after = _measure_phi(connectome, exp.get("learning_steps", 500), enable_stdp=True)
+
+            delta = after["phi"] - before["phi"]
+            delta_pct = (delta / max(before["phi"], 0.001)) * 100
+
+            return {
+                "phi_before_learning": before["phi"],
+                "phi_after_learning": after["phi"],
+                "delta_phi": delta,
+                "delta_percent": round(delta_pct, 2),
+                "significant": abs(delta_pct) > self.EFFECT_SIZE_THRESHOLD,
+                "hypothesis_id": hypothesis.id,
+            }
+
+        elif exp_type == "consciousness_correlation":
+            # Measure multiple consciousness metrics across perturbations
+            from creatures.neural.consciousness import compute_all_consciousness_metrics
+
+            samples = []
+            for trial in range(exp.get("n_samples", 5)):
+                engine = VectorizedEngine(use_gpu=True, neuron_model=NeuronModel.IZHIKEVICH)
+                engine.build_single_connectome(connectome)
+
+                # Vary stimulation pattern per trial
+                rng = np.random.default_rng(trial * 7 + 42)
+                n = engine.n_total
+                for step_i in range(int(duration_ms / engine.dt)):
+                    noise = np.zeros(n, dtype=np.float32)
+                    noise[rng.choice(n, max(1, n // (5 + trial)), replace=False)] = \
+                        rng.uniform(5 + trial * 2, 20 + trial * 3,
+                                    max(1, n // (5 + trial))).astype(np.float32)
+                    engine.I_ext = engine.xp.array(noise)
+                    engine.step()
+
+                indices, times = engine.get_spike_history()
+                if len(indices) > 50:
+                    report = compute_all_consciousness_metrics(
+                        np.array(indices), np.array(times), n, duration_ms,
+                        bin_ms=5.0, top_k=20,
+                    )
+                    samples.append({
+                        "phi": report.phi,
+                        "complexity": report.neural_complexity,
+                        "pci": report.pci,
+                        "n_spikes": len(indices),
+                    })
+
+            if len(samples) >= 3:
+                phis = [s["phi"] for s in samples]
+                cns = [s["complexity"] for s in samples]
+                # Correlation
+                corr = float(np.corrcoef(phis, cns)[0, 1]) if np.std(phis) > 0 and np.std(cns) > 0 else 0.0
+                return {
+                    "samples": samples,
+                    "phi_cn_correlation": round(corr, 4),
+                    "mean_phi": round(float(np.mean(phis)), 4),
+                    "mean_cn": round(float(np.mean(cns)), 4),
+                    "significant": abs(corr) > 0.5,
+                    "hypothesis_id": hypothesis.id,
+                }
+
+            return {"error": "Not enough valid samples", "n_samples": len(samples)}
+
+        return {"error": f"Unknown consciousness experiment subtype: {exp_type}"}
 
     # ── Analysis and reporting ───────────────────────────────────────
 
