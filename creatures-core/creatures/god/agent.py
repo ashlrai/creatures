@@ -89,13 +89,11 @@ class GodAgent:
         # Only skip LLM if provider is explicitly "fallback" (not auto/ollama)
         if self.config.provider == "fallback":
             intervention = self._fallback_intervention()
-            self.history.append(intervention)
-            self._persist_intervention(intervention)
-            return intervention
+        else:
+            prompt = self._build_analysis_prompt()
+            response = await self._call_llm(prompt)
+            intervention = self._parse_intervention(response)
 
-        prompt = self._build_analysis_prompt()
-        response = await self._call_llm(prompt)
-        intervention = self._parse_intervention(response)
         self.history.append(intervention)
         self._persist_intervention(intervention)
         return intervention

@@ -29,6 +29,15 @@ from creatures.connectome.types import (
 GENOME_FORMAT_VERSION = 2
 
 
+def _check_format_version(saved_version: int, source: str = "Genome") -> None:
+    """Raise ValueError if saved_version is newer than GENOME_FORMAT_VERSION."""
+    if saved_version > GENOME_FORMAT_VERSION:
+        raise ValueError(
+            f"{source} format version {saved_version} is newer than supported "
+            f"version {GENOME_FORMAT_VERSION}. Update creatures-core."
+        )
+
+
 @dataclass
 class Genome:
     """A mutable genome derived from a biological connectome."""
@@ -198,12 +207,7 @@ class Genome:
         Converts lists back to numpy arrays and enum values back to
         ``NeuronType`` instances.
         """
-        saved_version = d.get("format_version", 1)
-        if saved_version > GENOME_FORMAT_VERSION:
-            raise ValueError(
-                f"Genome format version {saved_version} is newer than supported "
-                f"version {GENOME_FORMAT_VERSION}. Update creatures-core."
-            )
+        _check_format_version(d.get("format_version", 1), source="Genome dict")
         g = cls(
             id=d["id"],
             parent_ids=tuple(d["parent_ids"]),
@@ -294,12 +298,7 @@ class Genome:
         """Load genome from HDF5, using connectome for neuron metadata."""
         import h5py
         with h5py.File(path, "r") as f:
-            saved_version = int(f.attrs.get("format_version", 1))
-            if saved_version > GENOME_FORMAT_VERSION:
-                raise ValueError(
-                    f"Genome file version {saved_version} is newer than supported "
-                    f"version {GENOME_FORMAT_VERSION}. Update creatures-core."
-                )
+            _check_format_version(int(f.attrs.get("format_version", 1)), source="Genome file")
             genome = cls(
                 id=str(f.attrs["id"]),
                 parent_ids=(),
