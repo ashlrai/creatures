@@ -110,32 +110,50 @@ function WorldEnvironment({ worldType }: { worldType: string }) {
 
 function GardenElements() {
   return (
-    <group>
-      {/* Simple fruit-like spheres */}
-      {[[-0.5, 0.04, 0.3], [0.6, 0.03, -0.2], [-0.3, 0.05, -0.4]].map(([x, y, z], i) => (
-        <mesh key={i} position={[x, y, z]} castShadow>
-          <sphereGeometry args={[0.04 + i * 0.01, 12, 12]} />
+    <group position={[0.3, 0, 0]}>
+      {/* Scattered food sources — small, worm-scale */}
+      {[
+        [-0.15, 0.005, 0.1, 0.008, '#88cc44'],
+        [0.2, 0.004, -0.08, 0.006, '#aacc22'],
+        [-0.08, 0.006, -0.15, 0.01, '#cc8844'],
+        [0.12, 0.005, 0.12, 0.007, '#66aa33'],
+        [-0.2, 0.004, 0.05, 0.005, '#ccaa33'],
+      ].map(([x, y, z, r, color], i) => (
+        <mesh key={i} position={[x as number, y as number, z as number]} castShadow>
+          <sphereGeometry args={[r as number, 8, 8]} />
           <meshStandardMaterial
-            color={['#cc3333', '#ccaa22', '#aa4488'][i]}
-            roughness={0.4}
-            emissive={['#330808', '#332200', '#220022'][i]}
-            emissiveIntensity={0.3}
+            color={color as string}
+            roughness={0.6}
+            emissive={color as string}
+            emissiveIntensity={0.15}
           />
         </mesh>
       ))}
-      {/* Leaf-like planes */}
-      {[[-0.4, 0.01, 0.1], [0.3, 0.01, 0.4], [0.5, 0.01, -0.3]].map(([x, y, z], i) => (
-        <mesh key={`leaf-${i}`} position={[x, y, z]} rotation={[-Math.PI / 2 + 0.1, i * 0.8, 0]}>
-          <planeGeometry args={[0.08, 0.12]} />
-          <meshStandardMaterial
-            color="#1a4a1a"
-            roughness={0.7}
-            side={THREE.DoubleSide}
-            transparent
-            opacity={0.8}
-          />
-        </mesh>
-      ))}
+      {/* Leaf debris on ground */}
+      {Array.from({ length: 6 }, (_, i) => {
+        const angle = (i / 6) * Math.PI * 2 + 0.3;
+        const r = 0.1 + Math.random() * 0.15;
+        return (
+          <mesh key={`leaf-${i}`} position={[Math.cos(angle) * r, 0.001, Math.sin(angle) * r]}
+            rotation={[-Math.PI / 2 + 0.05, angle + 0.5, 0]}>
+            <planeGeometry args={[0.02 + Math.random() * 0.02, 0.03 + Math.random() * 0.02]} />
+            <meshStandardMaterial color="#2a4a1a" roughness={0.8} side={THREE.DoubleSide}
+              transparent opacity={0.6} />
+          </mesh>
+        );
+      })}
+      {/* Tiny rocks for texture */}
+      {Array.from({ length: 10 }, (_, i) => {
+        const x = (Math.random() - 0.5) * 0.4;
+        const z = (Math.random() - 0.5) * 0.4;
+        return (
+          <mesh key={`rock-${i}`} position={[x, -0.003, z]}
+            rotation={[Math.random(), Math.random(), 0]}>
+            <dodecahedronGeometry args={[0.003 + Math.random() * 0.004, 0]} />
+            <meshStandardMaterial color="#3a3a2a" roughness={0.95} />
+          </mesh>
+        );
+      })}
     </group>
   );
 }
@@ -304,8 +322,8 @@ interface SplitScreenViewProps {
   worldType?: string;
 }
 
-export function SplitScreenView({ worldType = 'garden' }: SplitScreenViewProps) {
-  const [splitRatio] = useState(0.5);
+export function SplitScreenView({ worldType: initialWorldType = 'garden' }: SplitScreenViewProps) {
+  const [activeWorld, setActiveWorld] = useState(initialWorldType);
 
   const canvasProps = {
     gl: { antialias: true, alpha: false, powerPreference: 'high-performance' as const },
@@ -324,6 +342,23 @@ export function SplitScreenView({ worldType = 'garden' }: SplitScreenViewProps) 
       {/* LEFT: World View — organism in environment */}
       <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 4 }}>
         <ViewLabel text="World View" />
+        {/* Environment selector */}
+        <div style={{
+          position: 'absolute', bottom: 8, left: 8, zIndex: 10,
+          display: 'flex', gap: 3,
+        }}>
+          {(['garden', 'soil', 'pond', 'lab_plate'] as const).map((env) => (
+            <button key={env} onClick={() => setActiveWorld(env)} style={{
+              padding: '2px 6px', fontSize: 8, fontFamily: 'monospace',
+              background: activeWorld === env ? 'rgba(0,180,255,0.25)' : 'rgba(10,15,25,0.6)',
+              color: activeWorld === env ? '#00ccff' : 'rgba(140,170,200,0.5)',
+              border: activeWorld === env ? '1px solid rgba(0,180,255,0.4)' : '1px solid rgba(80,120,200,0.15)',
+              borderRadius: 3, cursor: 'pointer', textTransform: 'capitalize',
+            }}>
+              {env.replace('_', ' ')}
+            </button>
+          ))}
+        </div>
         <Canvas
           shadows
           camera={{ position: [0.1, 0.08, 0.25], fov: 45, near: 0.005, far: 15 }}
@@ -340,7 +375,7 @@ export function SplitScreenView({ worldType = 'garden' }: SplitScreenViewProps) 
           <hemisphereLight args={['#2a3a50', '#0a0510', 0.4]} />
 
           {/* Environment */}
-          <WorldEnvironment worldType={worldType} />
+          <WorldEnvironment worldType={activeWorld} />
 
           {/* Organism */}
           <OrganismBody />
