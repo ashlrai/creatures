@@ -369,10 +369,11 @@ export function FlyBody3D() {
         smoothPos.current[1] += (com[1] - smoothPos.current[1]) * lerpFactor;
         smoothPos.current[2] += (com[2] - smoothPos.current[2]) * lerpFactor;
 
+        // Match camera coordinate convention: x stays, y↔z swap, z negated
         groupRef.current.position.set(
           smoothPos.current[0],
-          smoothPos.current[1] + 0.03,
-          smoothPos.current[2],
+          smoothPos.current[2] + 0.03,
+          -smoothPos.current[1],
         );
 
         // Yaw from movement direction (cache prev for wing flap later)

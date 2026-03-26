@@ -18,7 +18,7 @@ import { useSimulationStore } from '../stores/simulationStore';
 function SmoothCamera() {
   const frame = useSimulationStore((s) => s.frame);
   const controlsRef = useRef<any>(null);
-  const targetRef = useRef(new THREE.Vector3(0.3, 0.02, 0));
+  const targetRef = useRef(new THREE.Vector3(0.45, 0.015, 0));
   const hasSnapped = useRef(false);
 
   useFrame(({ camera }) => {
