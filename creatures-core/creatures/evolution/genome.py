@@ -25,6 +25,9 @@ from creatures.connectome.types import (
     SynapseType,
 )
 
+# Bump when serialization format changes to prevent silent deserialization failures
+GENOME_FORMAT_VERSION = 2
+
 
 @dataclass
 class Genome:
@@ -166,6 +169,7 @@ class Genome:
         for ``multiprocessing.Pool.map``.
         """
         d = {
+            "format_version": GENOME_FORMAT_VERSION,
             "id": self.id,
             "parent_ids": self.parent_ids,
             "generation": self.generation,
@@ -194,6 +198,12 @@ class Genome:
         Converts lists back to numpy arrays and enum values back to
         ``NeuronType`` instances.
         """
+        saved_version = d.get("format_version", 1)
+        if saved_version > GENOME_FORMAT_VERSION:
+            raise ValueError(
+                f"Genome format version {saved_version} is newer than supported "
+                f"version {GENOME_FORMAT_VERSION}. Update creatures-core."
+            )
         g = cls(
             id=d["id"],
             parent_ids=tuple(d["parent_ids"]),
@@ -269,6 +279,7 @@ class Genome:
             f.create_dataset("pre_indices", data=self.pre_indices)
             f.create_dataset("post_indices", data=self.post_indices)
             f.create_dataset("synapse_types", data=self.synapse_types)
+            f.attrs["format_version"] = GENOME_FORMAT_VERSION
             f.attrs["id"] = self.id
             f.attrs["generation"] = self.generation
             f.attrs["fitness"] = self.fitness
@@ -283,6 +294,12 @@ class Genome:
         """Load genome from HDF5, using connectome for neuron metadata."""
         import h5py
         with h5py.File(path, "r") as f:
+            saved_version = int(f.attrs.get("format_version", 1))
+            if saved_version > GENOME_FORMAT_VERSION:
+                raise ValueError(
+                    f"Genome file version {saved_version} is newer than supported "
+                    f"version {GENOME_FORMAT_VERSION}. Update creatures-core."
+                )
             genome = cls(
                 id=str(f.attrs["id"]),
                 parent_ids=(),

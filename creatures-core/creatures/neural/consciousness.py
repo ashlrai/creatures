@@ -71,7 +71,7 @@ def compute_phi(
     n_neurons: int,
     duration_ms: float,
     bin_ms: float = 10.0,
-    top_k: int = 30,
+    top_k: int | None = None,
     n_partitions: int = 50,
     seed: int = 42,
 ) -> dict[str, Any]:
@@ -95,13 +95,17 @@ def compute_phi(
         n_neurons: Total neuron count.
         duration_ms: Total recording duration.
         bin_ms: Time bin width for discretization.
-        top_k: Number of most active neurons to analyze.
+        top_k: Number of most active neurons to analyze. If None, scales
+            adaptively with network size: min(max(30, int(sqrt(n)*2)), 100).
         n_partitions: Number of random partitions to try.
         seed: Random seed.
 
     Returns:
         Dictionary with phi, partition info, and per-neuron contributions.
     """
+    # Adaptive top_k: scale with network size for better coverage
+    if top_k is None:
+        top_k = min(max(30, int(np.sqrt(n_neurons) * 2)), 100)
     if len(spike_indices) == 0:
         return {"phi": 0.0, "partition": {}, "n_analyzed": 0}
 
@@ -426,7 +430,7 @@ def compute_neural_complexity(
     duration_ms: float,
     bin_ms: float = 10.0,
     max_scale: int = 10,
-    top_k: int = 60,
+    top_k: int | None = None,
     n_samples_per_scale: int = 20,
     seed: int = 42,
 ) -> dict[str, Any]:
@@ -457,6 +461,10 @@ def compute_neural_complexity(
     """
     if len(spike_indices) == 0:
         return {"complexity": 0.0, "profile": [], "n_analyzed": 0}
+
+    # Adaptive top_k: scale with network size
+    if top_k is None:
+        top_k = min(max(60, int(np.sqrt(n_neurons) * 3)), 150)
 
     rng = np.random.default_rng(seed)
     spike_indices = np.asarray(spike_indices)
@@ -647,7 +655,7 @@ def compute_all_consciousness_metrics(
     duration_ms: float,
     response_matrix: np.ndarray | None = None,
     bin_ms: float = 10.0,
-    top_k: int = 30,
+    top_k: int | None = None,
     seed: int = 42,
 ) -> ConsciousnessReport:
     """Compute all four consciousness metrics.
@@ -659,7 +667,8 @@ def compute_all_consciousness_metrics(
         response_matrix: Optional evoked response matrix for PCI.
             If None, PCI is computed from the spike data directly.
         bin_ms: Time bin width for discretization.
-        top_k: Number of neurons to analyze for Φ.
+        top_k: Number of neurons to analyze for Φ. If None, scales
+            adaptively with network size.
         seed: Random seed.
 
     Returns:

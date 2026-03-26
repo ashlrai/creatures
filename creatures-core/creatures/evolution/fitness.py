@@ -33,7 +33,7 @@ class FitnessConfig:
     w_distance: float = 1.0  # reward for distance traveled
     w_food: float = 2.0  # placeholder for future food reward
     w_efficiency: float = 0.5  # reward for neural efficiency (penalize silence)
-    w_consciousness: float = 0.0  # reward for integrated information (Φ)
+    w_consciousness: float = 0.3  # reward for integrated information (Φ)
 
     # Poke stimulus to get things moving
     poke_at_ms: float = 100.0
@@ -775,7 +775,7 @@ def evaluate_genome_vectorized(
         from creatures.neural.consciousness import compute_phi
         phi_result = compute_phi(
             np.array(indices), np.array(times), n_neurons, sim_ms,
-            bin_ms=5.0, top_k=20, n_partitions=30,
+            bin_ms=5.0, n_partitions=30,
         )
         phi_value = phi_result["phi"]
         consciousness_pts = min(1.0, phi_value / 1.5) * 20.0 * config.w_consciousness

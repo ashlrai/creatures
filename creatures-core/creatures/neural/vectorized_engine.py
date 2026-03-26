@@ -507,9 +507,9 @@ class VectorizedEngine:
         xp = self.xp
         fdtype = self._float_dtype
 
-        # Decay traces
-        decay_pre = 1.0 - self.dt / self.stdp_tau_pre
-        decay_post = 1.0 - self.dt / self.stdp_tau_post
+        # Decay traces (exponential, biologically accurate)
+        decay_pre = xp.exp(xp.array(-self.dt / self.stdp_tau_pre))
+        decay_post = xp.exp(xp.array(-self.dt / self.stdp_tau_post))
         self.apre = self.apre * decay_pre
         self.apost = self.apost * decay_post
 

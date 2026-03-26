@@ -8,9 +8,14 @@ organisms with genuinely useful behaviors.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -35,11 +40,17 @@ class GodAgent:
     producing organisms with genuinely useful behaviors.
     """
 
-    def __init__(self, config: GodConfig | None = None) -> None:
+    def __init__(self, config: GodConfig | None = None, run_id: str = "") -> None:
         self.config = config or GodConfig()
         self.config.api_key = self.config.api_key or os.environ.get("XAI_API_KEY")
         self.history: list[dict] = []  # intervention history
         self.observations: list[dict] = []
+        # Persistent intervention log
+        data_dir = Path(os.environ.get("NEUREVO_DATA_DIR", "neurevo_data"))
+        self._log_dir = data_dir / "god_agent_logs"
+        self._log_dir.mkdir(parents=True, exist_ok=True)
+        self._run_id = run_id or datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        self._log_path = self._log_dir / f"interventions_{self._run_id}.jsonl"
 
     def observe(
         self,
@@ -79,13 +90,28 @@ class GodAgent:
         if self.config.provider == "fallback":
             intervention = self._fallback_intervention()
             self.history.append(intervention)
+            self._persist_intervention(intervention)
             return intervention
 
         prompt = self._build_analysis_prompt()
         response = await self._call_llm(prompt)
         intervention = self._parse_intervention(response)
         self.history.append(intervention)
+        self._persist_intervention(intervention)
         return intervention
+
+    def _persist_intervention(self, intervention: dict) -> None:
+        """Append intervention to JSONL log on disk for auditability."""
+        try:
+            record = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "generation": self.observations[-1]["generation"] if self.observations else -1,
+                **intervention,
+            }
+            with open(self._log_path, "a") as f:
+                f.write(json.dumps(record, default=str) + "\n")
+        except Exception as e:
+            logger.warning("Failed to persist God Agent intervention: %s", e)
 
     def _build_analysis_prompt(self) -> str:
         """Build the prompt for the LLM with current simulation context."""

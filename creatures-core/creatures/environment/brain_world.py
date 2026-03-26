@@ -298,11 +298,11 @@ class BrainWorld:
 
         phi_result = compute_phi(
             spike_idx, spike_t, self.engine.n_total, duration,
-            bin_ms=10.0, top_k=20, n_partitions=20,
+            bin_ms=10.0, n_partitions=20,
         )
         cn_result = compute_neural_complexity(
             spike_idx, spike_t, self.engine.n_total, duration,
-            bin_ms=10.0, top_k=30, max_scale=5,
+            bin_ms=10.0, max_scale=5,
         )
 
         self._last_consciousness = {

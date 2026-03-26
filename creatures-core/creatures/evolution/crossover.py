@@ -19,6 +19,8 @@ def crossover(
     parent_a: Genome,
     parent_b: Genome,
     rng: np.random.Generator,
+    max_neurons: int = 500,
+    max_synapses: int = 10000,
 ) -> Genome:
     """Produce a child genome by NEAT-style crossover of two parents.
 
@@ -124,6 +126,43 @@ def crossover(
             valid_post.append(child_post[i])
             valid_w.append(child_weights[i])
             valid_st.append(child_syn_types[i])
+
+    # Enforce size constraints to prevent genome bloat across generations
+    if len(valid_pre) > max_synapses:
+        # Keep strongest synapses
+        abs_w = np.abs(np.array(valid_w))
+        keep_idx = np.argsort(-abs_w)[:max_synapses]
+        valid_pre = [valid_pre[i] for i in keep_idx]
+        valid_post = [valid_post[i] for i in keep_idx]
+        valid_w = [valid_w[i] for i in keep_idx]
+        valid_st = [valid_st[i] for i in keep_idx]
+
+    if n_neurons > max_neurons:
+        # Keep neurons that are connected; drop orphans from weaker parent
+        connected = set()
+        for p, q in zip(valid_pre, valid_post):
+            connected.add(p)
+            connected.add(q)
+        new_ids = []
+        new_types = {}
+        new_nts = {}
+        for i, nid in enumerate(child_neuron_ids):
+            if i in connected or len(new_ids) < max_neurons:
+                new_ids.append(nid)
+                new_types[nid] = child_neuron_types.get(nid)
+                new_nts[nid] = child_neuron_nts.get(nid)
+        child_neuron_ids = new_ids[:max_neurons]
+        child_neuron_types = {k: v for k, v in new_types.items() if k in set(child_neuron_ids)}
+        child_neuron_nts = {k: v for k, v in new_nts.items() if k in set(child_neuron_ids)}
+        # Re-filter synapses for new neuron count
+        n_neurons = len(child_neuron_ids)
+        filtered = [(p, q, w, s) for p, q, w, s in zip(valid_pre, valid_post, valid_w, valid_st)
+                     if p < n_neurons and q < n_neurons]
+        if filtered:
+            valid_pre, valid_post, valid_w, valid_st = zip(*filtered)
+            valid_pre, valid_post, valid_w, valid_st = list(valid_pre), list(valid_post), list(valid_w), list(valid_st)
+        else:
+            valid_pre, valid_post, valid_w, valid_st = [], [], [], []
 
     return Genome(
         id=str(uuid.uuid4())[:8],

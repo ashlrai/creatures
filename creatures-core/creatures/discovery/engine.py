@@ -637,7 +637,7 @@ class DiscoveryEngine:
 
             result = compute_phi(
                 np.array(indices), np.array(times), n, duration,
-                bin_ms=5.0, top_k=20, n_partitions=30,
+                bin_ms=5.0, n_partitions=30,
             )
             result["n_spikes"] = len(indices)
             return result
