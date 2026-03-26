@@ -75,33 +75,56 @@ export function NeuralNetwork3D() {
       .then(r => { if (!r.ok) throw new Error(); return r.json(); })
       .catch(() => fetch(`${base}neuron-positions.json`).then(r => r.json()))
       .then((data: Record<string, [number, number, number]>) => {
-        const entries = Object.entries(data).map(([id, pos]) => ({ id, position: pos }));
+        if (!data || typeof data !== 'object') {
+          console.warn('[NeuralNetwork3D] neuron position data is missing or malformed');
+          return;
+        }
+        const entries: NeuronPos[] = [];
+        for (const [id, pos] of Object.entries(data)) {
+          if (!Array.isArray(pos) || pos.length < 3) continue;
+          if (typeof pos[0] !== 'number' || typeof pos[1] !== 'number' || typeof pos[2] !== 'number') continue;
+          entries.push({ id, position: pos as [number, number, number] });
+        }
+        if (entries.length === 0) {
+          console.warn('[NeuralNetwork3D] no valid neuron positions found in data');
+        }
         setNeurons(entries);
       })
-      .catch(e => console.warn('Failed to load neuron positions:', e));
+      .catch(e => console.warn('[NeuralNetwork3D] Failed to load neuron positions:', e));
 
     // Types — API first, fall back to static
     fetch(`/api/neurons/${experiment.id}/info`)
       .then(r => { if (!r.ok) throw new Error(); return r.json(); })
       .then((data: Array<{ id: string; type: string }>) => {
+        if (!Array.isArray(data)) {
+          console.warn('[NeuralNetwork3D] neuron type API returned non-array');
+          return;
+        }
         const types: Record<string, string> = {};
-        data.forEach(n => { types[n.id] = n.type; });
+        data.forEach(n => { if (n?.id) types[n.id] = n.type || 'unknown'; });
         setNeuronTypes(types);
       })
       .catch(() => {
         fetch(`${base}neuron-types.json`)
           .then(r => r.json())
           .then((data: Record<string, { type: string; nt?: string | null }>) => {
+            if (!data || typeof data !== 'object') {
+              console.warn('[NeuralNetwork3D] neuron-types.json is malformed');
+              return;
+            }
             const types: Record<string, string> = {};
             const fullInfo: Record<string, NeuronTypeInfo> = {};
             Object.entries(data).forEach(([id, info]) => {
-              types[id] = info.type;
-              fullInfo[id] = { type: info.type, nt: info.nt ?? null };
+              if (!info || typeof info !== 'object') return;
+              types[id] = info.type || 'unknown';
+              fullInfo[id] = { type: info.type || 'unknown', nt: info.nt ?? null };
             });
             setNeuronTypes(types);
             setNeuronFullInfo(fullInfo);
           })
-          .catch(() => {});
+          .catch((e) => {
+            console.warn('[NeuralNetwork3D] Failed to load neuron types:', e);
+          });
       });
   }, [experiment]);
 
@@ -211,6 +234,13 @@ export function NeuralNetwork3D() {
   // Cache spike set to avoid allocation every frame
   const spikeSetRef = useRef(new Set<number>());
 
+  // Change-detection refs — typed arrays for lightweight per-neuron tracking.
+  // Previous firing rates and spike flags let us skip neurons whose visual
+  // output hasn't meaningfully changed, avoiding a full GPU buffer upload
+  // every frame.
+  const prevRatesRef = useRef<Float32Array | null>(null);
+  const prevSpikesRef = useRef<Uint8Array | null>(null);
+
   // Animate colors based on firing rates + spikes
   useFrame(() => {
     if (!pointsRef.current || !frame?.firing_rates || !colors || !baseColors) return;
@@ -220,9 +250,25 @@ export function NeuralNetwork3D() {
     if (!colorAttr) return;
 
     const rates = frame.firing_rates;
+    const count = Math.min(neurons.length, rates.length);
+
+    // Build spike lookup
     const spikeSet = spikeSetRef.current;
     spikeSet.clear();
     if (frame.spikes) for (const s of frame.spikes) spikeSet.add(s);
+
+    // Lazily allocate / resize change-detection buffers
+    if (!prevRatesRef.current || prevRatesRef.current.length < count) {
+      prevRatesRef.current = new Float32Array(count);
+      // Fill with -1 so every neuron is "dirty" on the first frame
+      prevRatesRef.current.fill(-1);
+    }
+    if (!prevSpikesRef.current || prevSpikesRef.current.length < count) {
+      prevSpikesRef.current = new Uint8Array(count);
+    }
+
+    const prevRates = prevRatesRef.current;
+    const prevSpikes = prevSpikesRef.current;
     const arr = colorAttr.array as Float32Array;
 
     // Halo layer
@@ -230,10 +276,32 @@ export function NeuralNetwork3D() {
     const haloColorAttr = haloGeo?.getAttribute('color') as THREE.BufferAttribute | undefined;
     const hArr = haloColorAttr?.array as Float32Array | undefined;
 
-    for (let i = 0; i < Math.min(neurons.length, rates.length); i++) {
+    let dirty = false;
+
+    for (let i = 0; i < count; i++) {
       const rate = rates[i];
+      const isSpiking = spikeSet.has(i) ? 1 : 0;
+
+      // Change detection: skip if rate moved <5% AND spike state is the same
+      const prevRate = prevRates[i];
+      const rateDelta = rate - prevRate;
+      // Absolute threshold avoids division; 5% of 80 (max visual range) = 4.0
+      // but we also care about relative change on small values, so use the
+      // larger of an absolute band (0.5) and 5% of the previous value.
+      const threshold = prevRate > 10 ? prevRate * 0.05 : 0.5;
+      if (
+        (rateDelta < threshold && rateDelta > -threshold) &&
+        isSpiking === prevSpikes[i]
+      ) {
+        continue;
+      }
+
+      // Neuron changed — update cached state
+      prevRates[i] = rate;
+      prevSpikes[i] = isSpiking as 0 | 1;
+      dirty = true;
+
       const intensity = Math.min(rate / 80, 1); // more sensitive threshold
-      const isSpiking = spikeSet.has(i);
 
       // Spike flash: immediate 3-5x brightness boost
       const spikeFlash = isSpiking ? 2.5 : 0;
@@ -265,8 +333,12 @@ export function NeuralNetwork3D() {
         }
       }
     }
-    colorAttr.needsUpdate = true;
-    if (haloColorAttr) haloColorAttr.needsUpdate = true;
+
+    // Only trigger GPU buffer upload when at least one neuron visually changed
+    if (dirty) {
+      colorAttr.needsUpdate = true;
+      if (haloColorAttr) haloColorAttr.needsUpdate = true;
+    }
   });
 
   if (!positions || !colors || neurons.length === 0) return null;

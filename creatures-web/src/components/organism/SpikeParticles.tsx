@@ -159,6 +159,11 @@ export function SpikeParticles() {
       fetch('/api/neurons/positions').catch(() => fetch(`${base}neuron-positions.json`)).then(r => r.json()),
       fetch(`${base}neuron-types.json`).then(r => r.json()).catch(() => ({})),
     ]).then(([posData, typeData]) => {
+      if (!posData || typeof posData !== 'object') {
+        console.warn('[SpikeParticles] neuron position data is missing or malformed, skipping');
+        return;
+      }
+
       const positions: Record<number, [number, number, number]> = {};
       const types: Record<number, string> = {};
       const idByIndex: string[] = [];
@@ -166,7 +171,10 @@ export function SpikeParticles() {
 
       const yMin = -320, yMax = 420;
       neuronIds.forEach((nid, idx) => {
-        const [nx, ny, nz] = posData[nid];
+        const raw = posData[nid];
+        if (!Array.isArray(raw) || raw.length < 3) return; // skip malformed entries
+        const [nx, ny, nz] = raw;
+        if (typeof nx !== 'number' || typeof ny !== 'number' || typeof nz !== 'number') return;
         const bodyFrac = (ny - yMin) / (yMax - yMin);
         const x = bodyFrac * 0.88;
         const y = nz * 0.0003 + 0.015;
@@ -177,18 +185,28 @@ export function SpikeParticles() {
       });
 
       setNeuronData({ positions, types, idByIndex });
-    }).catch(() => {});
+    }).catch((e) => {
+      console.warn('[SpikeParticles] Failed to load neuron position/type data:', e);
+    });
   }, [experiment]);
 
   // ---- Load connectome graph for cascade routing ----
   useEffect(() => {
     const base = import.meta.env.BASE_URL || '/';
     fetch(`${base}connectome-graph.json`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data: { nodes: ConnectomeNode[]; edges: ConnectomeEdge[] }) => {
+        if (!data || !Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
+          console.warn('[SpikeParticles] connectome-graph.json has unexpected shape, cascade disabled');
+          return;
+        }
         const nodePos = new Map<string, THREE.Vector3>();
         const nodeNt = new Map<string, string>();
         for (const n of data.nodes) {
+          if (!n.id || typeof n.x !== 'number' || typeof n.y !== 'number' || typeof n.z !== 'number') continue;
           // Use the pre-computed x/y/z from the graph (already in scene coords)
           nodePos.set(n.id, new THREE.Vector3(n.x, n.y, n.z));
           nodeNt.set(n.id, n.nt || '');
@@ -196,7 +214,9 @@ export function SpikeParticles() {
         const adjacency = buildAdjacency(data.edges);
         setConnectome({ nodePos, nodeNt, adjacency });
       })
-      .catch(() => {});
+      .catch((e) => {
+        console.warn('[SpikeParticles] Failed to load connectome-graph.json — cascade particles disabled:', e);
+      });
   }, []);
 
   // ---- GPU buffer arrays ----
@@ -221,6 +241,10 @@ export function SpikeParticles() {
     for (const spikeIdx of currentSpikes) {
       if (lastSpikes.current.has(spikeIdx)) continue;
       if (spikeCount >= MAX_SPIKES_PER_FRAME) break;
+
+      // Bounds-check: skip invalid spike indices
+      if (typeof spikeIdx !== 'number' || spikeIdx < 0 || !Number.isFinite(spikeIdx)) continue;
+
       spikeCount++;
 
       const pos = neuronData.positions[spikeIdx];
