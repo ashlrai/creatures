@@ -32,12 +32,17 @@ def pytest_collection_modifyitems(config, items):
             if "slow" in item.keywords:
                 item.add_marker(skip_slow)
 
+    # Skip all tests that require connectome data files when not available
+    if not _HAS_DATA:
+        skip_data = pytest.mark.skip(reason="Connectome data files not available")
+        for item in items:
+            if "connectome" in item.fixturenames or "small_connectome" in item.fixturenames:
+                item.add_marker(skip_data)
+
 
 @pytest.fixture(scope="session")
 def connectome() -> Connectome:
     """Load the C. elegans connectome once for the entire test session."""
-    if not _HAS_DATA:
-        pytest.skip("Connectome data files not available (CElegansNeuronTables.xls)")
     from creatures.connectome.openworm import load_from_edge_list
     return load_from_edge_list()
 
