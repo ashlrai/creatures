@@ -181,6 +181,7 @@ export default function App() {
   const [massivePopulation, setMassivePopulation] = useState(0);
   const massiveStepRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [sidebarTab, setSidebarTab] = useState<'brain' | 'tools' | 'science'>('brain');
+  const [rightTab, setRightTab] = useState<'overview' | 'activity' | 'analysis'>('overview');
   const [showWelcome, setShowWelcome] = useLocalStorage('neurevo:welcomed', true);
   const [showTutorial, setShowTutorial] = useState(() => !Tutorial.isComplete());
   const autoStarted = useRef(false);
@@ -1138,25 +1139,52 @@ export default function App() {
           ) : (
             experiment ? (
               <>
-                <PanelErrorBoundary name="Connectome">
-                  <ConnectomeExplorer />
-                </PanelErrorBoundary>
-                <PanelErrorBoundary name="Species Comparison">
-                  <SpeciesComparison />
-                </PanelErrorBoundary>
-                {researchMode && (
+                {/* Tabbed right sidebar — categorized panels */}
+                <div style={{
+                  display: 'flex', gap: 2, marginBottom: 8,
+                  borderBottom: '1px solid rgba(80,120,200,0.15)', paddingBottom: 4,
+                }}>
+                  {(['overview', 'activity', 'analysis'] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setRightTab(tab)}
+                      style={{
+                        flex: 1, padding: '4px 0', fontSize: 9, fontFamily: 'monospace',
+                        textTransform: 'uppercase', letterSpacing: '0.5px',
+                        background: rightTab === tab ? 'rgba(0,180,255,0.15)' : 'transparent',
+                        color: rightTab === tab ? '#00ccff' : 'rgba(140,170,200,0.5)',
+                        border: 'none', borderRadius: 4, cursor: 'pointer',
+                        borderBottom: rightTab === tab ? '2px solid #00ccff' : '2px solid transparent',
+                      }}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
+
+                {/* OVERVIEW tab: Consciousness + Connectome */}
+                {rightTab === 'overview' && (
                   <>
+                    <PanelErrorBoundary name="Consciousness">
+                      <ConsciousnessDashboard />
+                    </PanelErrorBoundary>
+                    <PanelErrorBoundary name="Connectome">
+                      <ConnectomeExplorer />
+                    </PanelErrorBoundary>
                     <PanelErrorBoundary name="Correlation">
                       <CorrelationMatrix />
                     </PanelErrorBoundary>
+                  </>
+                )}
+
+                {/* ACTIVITY tab: Neural dynamics */}
+                {rightTab === 'activity' && (
+                  <>
                     <PanelErrorBoundary name="PCA">
                       <PopulationProjection />
                     </PanelErrorBoundary>
                     <PanelErrorBoundary name="PSD">
                       <PowerSpectralDensity />
-                    </PanelErrorBoundary>
-                    <PanelErrorBoundary name="Consciousness">
-                      <ConsciousnessDashboard />
                     </PanelErrorBoundary>
                     <PanelErrorBoundary name="Mutual Information">
                       <MutualInfoMatrix />
@@ -1164,17 +1192,26 @@ export default function App() {
                     <PanelErrorBoundary name="Transfer Entropy">
                       <TransferEntropyNetwork />
                     </PanelErrorBoundary>
+                  </>
+                )}
+
+                {/* ANALYSIS tab: Deep analysis tools */}
+                {rightTab === 'analysis' && (
+                  <>
                     <PanelErrorBoundary name="Causal Analysis">
                       <CausalDashboard />
                     </PanelErrorBoundary>
-                    <PanelErrorBoundary name="Connectome Diff">
-                      <ConnectomeDiff />
+                    <PanelErrorBoundary name="Circuit Motifs">
+                      <MotifAnalyzer />
                     </PanelErrorBoundary>
                     <PanelErrorBoundary name="Calcium Imaging">
                       <CalciumOverlay />
                     </PanelErrorBoundary>
-                    <PanelErrorBoundary name="Circuit Motifs">
-                      <MotifAnalyzer />
+                    <PanelErrorBoundary name="Species Comparison">
+                      <SpeciesComparison />
+                    </PanelErrorBoundary>
+                    <PanelErrorBoundary name="Connectome Diff">
+                      <ConnectomeDiff />
                     </PanelErrorBoundary>
                   </>
                 )}
