@@ -17,8 +17,14 @@ interface SharePanelProps {
 export function SharePanel({ state, onClose }: SharePanelProps) {
   const [copied, setCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const url = generateShareUrl(state);
   const summary = summarizeState(state);
+
+  // Cleanup timeout on unmount
+  useEffect(() => () => {
+    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+  }, []);
 
   // Select all on focus
   const handleFocus = useCallback(() => {
@@ -28,9 +34,9 @@ export function SharePanel({ state, onClose }: SharePanelProps) {
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
     }).catch(() => {
-      // Fallback: select the input for manual copy
       inputRef.current?.select();
     });
   }, [url]);

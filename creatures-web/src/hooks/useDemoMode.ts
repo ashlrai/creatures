@@ -108,11 +108,11 @@ export function useDemoMode() {
     store.setError(null);
 
     // Choose demo data file based on organism
-    const demoFile = organism === 'drosophila'
-      ? 'demo-frames-fly.json'
-      : organism === 'zebrafish'
-        ? 'demo-frames-zebrafish.json'
-        : 'demo-frames.json';
+    const demoFileMap: Record<string, string> = {
+      drosophila: 'demo-frames-fly.json',
+      zebrafish: 'demo-frames-zebrafish.json',
+    };
+    const demoFile = demoFileMap[organism] ?? 'demo-frames.json';
 
     try {
       const base = import.meta.env.BASE_URL || '/';

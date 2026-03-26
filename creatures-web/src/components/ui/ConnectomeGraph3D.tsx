@@ -67,7 +67,7 @@ function fibonacciSphere(n: number, radius: number): Float32Array {
   const positions = new Float32Array(n * 3);
   const goldenAngle = Math.PI * (3 - Math.sqrt(5));
   for (let i = 0; i < n; i++) {
-    const y = 1 - (i / (n - 1)) * 2; // -1 to 1
+    const y = n <= 1 ? 0 : 1 - (i / (n - 1)) * 2; // -1 to 1
     const r = Math.sqrt(1 - y * y);
     const theta = goldenAngle * i;
     positions[i * 3] = Math.cos(theta) * r * radius;

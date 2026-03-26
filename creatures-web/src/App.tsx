@@ -150,8 +150,6 @@ export default function App() {
   const toggleEvolutionMode = useEvolutionStore((s) => s.toggleEvolutionMode);
   const fitnessHistory = useEvolutionStore((s) => s.fitnessHistory);
   const frame = useSimulationStore((s) => s.frame);
-  const loading = useSimulationStore((s) => s.loading);
-  const error = useSimulationStore((s) => s.error);
   const history = useSimulationStore((s) => s.frameHistory);
   const connectionStatus = useSimulationStore((s) => s.connectionStatus);
   const researchMode = useUIPreferencesStore((s) => s.researchMode);
@@ -190,7 +188,6 @@ export default function App() {
   const [savedOrganism, setSavedOrganism] = useLocalStorage<string>('neurevo:organism', 'c_elegans');
   const [savedMode, setSavedMode] = useLocalStorage<'sim' | 'evo'>('neurevo:mode', 'sim');
   const [drugPanelExpanded, setDrugPanelExpanded] = useLocalStorage<boolean>('neurevo:drugPanelExpanded', false);
-  const [savedGeneration, setSavedGeneration] = useLocalStorage<number>('neurevo:lastGeneration', 0);
 
   // Sync appMode with evolution store for backward compatibility
   useEffect(() => {
@@ -218,14 +215,6 @@ export default function App() {
     // Only on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Track latest generation for persistence
-  const latestStats = useEvolutionStore((s) => s.latestStats);
-  useEffect(() => {
-    if (latestStats?.generation != null) {
-      setSavedGeneration(latestStats.generation);
-    }
-  }, [latestStats, setSavedGeneration]);
 
   // Derive current organism from experiment or saved value
   const currentOrganism = experiment?.organism ?? savedOrganism;

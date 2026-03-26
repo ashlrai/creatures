@@ -54,6 +54,20 @@ function buildHash(state: HashState): string {
   return `#/app/sim/${state.organism}`;
 }
 
+/** Try to decode a share-state URL and invoke the callback. Returns true if handled. */
+function tryHandleShareRoute(
+  hash: string,
+  onShareState?: (state: ShareableState) => void,
+): boolean {
+  if (!onShareState || !isShareStateRoute(hash)) return false;
+  const payload = extractSharePayload(hash);
+  if (!payload) return false;
+  const decoded = decodeState(payload);
+  if (!decoded) return false;
+  onShareState(decoded);
+  return true;
+}
+
 export function useHashRouter(
   currentState: HashState,
   onHashChange: (state: HashState) => void,
@@ -64,18 +78,7 @@ export function useHashRouter(
   // On mount: read hash and push state to app
   useEffect(() => {
     const hash = window.location.hash;
-
-    // Check for shareable state route first
-    if (isShareStateRoute(hash) && onShareState) {
-      const payload = extractSharePayload(hash);
-      if (payload) {
-        const decoded = decodeState(payload);
-        if (decoded) {
-          onShareState(decoded);
-          return;
-        }
-      }
-    }
+    if (tryHandleShareRoute(hash, onShareState)) return;
 
     const initial = parseHash(hash);
     if (initial) {
@@ -106,18 +109,7 @@ export function useHashRouter(
       }
 
       const hash = window.location.hash;
-
-      // Handle share state routes
-      if (isShareStateRoute(hash) && onShareState) {
-        const payload = extractSharePayload(hash);
-        if (payload) {
-          const decoded = decodeState(payload);
-          if (decoded) {
-            onShareState(decoded);
-            return;
-          }
-        }
-      }
+      if (tryHandleShareRoute(hash, onShareState)) return;
 
       const parsed = parseHash(hash);
       if (parsed) onHashChange(parsed);

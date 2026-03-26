@@ -156,9 +156,11 @@ function useComparisonDemo(organism: OrganismType) {
     const currentSpeed = useTransportStore.getState().speed;
     intervalRef.current = window.setInterval(tick, baseInterval / currentSpeed);
 
-    // Sync interval with transport speed changes
+    // Sync interval with transport speed changes (only when speed actually changes)
+    let lastSpeed = currentSpeed;
     const unsub = useTransportStore.subscribe((state) => {
-      if (!tickRef.current) return;
+      if (!tickRef.current || state.speed === lastSpeed) return;
+      lastSpeed = state.speed;
       if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = window.setInterval(
         tickRef.current,
