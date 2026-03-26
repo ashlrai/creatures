@@ -9,8 +9,8 @@ const WS_HOST = typeof window !== 'undefined' && window.location.hostname === 'n
   ? 'creatures-production.up.railway.app'
   : window?.location?.host ?? 'localhost:5173';
 const WS_BASE = typeof window !== 'undefined' ? `wss://${WS_HOST}` : 'ws://localhost:5173';
-const MAX_RECONNECT_ATTEMPTS = 3;
-const RECONNECT_DELAYS = [1000, 2000, 4000]; // exponential backoff
+const INITIAL_RECONNECT_DELAYS = [1000, 2000, 4000]; // initial backoff steps
+const MAX_RECONNECT_BACKOFF = 30_000; // cap for indefinite retries
 
 export function useSimulation() {
   const wsRef = useRef<WebSocket | null>(null);
@@ -52,14 +52,16 @@ export function useSimulation() {
 
   const attemptReconnect = useCallback((simId: string) => {
     const currentAttempts = useSimulationStore.getState().reconnectAttempts;
-    if (currentAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      store.setConnectionStatus('failed');
-      store.setError('Connection lost -- using cached data');
-      return;
-    }
     store.setConnectionStatus('reconnecting');
     store.setReconnectAttempts(currentAttempts + 1);
-    const delay = RECONNECT_DELAYS[currentAttempts] ?? 4000;
+
+    // Use predefined delays for the first few attempts, then exponential backoff capped at 30s
+    const baseDelay = currentAttempts < INITIAL_RECONNECT_DELAYS.length
+      ? INITIAL_RECONNECT_DELAYS[currentAttempts]
+      : Math.min(MAX_RECONNECT_BACKOFF, 4000 * Math.pow(2, currentAttempts - INITIAL_RECONNECT_DELAYS.length));
+    // Add 30% random jitter to prevent thundering herd
+    const delay = baseDelay + Math.random() * baseDelay * 0.3;
+
     reconnectTimerRef.current = window.setTimeout(() => {
       connect(simId, true);
     }, delay);
@@ -128,6 +130,8 @@ export function useSimulation() {
   const sendCommand = useCallback((cmd: Record<string, unknown>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(cmd));
+    } else {
+      useSimulationStore.getState().setError('Not connected — command not sent');
     }
   }, []);
 
