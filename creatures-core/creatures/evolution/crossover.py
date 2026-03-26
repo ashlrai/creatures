@@ -12,6 +12,7 @@ import uuid
 
 import numpy as np
 
+from creatures.connectome.types import NeuronType
 from creatures.evolution.genome import Genome
 
 
@@ -149,6 +150,35 @@ def crossover(
                     if len(keep_indices) >= max_neurons:
                         break
         keep_indices = keep_indices[:max_neurons]
+
+        # Ensure at least one motor and one sensory neuron survive capping.
+        # Without them the organism cannot sense or act, scoring 0 fitness.
+        keep_set_preliminary = set(keep_indices)
+        for required_type in (NeuronType.MOTOR, NeuronType.SENSORY):
+            has_type = any(
+                child_neuron_types.get(child_neuron_ids[i]) == required_type
+                for i in keep_indices
+            )
+            if not has_type:
+                # Find the first neuron of the required type in the full list
+                donor_idx = None
+                for i in range(n_neurons):
+                    if (
+                        child_neuron_types.get(child_neuron_ids[i]) == required_type
+                        and i not in keep_set_preliminary
+                    ):
+                        donor_idx = i
+                        break
+                if donor_idx is not None:
+                    # Swap out the last filler (non-connected) neuron
+                    for swap_pos in reversed(range(len(keep_indices))):
+                        if keep_indices[swap_pos] not in connected:
+                            evicted = keep_indices[swap_pos]
+                            keep_indices[swap_pos] = donor_idx
+                            keep_set_preliminary.discard(evicted)
+                            keep_set_preliminary.add(donor_idx)
+                            break
+
         # Build old→new index remapping
         old_to_new = {old_i: new_i for new_i, old_i in enumerate(keep_indices)}
         keep_set = set(keep_indices)
