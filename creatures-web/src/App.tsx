@@ -1,4 +1,8 @@
 import { useCallback, useState, useEffect, useRef, useMemo, Component, type ReactNode } from 'react';
+
+// API base URL — Railway backend in production, local proxy in dev
+const RAILWAY_API = 'https://creatures-production.up.railway.app';
+const API_BASE = typeof window !== 'undefined' && window.location.hostname === 'neurevo.dev' ? RAILWAY_API : '';
 import { Scene } from './components/Scene';
 import { SplitScreenView } from './components/SplitScreenView';
 import { ConnectomeExplorer } from './components/ui/ConnectomeExplorer';
@@ -448,11 +452,11 @@ export default function App() {
       if (cancelled) return;
       try {
         // Step the simulation forward
-        await fetch(`/api/ecosystem/massive/${massiveId}/step?steps=10`, { method: 'POST' });
+        await fetch(`${API_BASE}/api/ecosystem/massive/${massiveId}/step?steps=10`, { method: 'POST' });
         if (cancelled) return;
 
         // Get state
-        const stateRes = await fetch(`/api/ecosystem/massive/${massiveId}`);
+        const stateRes = await fetch(`${API_BASE}/api/ecosystem/massive/${massiveId}`);
         if (stateRes.ok && !cancelled) {
           const data = await stateRes.json();
           if (data.organisms) setMassiveOrganisms(data.organisms);
@@ -462,7 +466,7 @@ export default function App() {
 
         // Check emergent behaviors (less frequent -- every other poll)
         if (Math.random() < 0.5) {
-          const emRes = await fetch(`/api/ecosystem/massive/${massiveId}/emergent`);
+          const emRes = await fetch(`${API_BASE}/api/ecosystem/massive/${massiveId}/emergent`);
           if (emRes.ok && !cancelled) {
             const emData = await emRes.json();
             if (emData.events) setMassiveEmergent(emData.events);
@@ -489,7 +493,7 @@ export default function App() {
   const createMassiveEcosystem = useCallback(async (worldType: string, nOrganisms = 1000, neuronsPerOrg = 50) => {
     setEcoLoading(true);
     try {
-      const res = await fetch('/api/ecosystem/massive', {
+      const res = await fetch(`${API_BASE}/api/ecosystem/massive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ n_organisms: nOrganisms, neurons_per: neuronsPerOrg, world_type: worldType }),
@@ -865,7 +869,7 @@ export default function App() {
                       onClick={async () => {
                         setEcoLoading(true);
                         try {
-                          const res = await fetch('/api/ecosystem', {
+                          const res = await fetch(`${API_BASE}/api/ecosystem`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ populations: { c_elegans: 20, drosophila: 5 } }),
@@ -877,7 +881,7 @@ export default function App() {
                             notify('Ecosystem created');
                             if (newId) {
                               try {
-                                const statsRes = await fetch(`/api/ecosystem/${newId}/stats`);
+                                const statsRes = await fetch(`${API_BASE}/api/ecosystem/${newId}/stats`);
                                 if (statsRes.ok) {
                                   const statsData = await statsRes.json();
                                   setEcoStats({
@@ -949,7 +953,7 @@ export default function App() {
                               return;
                             }
                             try {
-                              const res = await fetch(`/api/ecosystem/${ecosystemId}/event`, {
+                              const res = await fetch(`${API_BASE}/api/ecosystem/${ecosystemId}/event`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ type }),
@@ -957,7 +961,7 @@ export default function App() {
                               if (res.ok) {
                                 notify(`${label} event triggered`);
                                 try {
-                                  const sr = await fetch(`/api/ecosystem/${ecosystemId}/stats`);
+                                  const sr = await fetch(`${API_BASE}/api/ecosystem/${ecosystemId}/stats`);
                                   if (sr.ok) {
                                     const sd = await sr.json();
                                     setEcoStats({

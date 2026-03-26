@@ -57,7 +57,12 @@ class SimulationManager:
                 min_synapse_count=5,
                 max_neurons=config.max_neurons,
             )
-            body = FlyBody(BodyConfig(dt=0.5), connectome=connectome)
+            try:
+                body = FlyBody(BodyConfig(dt=0.5), connectome=connectome)
+            except (FileNotFoundError, ImportError):
+                # flygym data not available — use worm body as fallback for physics
+                logger.warning("flygym not available, using WormBody fallback for Drosophila")
+                body = WormBody(BodyConfig(dt=0.5))
         elif config.organism == "zebrafish":
             from creatures.connectome.zebrafish import load as load_zebrafish
             from creatures.body.fish_body import FishBody

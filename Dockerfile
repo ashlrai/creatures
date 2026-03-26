@@ -19,7 +19,7 @@ COPY creatures-core/ creatures-core/
 RUN pip install --no-cache-dir \
     numpy brian2 h5py pydantic requests pandas scipy cython \
     fastapi "uvicorn[standard]" websockets httpx pyarrow \
-    mujoco xlrd openpyxl
+    mujoco xlrd openpyxl flygym
 
 # Copy API code
 COPY creatures-api/ creatures-api/
