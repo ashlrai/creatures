@@ -67,12 +67,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# All routers mounted at their defined prefixes
 app.include_router(analysis.router)
 app.include_router(consciousness.router)
 app.include_router(metrics.router)
 app.include_router(ecosystem.router)
 app.include_router(evolution.router)
-app.include_router(experiments.protocol_router)  # Must come before experiments.router to avoid /{sim_id} shadowing
+app.include_router(experiments.protocol_router)
 app.include_router(experiments.router)
 app.include_router(export.router)
 app.include_router(export_advanced.router)
@@ -83,20 +84,33 @@ app.include_router(pharmacology.router)
 app.include_router(ws.router)
 app.include_router(history.router)
 
-
-@app.get("/")
-async def root():
-    return {
-        "name": "Creatures API",
-        "version": "0.1.0",
-        "description": "Virtual organism simulation powered by real connectome data",
-        "docs": "/docs",
-    }
+# Also mount routes WITHOUT /api prefix at /api/* for frontend compatibility
+# (in production, frontend calls /api/experiments but route is at /experiments)
+from fastapi import APIRouter
+api_compat = APIRouter(prefix="/api")
+api_compat.include_router(experiments.protocol_router)
+api_compat.include_router(experiments.router)
+api_compat.include_router(evolution.router)
+api_compat.include_router(export.router)
+api_compat.include_router(export_advanced.router)
+api_compat.include_router(god.router)
+api_compat.include_router(morphology.router)
+api_compat.include_router(neurons.router)
+app.include_router(api_compat)
 
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+@app.get("/api")
+async def api_info():
+    return {
+        "name": "Creatures API",
+        "version": "0.2.0",
+        "description": "Virtual organism simulation powered by real connectome data",
+        "docs": "/docs",
+    }
 
 
 # Serve frontend build (after all API routes so they take priority)
