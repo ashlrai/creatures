@@ -9,6 +9,7 @@ import { NeuralNetwork3D } from './organism/NeuralNetwork3D';
 import { ConnectomeGraph3D } from './organism/ConnectomeGraph3D';
 import { SpikeParticles } from './organism/SpikeParticles';
 import { PostProcessing } from './effects/PostProcessing';
+import { ConsciousnessEffects } from './effects/ConsciousnessEffects';
 import { PerformanceMonitor } from './ui/PerformanceMonitor';
 import { PerformanceStats } from './ui/PerformanceStats';
 import { EnvironmentBackground } from './environment/EnvironmentBackground';
@@ -120,10 +121,13 @@ export function Scene({ worldType }: SceneProps) {
       <ConnectomeGraph3D />
       <SpikeParticles />
 
+      {/* Consciousness-driven visual effects */}
+      <ConsciousnessEffects />
+
       {/* Camera */}
       <SmoothCamera />
 
-      {/* Post-processing */}
+      {/* Post-processing: bloom, glow */}
       <PostProcessing />
 
       {/* FPS warning — only visible when performance drops below 30fps */}
