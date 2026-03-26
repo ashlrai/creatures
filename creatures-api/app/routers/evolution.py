@@ -31,6 +31,8 @@ class EvolutionCreateRequest(BaseModel):
     lifetime_ms: float = 5000.0
     n_workers: int = 4
     seed: int = 42
+    fitness_mode: str = "fast"  # "fast", "medium", "full", or "vectorized"
+    w_consciousness: float = 0.0  # Φ weight in fitness (0 = disabled, 1.0 = full)
 
 
 class EvolutionRunInfo(BaseModel):

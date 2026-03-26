@@ -96,6 +96,11 @@ class MassiveCreateRequest(BaseModel):
     neurons_per: int = 100
     world_type: str = "soil"
     arena_size: float = 50.0
+    neuron_model: str = "lif"  # "lif" or "izhikevich"
+    use_gpu: bool = True
+    enable_stdp: bool = False
+    enable_consciousness: bool = False
+    consciousness_interval: int = 500
 
 
 class WorldRequest(BaseModel):
@@ -586,6 +591,11 @@ async def create_massive(req: MassiveCreateRequest):
             neurons_per_organism=req.neurons_per,
             arena_size=req.arena_size,
             world_type=req.world_type,
+            use_gpu=req.use_gpu,
+            neuron_model=req.neuron_model,
+            enable_stdp=req.enable_stdp,
+            enable_consciousness=req.enable_consciousness,
+            consciousness_interval=req.consciousness_interval,
         )
     except Exception as e:
         logger.error(f"Failed to create brain-world: {e}")
@@ -610,6 +620,10 @@ async def create_massive(req: MassiveCreateRequest):
         "total_neurons": bw.engine.n_total,
         "total_synapses": bw.engine.n_synapses,
         "world_type": req.world_type,
+        "backend": bw.engine._backend,
+        "neuron_model": bw.engine._neuron_model.value,
+        "stdp_enabled": bw.engine.enable_stdp,
+        "consciousness_enabled": bw._enable_consciousness,
     }
 
 

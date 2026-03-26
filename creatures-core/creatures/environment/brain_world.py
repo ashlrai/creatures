@@ -54,13 +54,27 @@ class BrainWorld:
         use_gpu: bool = True,
         neuron_model: NeuronModel | str = NeuronModel.LIF,
         connectome: Any = None,
+        enable_stdp: bool = False,
+        enable_consciousness: bool = False,
+        consciousness_interval: int = 500,
     ) -> None:
         self.engine = VectorizedEngine(use_gpu=use_gpu, neuron_model=neuron_model)
         if connectome is not None:
             self.engine.build_from_connectome(connectome, n_organisms, seed=seed)
         else:
             self.engine.build(n_organisms, neurons_per_organism, seed=seed)
+
+        # Enable STDP for online learning
+        if enable_stdp:
+            self.engine.init_stdp()
+
         self.ecosystem = MassiveEcosystem(n_organisms, arena_size, seed=seed)
+
+        # Consciousness tracking
+        self._enable_consciousness = enable_consciousness
+        self._consciousness_interval = consciousness_interval
+        self._last_consciousness: dict[str, Any] = {}
+        self._consciousness_history: list[dict] = []
         self.world = self._create_world(world_type, arena_size)
 
         # Neuron role assignments per organism
@@ -139,7 +153,14 @@ class BrainWorld:
         self.time_ms += dt
         self._step_count += 1
 
-        return {**eco_stats, **neural_stats, "time_ms": self.time_ms}
+        # 7. Periodic consciousness measurement
+        result = {**eco_stats, **neural_stats, "time_ms": self.time_ms}
+        if (self._enable_consciousness
+                and self._step_count % self._consciousness_interval == 0):
+            self._measure_consciousness()
+            result["consciousness"] = self._last_consciousness
+
+        return result
 
     # ------------------------------------------------------------------
     # Sensory injection (fully vectorized -- no loops over organisms)
@@ -260,6 +281,43 @@ class BrainWorld:
         eco.y = ((eco.y + half) % eco.arena_size) - half
 
     # ------------------------------------------------------------------
+    # Consciousness measurement
+    # ------------------------------------------------------------------
+
+    def _measure_consciousness(self) -> None:
+        """Compute consciousness metrics from recent spike history."""
+        from creatures.neural.consciousness import compute_phi, compute_neural_complexity
+
+        indices, times = self.engine.get_spike_history()
+        if len(indices) < 100:
+            return
+
+        spike_idx = np.array(indices)
+        spike_t = np.array(times)
+        duration = float(spike_t.max() - spike_t.min()) + 1.0
+
+        phi_result = compute_phi(
+            spike_idx, spike_t, self.engine.n_total, duration,
+            bin_ms=10.0, top_k=20, n_partitions=20,
+        )
+        cn_result = compute_neural_complexity(
+            spike_idx, spike_t, self.engine.n_total, duration,
+            bin_ms=10.0, top_k=30, max_scale=5,
+        )
+
+        self._last_consciousness = {
+            "phi": phi_result["phi"],
+            "complexity": cn_result["complexity"],
+            "n_spikes": len(indices),
+            "step": self._step_count,
+        }
+        self._consciousness_history.append(self._last_consciousness.copy())
+
+        # Keep last 100 measurements
+        if len(self._consciousness_history) > 100:
+            self._consciousness_history = self._consciousness_history[-100:]
+
+    # ------------------------------------------------------------------
     # State for visualization
     # ------------------------------------------------------------------
 
@@ -279,9 +337,14 @@ class BrainWorld:
             "total_synapses": self.engine.n_synapses,
             "backend": self.engine._backend,
             "neuron_model": self.engine._neuron_model.value,
+            "stdp_enabled": self.engine.enable_stdp,
             "total_fired": int(np.sum(fired_np)),
             "mean_firing_rate": float(np.mean(fr_np)),
         }
+        if self._last_consciousness:
+            eco_state["consciousness"] = self._last_consciousness
+        if self._consciousness_history:
+            eco_state["consciousness_history"] = self._consciousness_history[-10:]
         return eco_state
 
     def get_emergent_state(self) -> dict[str, Any]:

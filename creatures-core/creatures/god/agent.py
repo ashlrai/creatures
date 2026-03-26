@@ -42,16 +42,25 @@ class GodAgent:
         generation_stats: dict,
         population_summary: dict,
         environment_state: dict,
+        consciousness_metrics: dict | None = None,
     ) -> None:
-        """Record observations about the current state of evolution."""
-        self.observations.append(
-            {
-                "generation": generation_stats.get("generation", 0),
-                "stats": generation_stats,
-                "population": population_summary,
-                "environment": environment_state,
-            }
-        )
+        """Record observations about the current state of evolution.
+
+        Args:
+            generation_stats: Fitness, generation number, etc.
+            population_summary: Species counts, diversity metrics.
+            environment_state: Arena configuration.
+            consciousness_metrics: Optional Φ, CN, PCI measurements.
+        """
+        obs = {
+            "generation": generation_stats.get("generation", 0),
+            "stats": generation_stats,
+            "population": population_summary,
+            "environment": environment_state,
+        }
+        if consciousness_metrics:
+            obs["consciousness"] = consciousness_metrics
+        self.observations.append(obs)
 
     async def analyze_and_intervene(self) -> dict:
         """Ask the LLM to analyze evolution and suggest interventions.
@@ -77,32 +86,65 @@ class GodAgent:
         """Build the prompt for the LLM with current simulation context."""
         recent = self.observations[-5:] if self.observations else []
 
-        return f"""You are the God Agent overseeing an evolutionary simulation of C. elegans \
-worms with real biological neural networks (299 neurons, 3363 synapses from OpenWorm \
-connectome data).
+        # Extract consciousness data if available
+        consciousness_section = ""
+        for obs in recent:
+            if "consciousness" in obs:
+                c = obs["consciousness"]
+                consciousness_section += (
+                    f"\nGen {obs['generation']}: "
+                    f"Φ={c.get('phi', 0):.4f}, "
+                    f"CN={c.get('complexity', 0):.4f}, "
+                    f"PCI={c.get('pci', 0):.4f}"
+                )
+
+        consciousness_prompt = ""
+        if consciousness_section:
+            consciousness_prompt = f"""
+
+CONSCIOUSNESS METRICS (Integrated Information Theory):
+{consciousness_section}
+
+Φ (phi) measures integrated information — how much more the whole brain generates
+than the sum of its parts. Higher Φ = more consciousness-like processing.
+CN measures neural complexity across spatial scales.
+PCI measures perturbational complexity.
+
+You can also:
+6. OPTIMIZE CONSCIOUSNESS: Adjust fitness weights to favor higher Φ,
+   suggest neural architecture changes that increase integration,
+   or propose experiments testing consciousness hypotheses.
+"""
+
+        return f"""You are the God Agent overseeing an evolutionary simulation of virtual \
+organisms with real biological neural networks (spiking Izhikevich neurons, real \
+connectome topology, STDP learning, MLX GPU acceleration).
 
 CURRENT STATE:
 {json.dumps(recent, indent=2, default=str)}
+{consciousness_prompt}
+Your role is to guide evolution toward producing organisms with genuinely complex, \
+adaptive behaviors and high integrated information (consciousness).
 
-Your role is to guide evolution toward producing organisms with genuinely useful, complex \
-behaviors. You can:
-
+You can:
 1. MODIFY ENVIRONMENT: Change food positions, add/remove obstacles, create chemical \
 gradients, change arena size
-2. SHAPE FITNESS: Adjust fitness weights (distance, food, efficiency, obstacle avoidance)
-3. TUNE EVOLUTION: Change mutation rates, population size, selection pressure
-4. DESIGN EXPERIMENT: Propose a specific hypothesis to test (e.g., "lesion all GABA \
-neurons and observe if rhythmic locomotion degrades")
-5. CREATE EVENT: Introduce a sudden environmental change (food scarcity, new obstacle, \
+2. SHAPE FITNESS: Adjust fitness weights (distance, food, efficiency, consciousness)
+3. TUNE EVOLUTION: Change mutation rates, population size, selection pressure, \
+Izhikevich parameter mutation rates
+4. DESIGN EXPERIMENT: Propose a specific hypothesis to test (e.g., "do organisms with \
+higher Φ survive longer in stochastic environments?")
+5. CREATE EVENT: Introduce a sudden environmental change (food scarcity, predator, \
 temperature shift)
 
 Analyze the current evolutionary trajectory and respond with a JSON object:
 {{
     "analysis": "Brief analysis of what's happening in evolution",
     "fitness_trend": "improving/stagnating/declining",
+    "consciousness_trend": "increasing/stable/decreasing (if Φ data available)",
     "interventions": [
         {{
-            "type": "environment|fitness|evolution|experiment|event",
+            "type": "environment|fitness|evolution|experiment|event|consciousness",
             "action": "specific action to take",
             "parameters": {{...}},
             "reasoning": "why this will help"
@@ -112,8 +154,9 @@ Analyze the current evolutionary trajectory and respond with a JSON object:
     "report": "A brief scientific report of observations so far"
 }}
 
-Be creative but grounded in real neuroscience. Make interventions that will produce \
-genuine scientific insight about how neural circuits evolve and adapt."""
+Be creative but grounded in real neuroscience and consciousness science (IIT, Global \
+Workspace Theory). Make interventions that will produce genuine scientific insight \
+about how neural circuits evolve, learn, and develop consciousness-like properties."""
 
     async def _call_llm(self, prompt: str) -> str:
         """Call the xAI API (OpenAI-compatible)."""

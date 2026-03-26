@@ -201,6 +201,8 @@ class EvolutionManager:
 
         fitness_config = FitnessConfig(
             lifetime_ms=run.config.get("lifetime_ms", 5000.0),
+            organism=run.config.get("organism", "c_elegans"),
+            w_consciousness=run.config.get("w_consciousness", 0.0),
         )
         t_start = time.time()
 
@@ -212,8 +214,18 @@ class EvolutionManager:
                     logger.info(f"Evolution run {run_id} paused at gen {run.generation}")
                     return
 
-                # Evaluate all genomes with the fast proxy
-                population.evaluate(lambda g: evaluate_genome_fast(g, fitness_config))
+                # Evaluate all genomes
+                fitness_mode = run.config.get("fitness_mode", "fast")
+                if fitness_mode == "vectorized":
+                    from creatures.evolution.fitness import evaluate_genome_vectorized
+                    population.evaluate(
+                        lambda g: evaluate_genome_vectorized(
+                            g, fitness_config,
+                            use_gpu=True, neuron_model="izhikevich",
+                        )
+                    )
+                else:
+                    population.evaluate(lambda g: evaluate_genome_fast(g, fitness_config))
 
                 # Advance to the next generation (selection + reproduction)
                 stats: GenerationStats = population.advance_generation()
@@ -259,6 +271,19 @@ class EvolutionManager:
                 god_agents = getattr(self, "_god_agents", {})
                 god = god_agents.get(run_id)
                 if god is not None:
+                    # Collect consciousness metrics from best genome if available
+                    consciousness_data = None
+                    best_genome = max(population.genomes, key=lambda g: g.fitness)
+                    breakdown = best_genome.metadata.get("fitness_breakdown", {})
+                    if "phi" in breakdown:
+                        phis = [g.metadata.get("fitness_breakdown", {}).get("phi", 0)
+                                for g in population.genomes]
+                        consciousness_data = {
+                            "best_phi": breakdown["phi"],
+                            "mean_phi": sum(phis) / max(len(phis), 1),
+                            "consciousness_pts": breakdown.get("consciousness", 0),
+                        }
+
                     god.observe(
                         generation_stats={
                             "generation": stats.generation,
@@ -269,6 +294,7 @@ class EvolutionManager:
                         },
                         population_summary={"size": run.population_size},
                         environment_state={},
+                        consciousness_metrics=consciousness_data,
                     )
                     if stats.generation > 0 and stats.generation % god.config.intervention_interval == 0:
                         import asyncio as _asyncio
