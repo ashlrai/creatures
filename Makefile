@@ -3,9 +3,14 @@
 # Setup everything
 setup:
 	python3 -m venv .venv
+	. .venv/bin/activate && pip install --upgrade pip setuptools wheel
 	. .venv/bin/activate && pip install -e "creatures-core[dev]"
-	. .venv/bin/activate && pip install fastapi "uvicorn[standard]" websockets msgpack
+	. .venv/bin/activate && pip install fastapi "uvicorn[standard]" websockets msgpack httpx
 	. .venv/bin/activate && pip install flygym opencv-python-headless numba dm-env protobuf pyarrow
+	@# mlx is Apple Silicon only — skip gracefully on other platforms
+	. .venv/bin/activate && pip install mlx mlx-metal 2>/dev/null || echo "Skipping mlx (Apple Silicon only)"
+	@# brian2genn is optional GPU acceleration — skip if unavailable
+	. .venv/bin/activate && pip install brian2genn 2>/dev/null || echo "Skipping brian2genn (optional GPU backend)"
 	cd creatures-web && npm install
 	@echo "\n=== Setup complete! Run 'make dev' to start. ==="
 
