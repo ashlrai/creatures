@@ -1,5 +1,4 @@
 from creatures.neural.base import NeuralConfig, NeuralEngine, PlasticityConfig, SimulationState
-from creatures.neural.brian2_engine import Brian2Engine
 
 __all__ = [
     "Brian2Engine",
@@ -10,6 +9,14 @@ __all__ = [
     "create_engine",
     "recommended_engine",
 ]
+
+
+def __getattr__(name: str):
+    """Lazy import Brian2Engine to avoid hard dependency on brian2."""
+    if name == "Brian2Engine":
+        from creatures.neural.brian2_engine import Brian2Engine
+        return Brian2Engine
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def recommended_engine(n_organisms: int, neurons_per: int) -> str:
@@ -49,6 +56,7 @@ def create_engine(backend: str = "auto") -> NeuralEngine:
                 "Install it with: pip install brian2genn"
             )
 
-    engine = Brian2Engine()
+    from creatures.neural.brian2_engine import Brian2Engine as _Brian2Engine
+    engine = _Brian2Engine()
     engine._requested_backend = backend
     return engine

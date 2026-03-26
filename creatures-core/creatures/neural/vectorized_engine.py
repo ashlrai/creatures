@@ -316,7 +316,7 @@ class VectorizedEngine:
     def _to_numpy(self, arr: Any) -> np.ndarray:
         """Convert any backend array to numpy."""
         if self._backend == "mlx":
-            return np.asarray(arr, copy=False)
+            return np.array(arr)
         if self._backend == "cupy":
             return arr.get()
         return arr
