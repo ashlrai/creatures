@@ -41,7 +41,7 @@ async def simulation_ws(websocket: WebSocket, sim_id: str):
     # Create a bounded queue for this subscriber so slow consumers don't
     # accumulate unbounded backlog.  100 frames ~3 s at 30 fps.
     queue: asyncio.Queue = asyncio.Queue(maxsize=100)
-    sim.subscribers.append((websocket, queue))
+    sim.subscribers[id(websocket)] = (websocket, queue)
 
     # Start simulation if not already running
     if sim.status != "running":
@@ -138,9 +138,7 @@ async def simulation_ws(websocket: WebSocket, sim_id: str):
     finally:
         # Remove subscriber and drain any remaining frames from the queue
         # so the broadcaster doesn't keep a reference to a dead queue.
-        sim.subscribers = [
-            (ws, q) for ws, q in sim.subscribers if ws is not websocket
-        ]
+        sim.subscribers.pop(id(websocket), None)
         # Drain zombie queue to release frame references
         while not queue.empty():
             try:
