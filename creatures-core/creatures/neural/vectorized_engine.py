@@ -29,6 +29,85 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+class SpikeRingBuffer:
+    """Fixed-capacity ring buffer backed by pre-allocated numpy arrays.
+
+    Stores spike neuron indices and their timestamps in two contiguous
+    numpy arrays.  When capacity is reached, oldest entries are silently
+    overwritten — no Python list growth or GC pressure.
+    """
+
+    __slots__ = ("_indices", "_times", "_capacity", "_pos", "_count")
+
+    def __init__(self, capacity: int = 500_000) -> None:
+        self._capacity = capacity
+        self._indices = np.empty(capacity, dtype=np.int64)
+        self._times = np.empty(capacity, dtype=np.float64)
+        self._pos = 0      # next write position
+        self._count = 0     # total stored (capped at capacity)
+
+    # -- mutation --------------------------------------------------------
+
+    def append_batch(self, indices: np.ndarray, times: np.ndarray) -> None:
+        """Append a batch of spikes (vectorized, no Python loop)."""
+        n = len(indices)
+        if n == 0:
+            return
+
+        if n >= self._capacity:
+            # More spikes than capacity — keep only the last `capacity` items
+            tail = n - self._capacity
+            self._indices[:] = indices[tail:]
+            self._times[:] = times[tail:]
+            self._pos = 0
+            self._count = self._capacity
+            return
+
+        end = self._pos + n
+        if end <= self._capacity:
+            # Fits without wrapping
+            self._indices[self._pos:end] = indices
+            self._times[self._pos:end] = times
+        else:
+            # Wraps around
+            first = self._capacity - self._pos
+            self._indices[self._pos:] = indices[:first]
+            self._times[self._pos:] = times[:first]
+            remainder = n - first
+            self._indices[:remainder] = indices[first:]
+            self._times[:remainder] = times[first:]
+
+        self._pos = end % self._capacity
+        self._count = min(self._count + n, self._capacity)
+
+    def clear(self) -> None:
+        """Reset the buffer (O(1), no deallocation)."""
+        self._pos = 0
+        self._count = 0
+
+    # -- read-only -------------------------------------------------------
+
+    def get_all(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return (indices, times) in chronological order as numpy arrays."""
+        if self._count == 0:
+            return (np.empty(0, dtype=np.int64),
+                    np.empty(0, dtype=np.float64))
+
+        if self._count < self._capacity:
+            # Buffer hasn't wrapped yet — data is contiguous from 0
+            return (self._indices[:self._count].copy(),
+                    self._times[:self._count].copy())
+
+        # Buffer has wrapped — oldest data starts at _pos
+        return (np.concatenate((self._indices[self._pos:],
+                                self._indices[:self._pos])),
+                np.concatenate((self._times[self._pos:],
+                                self._times[:self._pos])))
+
+    def __len__(self) -> int:
+        return self._count
+
+
 class NeuronModel(Enum):
     LIF = "lif"
     IZHIKEVICH = "izhikevich"
@@ -105,10 +184,8 @@ class VectorizedEngine:
         self.syn_post: Any = None
         self.syn_w: Any = None
 
-        # Spike history recording (rolling buffer)
-        self._spike_indices: list[int] = []
-        self._spike_times_ms: list[float] = []
-        self._spike_buffer_max: int = 500_000  # max spikes to keep
+        # Spike history recording (numpy ring buffer)
+        self._spike_buffer = SpikeRingBuffer(capacity=500_000)
         self._time_ms: float = 0.0
         self._record_spikes: bool = True
 
@@ -468,14 +545,8 @@ class VectorizedEngine:
         if self._record_spikes and fired_count > 0:
             fired_np = self._to_numpy(self.fired)
             spike_neurons = np.where(fired_np)[0]
-            self._spike_indices.extend(spike_neurons.tolist())
-            self._spike_times_ms.extend([self._time_ms] * len(spike_neurons))
-
-            # Trim rolling buffer
-            if len(self._spike_indices) > self._spike_buffer_max:
-                excess = len(self._spike_indices) - self._spike_buffer_max
-                self._spike_indices = self._spike_indices[excess:]
-                self._spike_times_ms = self._spike_times_ms[excess:]
+            spike_times = np.full(len(spike_neurons), self._time_ms)
+            self._spike_buffer.append_batch(spike_neurons, spike_times)
 
         self._time_ms += self.dt
 
@@ -537,13 +608,17 @@ class VectorizedEngine:
     # ------------------------------------------------------------------
 
     def get_spike_history(self) -> tuple[list[int], list[float]]:
-        """Return recorded spike indices and times (ms)."""
-        return (self._spike_indices, self._spike_times_ms)
+        """Return recorded spike indices and times (ms).
+
+        Returns Python lists for backward compatibility with callers
+        that use len(), set(), iteration, and indexing.
+        """
+        indices, times = self._spike_buffer.get_all()
+        return (indices.tolist(), times.tolist())
 
     def clear_spike_history(self) -> None:
         """Clear the spike recording buffer."""
-        self._spike_indices = []
-        self._spike_times_ms = []
+        self._spike_buffer.clear()
 
     # ------------------------------------------------------------------
     # Per-organism queries
