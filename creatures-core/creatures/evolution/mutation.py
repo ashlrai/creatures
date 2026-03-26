@@ -126,6 +126,13 @@ def add_neuron(genome: Genome, config: MutationConfig, rng: np.random.Generator)
     genome.neuron_types[new_id] = NeuronType.INTER
     genome.neuron_nts[new_id] = None
 
+    # Extend Izhikevich params if present (new interneuron = regular spiking)
+    if genome.iz_a is not None:
+        genome.iz_a = np.append(genome.iz_a, 0.02)
+        genome.iz_b = np.append(genome.iz_b, 0.2)
+        genome.iz_c = np.append(genome.iz_c, -65.0)
+        genome.iz_d = np.append(genome.iz_d, 8.0)
+
     # Disable old synapse (set weight to 0) and add two new ones
     genome.weights[idx] = 0.0
 

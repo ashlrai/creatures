@@ -33,6 +33,7 @@ class FitnessConfig:
     w_distance: float = 1.0  # reward for distance traveled
     w_food: float = 2.0  # placeholder for future food reward
     w_efficiency: float = 0.5  # reward for neural efficiency (penalize silence)
+    w_consciousness: float = 0.0  # reward for integrated information (Φ)
 
     # Poke stimulus to get things moving
     poke_at_ms: float = 100.0
@@ -615,4 +616,179 @@ def evaluate_genome_fast(genome: Genome, config: FitnessConfig | None = None) ->
         "specialization": round(specialization_score * 7, 2),
     }
 
+    return fitness
+
+
+def evaluate_genome_vectorized(
+    genome: Genome,
+    config: FitnessConfig | None = None,
+    use_gpu: bool = True,
+    neuron_model: str = "izhikevich",
+) -> float:
+    """Evaluate a genome using VectorizedEngine + Izhikevich + consciousness.
+
+    This is the fastest simulation-based evaluation. Uses the MLX GPU backend
+    for real-time spiking neural network simulation, runs the genome for
+    up to 1s of sim time, and scores on neural dynamics quality +
+    optional consciousness metrics (Φ).
+
+    ~0.5-2s per genome on Apple Silicon (vs 5-10s for medium, 200s for full).
+
+    Scoring (0-100 scale):
+      - Sensory-motor response (30 pts)
+      - Neural dynamics quality (30 pts)
+      - Firing pattern diversity (20 pts) — rewards Izhikevich param evolution
+      - Consciousness Φ (20 pts) — if w_consciousness > 0
+    """
+    from creatures.neural.vectorized_engine import NeuronModel, VectorizedEngine
+
+    config = config or FitnessConfig()
+
+    n_neurons = genome.n_neurons
+    if n_neurons == 0:
+        genome.fitness = 0.0
+        return 0.0
+
+    # Build engine from genome's connectome
+    model = NeuronModel(neuron_model)
+    engine = VectorizedEngine(use_gpu=use_gpu, neuron_model=model)
+    connectome = genome.to_connectome()
+    engine.build_single_connectome(connectome, neuron_type="regular_spiking")
+
+    # Load per-neuron Izhikevich params from genome (if available)
+    if model == NeuronModel.IZHIKEVICH and genome.iz_a is not None:
+        xp = engine.xp
+        np_dtype = np.float32 if engine._backend == "mlx" else np.float64
+        engine.iz_a = xp.array(genome.iz_a.astype(np_dtype))
+        engine.iz_b = xp.array(genome.iz_b.astype(np_dtype))
+        engine.iz_c = xp.array(genome.iz_c.astype(np_dtype))
+        engine.iz_d = xp.array(genome.iz_d.astype(np_dtype))
+        engine._eval(engine.iz_a, engine.iz_b, engine.iz_c, engine.iz_d)
+
+    # Classify neurons
+    from creatures.connectome.types import NeuronType
+
+    sensory_idx = [
+        i for i, nid in enumerate(genome.neuron_ids)
+        if genome.neuron_types.get(nid) == NeuronType.SENSORY
+    ]
+    motor_idx = [
+        i for i, nid in enumerate(genome.neuron_ids)
+        if genome.neuron_types.get(nid) == NeuronType.MOTOR
+    ]
+
+    # Run simulation with structured stimulation
+    sim_ms = min(config.lifetime_ms, 1000.0)
+    n_steps = int(sim_ms / engine.dt)
+    rng = np.random.default_rng(hash(genome.id) % 2**31)
+
+    motor_responses: list[int] = []
+    first_motor_spike_step = None
+
+    for step_i in range(n_steps):
+        t_ms = step_i * engine.dt
+
+        # Stimulus: poke sensory neurons
+        if config.poke_at_ms <= t_ms < config.poke_at_ms + 20.0 and sensory_idx:
+            n_stim = min(len(sensory_idx), 20)
+            engine.inject_stimulus([0], sensory_idx[:n_stim], 25.0)
+        elif t_ms >= config.poke_at_ms + 20.0 and step_i == int((config.poke_at_ms + 20.0) / engine.dt):
+            engine.clear_input()
+
+        # Background noise every 10 steps
+        if step_i % 10 == 0:
+            noise_n = max(1, n_neurons // 20)
+            noise_idx = rng.choice(n_neurons, noise_n, replace=False).tolist()
+            engine.inject_stimulus([0], noise_idx, float(rng.uniform(5, 12)))
+
+        stats = engine.step()
+
+        # Track motor response
+        if motor_idx:
+            fired_np = engine._to_numpy(engine.fired)
+            motor_fired = sum(1 for m in motor_idx if fired_np[m])
+            motor_responses.append(motor_fired)
+            if motor_fired > 0 and first_motor_spike_step is None:
+                first_motor_spike_step = step_i
+
+    # === SCORING ===
+    indices, times = engine.get_spike_history()
+    total_spikes = len(indices)
+    unique_neurons = len(set(indices)) if indices else 0
+
+    # 1. Sensory-motor response (30 pts)
+    if first_motor_spike_step is not None:
+        latency_ms = first_motor_spike_step * engine.dt - config.poke_at_ms
+        latency_score = max(0, 1.0 - latency_ms / 100.0)
+    else:
+        latency_score = 0.0
+
+    if motor_responses:
+        stim_step = int(config.poke_at_ms / engine.dt)
+        pre = np.mean(motor_responses[:max(stim_step, 1)])
+        post = np.mean(motor_responses[stim_step:min(stim_step + 200, len(motor_responses))])
+        motor_response_score = min(1.0, (post / max(pre + 0.1, 0.1)) / 5.0)
+    else:
+        motor_response_score = 0.0
+
+    sensory_motor_pts = latency_score * 15.0 + motor_response_score * 15.0
+
+    # 2. Neural dynamics quality (30 pts)
+    if total_spikes > 0 and n_steps > 0:
+        mean_rate = total_spikes / n_steps / max(n_neurons, 1)
+        activity_score = float(np.exp(-0.5 * ((mean_rate - 0.08) / 0.05) ** 2))
+        participation = unique_neurons / max(n_neurons, 1)
+    else:
+        activity_score = 0.0
+        participation = 0.0
+    dynamics_pts = activity_score * 15.0 + participation * 15.0
+
+    # 3. Firing pattern diversity (20 pts)
+    if len(indices) > 100 and unique_neurons >= 10:
+        spike_idx_np = np.array(indices)
+        spike_t_np = np.array(times)
+        unique_n, counts = np.unique(spike_idx_np, return_counts=True)
+        top_n = unique_n[np.argsort(-counts)[:min(20, len(unique_n))]]
+
+        cv_values = []
+        for nid in top_n:
+            neuron_times = spike_t_np[spike_idx_np == nid]
+            if len(neuron_times) > 3:
+                isis = np.diff(neuron_times)
+                if isis.mean() > 0:
+                    cv_values.append(isis.std() / isis.mean())
+
+        if cv_values:
+            cv_arr = np.array(cv_values)
+            pattern_quality = float(np.exp(-2.0 * (np.mean(cv_arr) - 1.0) ** 2))
+            diversity_bonus = min(1.0, float(np.std(cv_arr)) / 0.5)
+        else:
+            pattern_quality = diversity_bonus = 0.0
+    else:
+        pattern_quality = diversity_bonus = 0.0
+    diversity_pts = pattern_quality * 10.0 + diversity_bonus * 10.0
+
+    # 4. Consciousness Φ (20 pts)
+    consciousness_pts = 0.0
+    phi_value = 0.0
+    if config.w_consciousness > 0 and len(indices) > 100:
+        from creatures.neural.consciousness import compute_phi
+        phi_result = compute_phi(
+            np.array(indices), np.array(times), n_neurons, sim_ms,
+            bin_ms=5.0, top_k=20, n_partitions=30,
+        )
+        phi_value = phi_result["phi"]
+        consciousness_pts = min(1.0, phi_value / 1.5) * 20.0 * config.w_consciousness
+
+    fitness = sensory_motor_pts + dynamics_pts + diversity_pts + consciousness_pts
+    genome.fitness = fitness
+    genome.metadata["fitness_breakdown"] = {
+        "sensory_motor": round(sensory_motor_pts, 2),
+        "dynamics": round(dynamics_pts, 2),
+        "diversity": round(diversity_pts, 2),
+        "consciousness": round(consciousness_pts, 2),
+        "phi": round(phi_value, 4),
+        "total_spikes": total_spikes,
+        "unique_neurons": unique_neurons,
+    }
     return fitness
