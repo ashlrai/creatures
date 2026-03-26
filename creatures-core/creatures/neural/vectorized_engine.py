@@ -348,7 +348,6 @@ class VectorizedEngine:
         """
         xp = self.xp
         fdtype = self._float_dtype
-        idtype = self._int_dtype
 
         self.n_organisms = n_organisms
         self.n_per = neurons_per_organism
@@ -703,7 +702,6 @@ class VectorizedEngine:
         """
         xp = self.xp
         fdtype = self._float_dtype
-        idtype = self._int_dtype
         np_fdtype = np.float32 if self._backend == "mlx" else np.float64
         np_idtype = np.int32 if self._backend == "mlx" else np.int64
 

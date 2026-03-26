@@ -26,13 +26,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
-from scipy import signal as scipy_signal
-
-if TYPE_CHECKING:
-    from creatures.connectome.types import Connectome
 
 logger = logging.getLogger(__name__)
 

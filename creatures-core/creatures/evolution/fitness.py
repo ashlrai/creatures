@@ -81,7 +81,6 @@ def evaluate_genome(genome: Genome, config: FitnessConfig | None = None) -> floa
     if config.organism == "drosophila":
         from creatures.body.base import BodyConfig
         from creatures.body.fly_body import FlyBody
-        from creatures.neural.base import MonitorConfig
 
         body = FlyBody(BodyConfig(dt=0.5), connectome=connectome)
         runner = SimulationRunner(engine, body, CouplingConfig(), connectome=connectome)
@@ -701,7 +700,7 @@ def evaluate_genome_vectorized(
             noise_idx = rng.choice(n_neurons, noise_n, replace=False).tolist()
             engine.inject_stimulus([0], noise_idx, float(rng.uniform(5, 12)))
 
-        stats = engine.step()
+        engine.step()
 
         # Track motor response
         if motor_idx:
