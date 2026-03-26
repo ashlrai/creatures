@@ -536,7 +536,7 @@ export function FlyBody3D() {
   // -----------------------------------------------------------------------
 
   return (
-    <group ref={groupRef} position={[0.4, 0.03, 0]}>
+    <group ref={groupRef} position={[0.4, 0.03, 0]} scale={3}>
       {/* ============ HEAD ============ */}
       <mesh
         position={HEAD_OFFSET}
