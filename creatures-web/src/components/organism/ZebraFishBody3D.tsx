@@ -577,7 +577,7 @@ export function ZebraFishBody3D() {
 
   // ---- Render ---------------------------------------------------------------
   return (
-    <group position={[0.2, 0.03, 0]}>
+    <group>
       {/* ===== BODY (semi-transparent tube) ===== */}
       <mesh
         ref={bodyMeshRef}

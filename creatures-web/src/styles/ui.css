@@ -30,7 +30,7 @@ body {
 
 .app-root {
   display: grid;
-  grid-template-rows: 44px 1fr 56px;
+  grid-template-rows: 44px 1fr 40px;
   width: 100vw;
   height: 100vh;
 }
@@ -80,7 +80,7 @@ body {
   background: var(--bg-panel);
   border-top: 1px solid var(--border-subtle);
   backdrop-filter: blur(var(--blur));
-  padding: 8px 20px;
+  padding: 4px 16px;
   z-index: 10;
 }
 

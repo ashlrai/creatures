@@ -552,7 +552,7 @@ export function Oscilloscope() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <CollapsiblePanel id="oscilloscope" label="Oscilloscope" badge="LIVE" defaultExpanded>
+    <CollapsiblePanel id="oscilloscope" label="Oscilloscope" badge="LIVE" defaultExpanded={false}>
       {/* Controls toolbar */}
       <div style={{
         display: 'flex',

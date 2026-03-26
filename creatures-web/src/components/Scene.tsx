@@ -27,10 +27,17 @@ function SmoothCamera() {
     const desired = new THREE.Vector3(x, z + 0.02, -y);
 
     if (!hasSnapped.current) {
-      // Snap camera directly to the organism on first frame
+      // Snap camera to organism with consistent framing angle
       targetRef.current.copy(desired);
       controlsRef.current.target.copy(desired);
-      camera.position.set(desired.x, desired.y + 0.06, desired.z + 0.2);
+      // Position camera at a 45-degree upper-right diagonal from organism
+      const dist = 0.25;
+      const height = 0.08;
+      camera.position.set(
+        desired.x + dist * 0.7,
+        desired.y + height,
+        desired.z + dist * 0.7,
+      );
       hasSnapped.current = true;
     } else {
       targetRef.current.lerp(desired, 0.05);
