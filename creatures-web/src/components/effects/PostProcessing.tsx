@@ -38,9 +38,9 @@ export function PostProcessing() {
   const nTotal = frame?.firing_rates?.length ?? 299;
   const activityRatio = Math.min(nActive / Math.max(nTotal, 1), 1.0);
 
-  // Bloom intensifies with neural activity
-  const bloomIntensity = 0.6 + activityRatio * 1.2;
-  const bloomLuminanceThreshold = 0.3 - activityRatio * 0.15;
+  // Subtle bloom — enhance glow without washing out the scene
+  const bloomIntensity = 0.3 + activityRatio * 0.5;
+  const bloomLuminanceThreshold = 0.5 - activityRatio * 0.1;
 
   try {
     return (

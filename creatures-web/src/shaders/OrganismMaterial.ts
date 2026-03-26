@@ -42,8 +42,8 @@ export function createOrganismMaterial(
 
   const material = new THREE.MeshPhysicalMaterial({
     color: opts.baseColor ?? new THREE.Color(0.04, 0.2, 0.3),
-    emissive: new THREE.Color(0.02, 0.08, 0.14),
-    emissiveIntensity: 2.5,
+    emissive: new THREE.Color(0.015, 0.07, 0.12),
+    emissiveIntensity: 1.8,
     roughness: 0.2,
     metalness: 0,
     transmission: opts.transmission ?? DEFAULTS.transmission,

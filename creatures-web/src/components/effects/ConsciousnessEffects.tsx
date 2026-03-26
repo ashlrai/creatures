@@ -24,11 +24,11 @@ function IgnitionRipples() {
   const lastPhiRef = useRef(0);
   const frame = useSimulationStore((s) => s.frame);
 
-  const geometry = useMemo(() => new THREE.TorusGeometry(1, 0.003, 8, 64), []);
+  const geometry = useMemo(() => new THREE.TorusGeometry(1, 0.001, 6, 48), []);
   const material = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
-        color: new THREE.Color(0.0, 0.8, 1.0),
+        color: new THREE.Color(0.0, 0.6, 0.8),
         transparent: true,
         opacity: 0,
         side: THREE.DoubleSide,
@@ -47,12 +47,12 @@ function IgnitionRipples() {
     const nTotal = frame?.firing_rates?.length ?? 299;
     const activityRatio = nActive / Math.max(nTotal, 1);
 
-    // Trigger ripple on high activity bursts
-    if (activityRatio > 0.6 && lastPhiRef.current < 0.4) {
+    // Trigger ripple only on dramatic activity transitions (rare)
+    if (activityRatio > 0.85 && lastPhiRef.current < 0.5) {
       ripplesRef.current.push({
         age: 0,
-        lifetime: 1.5,
-        maxRadius: 0.3 + activityRatio * 0.2,
+        lifetime: 0.8,
+        maxRadius: 0.08 + activityRatio * 0.04,
       });
       // Keep max 3 ripples
       if (ripplesRef.current.length > 3) {
@@ -80,7 +80,7 @@ function IgnitionRipples() {
 
     const t = ripple.age / ripple.lifetime;
     const radius = t * ripple.maxRadius;
-    const opacity = (1 - t) * 0.6;
+    const opacity = (1 - t) * 0.15;
 
     meshRef.current.visible = true;
     meshRef.current.scale.set(radius, radius, radius);
@@ -97,85 +97,9 @@ function IgnitionRipples() {
   return <mesh ref={meshRef} geometry={geometry} material={material} visible={false} />;
 }
 
-// ── Consciousness Aurora ─────────────────────────────────────────
-function ConsciousnessAurora() {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const frame = useSimulationStore((s) => s.frame);
-
-  const { geometry, material } = useMemo(() => {
-    // Hemisphere shell above the brain
-    const geo = new THREE.SphereGeometry(0.25, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.6);
-    const mat = new THREE.ShaderMaterial({
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      uniforms: {
-        u_time: { value: 0 },
-        u_intensity: { value: 0 },
-      },
-      vertexShader: `
-        varying vec3 vPosition;
-        varying vec3 vNormal;
-        void main() {
-          vPosition = position;
-          vNormal = normal;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform float u_time;
-        uniform float u_intensity;
-        varying vec3 vPosition;
-        varying vec3 vNormal;
-
-        void main() {
-          if (u_intensity < 0.01) discard;
-
-          // Aurora wave pattern
-          float wave1 = sin(vPosition.x * 15.0 - u_time * 1.5) * 0.5 + 0.5;
-          float wave2 = sin(vPosition.z * 12.0 + u_time * 0.8) * 0.5 + 0.5;
-          float wave3 = sin((vPosition.x + vPosition.z) * 8.0 - u_time * 2.0) * 0.5 + 0.5;
-
-          float pattern = wave1 * wave2 * 0.7 + wave3 * 0.3;
-
-          // Height-based color shift: green at base → cyan → purple at top
-          float height = (vPosition.y + 0.1) / 0.25;
-          vec3 color = mix(
-            vec3(0.1, 1.0, 0.4),   // Green
-            mix(vec3(0.0, 0.8, 1.0), vec3(0.6, 0.1, 1.0), height), // Cyan → Purple
-            height
-          );
-
-          // Fresnel: stronger at edges
-          float fresnel = pow(1.0 - abs(dot(normalize(vNormal), vec3(0.0, 0.0, 1.0))), 2.0);
-
-          float alpha = pattern * fresnel * u_intensity * 0.35;
-          gl_FragColor = vec4(color * (1.0 + pattern * 0.5), alpha);
-        }
-      `,
-    });
-    return { geometry: geo, material: mat };
-  }, []);
-
-  useFrame(({ clock }) => {
-    if (!meshRef.current) return;
-
-    const nActive = frame?.n_active ?? 0;
-    const nTotal = frame?.firing_rates?.length ?? 299;
-    const activityRatio = nActive / Math.max(nTotal, 1);
-
-    // Aurora appears during high consciousness (high activity + synchrony proxy)
-    const intensity = activityRatio > 0.3 ? (activityRatio - 0.3) / 0.7 : 0;
-
-    material.uniforms.u_time.value = clock.elapsedTime;
-    material.uniforms.u_intensity.value = intensity;
-    meshRef.current.visible = intensity > 0.01;
-    meshRef.current.position.set(0.3, 0.08, 0);
-  });
-
-  return <mesh ref={meshRef} geometry={geometry} material={material} visible={false} />;
-}
+// ── Subtle Neural Glow Field ─────────────────────────────────────
+// Instead of a huge dome, add a very subtle ambient glow around active neurons
+// that's barely visible — just enough to add atmosphere without being distracting
 
 // ── Dynamic Lighting ─────────────────────────────────────────────
 function DynamicLighting() {
@@ -236,7 +160,6 @@ export function ConsciousnessEffects() {
     <>
       <DynamicLighting />
       <IgnitionRipples />
-      <ConsciousnessAurora />
     </>
   );
 }
