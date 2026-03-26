@@ -133,21 +133,3 @@ async def _call_openai_compatible(prompt: str, config: LLMConfig) -> str:
     except Exception as e:
         logger.warning(f"API call failed: {e}")
         raise RuntimeError(f"API call failed: {e}") from e
-
-
-def _heuristic_fallback() -> dict:
-    """Rule-based fallback when no LLM is available."""
-    return {
-        "analysis": "No LLM available — using heuristic rules",
-        "fitness_trend": "stable",
-        "interventions": [
-            {
-                "type": "evolution",
-                "action": "increase_mutation_rate",
-                "parameters": {"weight_perturb_sigma": 0.4},
-                "reasoning": "Increase exploration without LLM guidance",
-            }
-        ],
-        "hypothesis": "Higher mutation rates will discover more diverse neural dynamics",
-        "report": "Running in heuristic mode — connect Ollama or provide API key for intelligent guidance.",
-    }

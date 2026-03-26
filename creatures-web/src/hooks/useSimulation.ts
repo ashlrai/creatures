@@ -11,6 +11,7 @@ const WS_HOST = typeof window !== 'undefined' && window.location.hostname === 'n
 const WS_BASE = typeof window !== 'undefined' ? `wss://${WS_HOST}` : 'ws://localhost:5173';
 const INITIAL_RECONNECT_DELAYS = [1000, 2000, 4000]; // initial backoff steps
 const MAX_RECONNECT_BACKOFF = 30_000; // cap for indefinite retries
+const MAX_RECONNECT_ATTEMPTS = 10; // show recovery panel after this many failures
 
 export function useSimulation() {
   const wsRef = useRef<WebSocket | null>(null);
@@ -52,6 +53,14 @@ export function useSimulation() {
 
   const attemptReconnect = useCallback((simId: string) => {
     const currentAttempts = useSimulationStore.getState().reconnectAttempts;
+
+    // After MAX_RECONNECT_ATTEMPTS, surface the recovery panel
+    if (currentAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      store.setConnectionStatus('failed');
+      store.setError('Connection lost after multiple retries');
+      return;
+    }
+
     store.setConnectionStatus('reconnecting');
     store.setReconnectAttempts(currentAttempts + 1);
 
