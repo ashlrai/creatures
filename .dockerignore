@@ -11,3 +11,6 @@ benchmark_results.png
 .github
 .env
 creatures-web/tsconfig.tsbuildinfo
+data/
+.vercel
+notebooks/
