@@ -768,7 +768,7 @@ def evaluate_genome_vectorized(
         pattern_quality = diversity_bonus = 0.0
     diversity_pts = pattern_quality * 10.0 + diversity_bonus * 10.0
 
-    # 4. Consciousness Φ (20 pts)
+    # 4. Consciousness Φ (20 pts) — enabled when w_consciousness > 0
     consciousness_pts = 0.0
     phi_value = 0.0
     if config.w_consciousness > 0 and len(indices) > 100:
@@ -778,7 +778,7 @@ def evaluate_genome_vectorized(
             bin_ms=5.0, n_partitions=30,
         )
         phi_value = phi_result["phi"]
-        consciousness_pts = min(1.0, phi_value / 1.5) * 20.0 * config.w_consciousness
+        consciousness_pts = min(1.0, phi_value / 1.5) * 20.0
 
     fitness = sensory_motor_pts + dynamics_pts + diversity_pts + consciousness_pts
     genome.fitness = fitness

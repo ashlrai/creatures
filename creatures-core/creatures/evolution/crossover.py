@@ -138,31 +138,33 @@ def crossover(
         valid_st = [valid_st[i] for i in keep_idx]
 
     if n_neurons > max_neurons:
-        # Keep neurons that are connected; drop orphans from weaker parent
-        connected = set()
-        for p, q in zip(valid_pre, valid_post):
-            connected.add(p)
-            connected.add(q)
-        new_ids = []
-        new_types = {}
-        new_nts = {}
-        for i, nid in enumerate(child_neuron_ids):
-            if i in connected or len(new_ids) < max_neurons:
-                new_ids.append(nid)
-                new_types[nid] = child_neuron_types.get(nid)
-                new_nts[nid] = child_neuron_nts.get(nid)
-        child_neuron_ids = new_ids[:max_neurons]
-        child_neuron_types = {k: v for k, v in new_types.items() if k in set(child_neuron_ids)}
-        child_neuron_nts = {k: v for k, v in new_nts.items() if k in set(child_neuron_ids)}
-        # Re-filter synapses for new neuron count
-        n_neurons = len(child_neuron_ids)
-        filtered = [(p, q, w, s) for p, q, w, s in zip(valid_pre, valid_post, valid_w, valid_st)
-                     if p < n_neurons and q < n_neurons]
-        if filtered:
-            valid_pre, valid_post, valid_w, valid_st = zip(*filtered)
-            valid_pre, valid_post, valid_w, valid_st = list(valid_pre), list(valid_post), list(valid_w), list(valid_st)
-        else:
-            valid_pre, valid_post, valid_w, valid_st = [], [], [], []
+        # Prioritize connected neurons, then fill remaining slots in order
+        connected = {idx for pair in zip(valid_pre, valid_post) for idx in pair}
+        # Build keep set: all connected neurons first, then fill up to max
+        keep_indices = sorted(connected)
+        if len(keep_indices) < max_neurons:
+            for i in range(n_neurons):
+                if i not in connected:
+                    keep_indices.append(i)
+                    if len(keep_indices) >= max_neurons:
+                        break
+        keep_indices = keep_indices[:max_neurons]
+        # Build old→new index remapping
+        old_to_new = {old_i: new_i for new_i, old_i in enumerate(keep_indices)}
+        keep_set = set(keep_indices)
+        # Remap neuron list
+        child_neuron_ids = [child_neuron_ids[i] for i in keep_indices]
+        child_neuron_types = {nid: child_neuron_types.get(nid) for nid in child_neuron_ids}
+        child_neuron_nts = {nid: child_neuron_nts.get(nid) for nid in child_neuron_ids}
+        # Remap synapse indices through the mapping
+        remapped_pre, remapped_post, remapped_w, remapped_st = [], [], [], []
+        for p, q, w, s in zip(valid_pre, valid_post, valid_w, valid_st):
+            if p in keep_set and q in keep_set:
+                remapped_pre.append(old_to_new[p])
+                remapped_post.append(old_to_new[q])
+                remapped_w.append(w)
+                remapped_st.append(s)
+        valid_pre, valid_post, valid_w, valid_st = remapped_pre, remapped_post, remapped_w, remapped_st
 
     return Genome(
         id=str(uuid.uuid4())[:8],

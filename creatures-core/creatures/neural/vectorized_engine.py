@@ -495,6 +495,9 @@ class VectorizedEngine:
         self.enable_stdp = True
         self.apre = xp.zeros(self.n_synapses, dtype=fdtype)
         self.apost = xp.zeros(self.n_synapses, dtype=fdtype)
+        # Precompute decay constants (exponential, biologically accurate)
+        self._stdp_decay_pre = float(np.exp(-self.dt / self.stdp_tau_pre))
+        self._stdp_decay_post = float(np.exp(-self.dt / self.stdp_tau_post))
         self._eval(self.apre, self.apost)
         logger.info("STDP enabled: %d synapses with online learning", self.n_synapses)
 
@@ -507,9 +510,9 @@ class VectorizedEngine:
         xp = self.xp
         fdtype = self._float_dtype
 
-        # Decay traces (exponential, biologically accurate)
-        decay_pre = xp.exp(xp.array(-self.dt / self.stdp_tau_pre))
-        decay_post = xp.exp(xp.array(-self.dt / self.stdp_tau_post))
+        # Decay traces (exponential, precomputed in init_stdp)
+        decay_pre = self._stdp_decay_pre
+        decay_post = self._stdp_decay_post
         self.apre = self.apre * decay_pre
         self.apost = self.apost * decay_post
 

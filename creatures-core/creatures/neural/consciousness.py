@@ -677,6 +677,10 @@ def compute_all_consciousness_metrics(
     spike_indices = np.asarray(spike_indices)
     spike_times_ms = np.asarray(spike_times_ms)
 
+    # Resolve adaptive top_k once for consistent usage across all metrics
+    if top_k is None:
+        top_k = min(max(30, int(np.sqrt(n_neurons) * 2)), 100)
+
     # 1. Integrated Information (Φ)
     phi_result = compute_phi(
         spike_indices, spike_times_ms, n_neurons, duration_ms,
