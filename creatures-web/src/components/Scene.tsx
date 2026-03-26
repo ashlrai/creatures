@@ -30,7 +30,7 @@ function SmoothCamera() {
       // Snap camera directly to the organism on first frame
       targetRef.current.copy(desired);
       controlsRef.current.target.copy(desired);
-      camera.position.set(desired.x, desired.y + 0.12, desired.z + 0.35);
+      camera.position.set(desired.x, desired.y + 0.06, desired.z + 0.2);
       hasSnapped.current = true;
     } else {
       targetRef.current.lerp(desired, 0.05);
@@ -41,9 +41,9 @@ function SmoothCamera() {
   return (
     <OrbitControls
       ref={controlsRef}
-      target={[0.3, 0.02, 0]}
+      target={[0.45, 0.015, 0]}
       minDistance={0.08}
-      maxDistance={5}
+      maxDistance={1.5}
       enableDamping
       dampingFactor={0.06}
       rotateSpeed={0.5}
@@ -78,7 +78,7 @@ export function Scene({ worldType }: SceneProps) {
   return (
     <Canvas
       shadows
-      camera={{ position: [0.44, 0.06, 0.35], fov: 42, near: 0.005, far: 15 }}
+      camera={{ position: [0.45, 0.035, 0.2], fov: 50, near: 0.005, far: 15 }}
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
       dpr={[1, 1.5]}
       flat={false}

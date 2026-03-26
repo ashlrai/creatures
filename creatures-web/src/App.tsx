@@ -67,11 +67,20 @@ import {
 import type { ConnectionStatus } from './stores/simulationStore';
 
 /** Connection status indicator for the header */
-function ConnectionIndicator({ status, connected, attempts }: {
+function ConnectionIndicator({ status, connected, attempts, isDemo }: {
   status: ConnectionStatus;
   connected: boolean;
   attempts: number;
+  isDemo?: boolean;
 }) {
+  if (isDemo && !connected) {
+    return (
+      <>
+        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#6688cc', boxShadow: '0 0 6px #6688cc' }} />
+        <span style={{ color: '#88aadd', fontSize: 11 }}>Demo</span>
+      </>
+    );
+  }
   if (status === 'connected' || connected) {
     return (
       <>
@@ -182,7 +191,7 @@ export default function App() {
   const [massivePopulation, setMassivePopulation] = useState(0);
   const massiveStepRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [sidebarTab, setSidebarTab] = useState<'brain' | 'tools' | 'science'>('brain');
-  const [rightTab, setRightTab] = useState<'overview' | 'activity' | 'analysis'>('overview');
+  const [rightTab, setRightTab] = useState<'overview' | 'structure' | 'dynamics'>('overview');
   const [splitView, setSplitView] = useState(false);
   const [showWelcome, setShowWelcome] = useLocalStorage('neurevo:welcomed', true);
   const [showTutorial, setShowTutorial] = useState(() => !Tutorial.isComplete());
@@ -243,6 +252,8 @@ export default function App() {
     startDemo(savedOrganism).then(() => {
       const store = useSimulationStore.getState();
       store.setPoke(savedOrganism === 'drosophila' ? 'Thorax' : 'seg_8');
+      // Auto-select a prominent neuron so the oscilloscope shows data immediately
+      store.setSelectedNeuron(savedOrganism === 'drosophila' ? 'N0' : 'AVAL');
       setShowHint(true);
     });
   }, [startDemo]);
@@ -707,7 +718,7 @@ export default function App() {
           >
             Research
           </button>
-          <ConnectionIndicator status={connectionStatus} connected={connected} attempts={reconnectAttempts} />
+          <ConnectionIndicator status={connectionStatus} connected={connected} attempts={reconnectAttempts} isDemo={isDemo} />
           {frame && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-label)' }}>{frame.t_ms.toFixed(0)}ms</span>}
           <VideoRecorder />
           <button
@@ -1059,9 +1070,8 @@ export default function App() {
                   <PanelErrorBoundary name="Export">
                     <ExportPanel />
                   </PanelErrorBoundary>
-                  <PanelErrorBoundary name="Phase Portrait">
-                    <PhasePortrait3D />
-                  </PanelErrorBoundary>
+                  {/* PhasePortrait3D removed: crashes due to nested Canvas + postprocessing bug.
+                      PopulationProjection provides equivalent PCA visualization without crash risk. */}
                   <PanelErrorBoundary name="Compare Experiments">
                     <ExperimentComparison />
                   </PanelErrorBoundary>
@@ -1158,7 +1168,7 @@ export default function App() {
                   display: 'flex', gap: 2, marginBottom: 8,
                   borderBottom: '1px solid rgba(80,120,200,0.15)', paddingBottom: 4,
                 }}>
-                  {(['overview', 'activity', 'analysis'] as const).map((tab) => (
+                  {(['overview', 'structure', 'dynamics'] as const).map((tab) => (
                     <button
                       key={tab}
                       onClick={() => setRightTab(tab)}
@@ -1176,14 +1186,11 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* OVERVIEW tab: Consciousness + Connectome */}
+                {/* OVERVIEW: Consciousness + Correlation (compact, fast) */}
                 {rightTab === 'overview' && (
                   <>
                     <PanelErrorBoundary name="Consciousness">
                       <ConsciousnessDashboard />
-                    </PanelErrorBoundary>
-                    <PanelErrorBoundary name="Connectome">
-                      <ConnectomeExplorer />
                     </PanelErrorBoundary>
                     <PanelErrorBoundary name="Correlation">
                       <CorrelationMatrix />
@@ -1191,8 +1198,17 @@ export default function App() {
                   </>
                 )}
 
-                {/* ACTIVITY tab: Neural dynamics */}
-                {rightTab === 'activity' && (
+                {/* STRUCTURE: Connectome (the star panel, full height) */}
+                {rightTab === 'structure' && (
+                  <>
+                    <PanelErrorBoundary name="Connectome">
+                      <ConnectomeExplorer />
+                    </PanelErrorBoundary>
+                  </>
+                )}
+
+                {/* DYNAMICS: Neural activity visualizations */}
+                {rightTab === 'dynamics' && (
                   <>
                     <PanelErrorBoundary name="PCA">
                       <PopulationProjection />
@@ -1205,27 +1221,6 @@ export default function App() {
                     </PanelErrorBoundary>
                     <PanelErrorBoundary name="Transfer Entropy">
                       <TransferEntropyNetwork />
-                    </PanelErrorBoundary>
-                  </>
-                )}
-
-                {/* ANALYSIS tab: Deep analysis tools */}
-                {rightTab === 'analysis' && (
-                  <>
-                    <PanelErrorBoundary name="Causal Analysis">
-                      <CausalDashboard />
-                    </PanelErrorBoundary>
-                    <PanelErrorBoundary name="Circuit Motifs">
-                      <MotifAnalyzer />
-                    </PanelErrorBoundary>
-                    <PanelErrorBoundary name="Calcium Imaging">
-                      <CalciumOverlay />
-                    </PanelErrorBoundary>
-                    <PanelErrorBoundary name="Species Comparison">
-                      <SpeciesComparison />
-                    </PanelErrorBoundary>
-                    <PanelErrorBoundary name="Connectome Diff">
-                      <ConnectomeDiff />
                     </PanelErrorBoundary>
                   </>
                 )}

@@ -58,17 +58,17 @@ export function ConsciousnessDashboard() {
       buf.times.push(t);
     }
 
-    // Trim buffer to last 50K spikes
-    if (buf.indices.length > 50000) {
-      const excess = buf.indices.length - 50000;
+    // Trim buffer to last 20K spikes (smaller = faster computation)
+    if (buf.indices.length > 20000) {
+      const excess = buf.indices.length - 20000;
       buf.indices = buf.indices.slice(excess);
       buf.times = buf.times.slice(excess);
     }
 
     frameCountRef.current++;
 
-    // Compute metrics every 100 frames (or ~3 seconds)
-    if (frameCountRef.current - lastComputeRef.current >= 100 && buf.indices.length > 50) {
+    // Compute metrics every 50 frames (~1.5 seconds) for faster first result
+    if (frameCountRef.current - lastComputeRef.current >= 50 && buf.indices.length > 30) {
       lastComputeRef.current = frameCountRef.current;
       computeClientMetrics(buf.indices, buf.times, frame.firing_rates?.length || 299);
     }
