@@ -39,8 +39,9 @@ async def simulation_ws(websocket: WebSocket, sim_id: str):
 
     await websocket.accept()
 
-    # Create a queue for this subscriber
-    queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+    # Create a bounded queue for this subscriber so slow consumers don't
+    # accumulate unbounded backlog.  100 frames ~3 s at 30 fps.
+    queue: asyncio.Queue = asyncio.Queue(maxsize=100)
     sim.subscribers.append((websocket, queue))
 
     # Start simulation if not already running
@@ -136,8 +137,15 @@ async def simulation_ws(websocket: WebSocket, sim_id: str):
     except WebSocketDisconnect:
         pass
     finally:
-        # Remove subscriber
+        # Remove subscriber and drain any remaining frames from the queue
+        # so the broadcaster doesn't keep a reference to a dead queue.
         sim.subscribers = [
             (ws, q) for ws, q in sim.subscribers if ws is not websocket
         ]
+        # Drain zombie queue to release frame references
+        while not queue.empty():
+            try:
+                queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
         logger.info(f"WebSocket disconnected from {sim_id}")

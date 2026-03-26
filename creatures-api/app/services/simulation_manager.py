@@ -139,11 +139,21 @@ class SimulationManager:
                     muscle_activations=frame_data.muscle_activations,
                 )
 
-                # Broadcast to subscribers
+                # Broadcast to subscribers using put_nowait so a slow or
+                # dead consumer never blocks the simulation loop.  If the
+                # queue is full the oldest frame is discarded to make room.
                 dead = []
                 for i, (ws, queue) in enumerate(sim.subscribers):
                     try:
-                        await queue.put(frame)
+                        try:
+                            queue.put_nowait(frame)
+                        except asyncio.QueueFull:
+                            # Drop oldest frame to make room for the newest
+                            try:
+                                queue.get_nowait()
+                            except asyncio.QueueEmpty:
+                                pass
+                            queue.put_nowait(frame)
                     except Exception:
                         dead.append(i)
                 for i in reversed(dead):
