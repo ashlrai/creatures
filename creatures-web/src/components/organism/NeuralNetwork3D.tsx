@@ -255,7 +255,12 @@ export function NeuralNetwork3D() {
     // Build spike lookup
     const spikeSet = spikeSetRef.current;
     spikeSet.clear();
-    if (frame.spikes) for (const s of frame.spikes) spikeSet.add(s);
+    if (frame.spikes) {
+      for (const s of frame.spikes) {
+        // Bounds-check: only add valid indices within neuron range
+        if (typeof s === 'number' && s >= 0 && s < neurons.length) spikeSet.add(s);
+      }
+    }
 
     // Lazily allocate / resize change-detection buffers
     if (!prevRatesRef.current || prevRatesRef.current.length < count) {

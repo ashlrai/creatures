@@ -77,11 +77,20 @@ function ConnectionIndicator({ status, connected, attempts, isDemo }: {
   attempts: number;
   isDemo?: boolean;
 }) {
-  if (isDemo && !connected) {
+  // Demo mode: always show prominent demo label (whether connected or not)
+  if (isDemo && status !== 'connected' && !connected) {
     return (
       <>
-        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#6688cc', boxShadow: '0 0 6px #6688cc' }} />
-        <span style={{ color: '#88aadd', fontSize: 11 }}>Demo</span>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          background: 'rgba(100, 130, 200, 0.12)',
+          border: '1px solid rgba(100, 130, 200, 0.25)',
+          borderRadius: 6, padding: '2px 10px',
+        }}>
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#6688cc', boxShadow: '0 0 6px #6688cc' }} />
+          <span style={{ color: '#88aadd', fontSize: 11, fontWeight: 500 }}>DEMO</span>
+          <span style={{ color: '#667799', fontSize: 10 }}> &mdash; Pre-recorded data</span>
+        </div>
       </>
     );
   }
@@ -105,7 +114,7 @@ function ConnectionIndicator({ status, connected, attempts, isDemo }: {
     return (
       <>
         <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-magenta)', opacity: 0.7 }} />
-        <span style={{ color: 'var(--text-label)', fontSize: 11 }}>Connection lost -- using cached data</span>
+        <span style={{ color: 'var(--text-label)', fontSize: 11 }}>Connection lost</span>
       </>
     );
   }
@@ -118,6 +127,47 @@ function ConnectionIndicator({ status, connected, attempts, isDemo }: {
     );
   }
   return null;
+}
+
+/** Recovery panel shown when connection fails — offers Retry and Demo fallback */
+function ConnectionRecoveryPanel({ onRetry, onDemo }: {
+  onRetry: () => void;
+  onDemo: () => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', top: 52, left: '50%', transform: 'translateX(-50%)',
+      background: 'rgba(20, 15, 30, 0.92)', border: '1px solid rgba(200, 80, 120, 0.3)',
+      backdropFilter: 'blur(16px)', borderRadius: 10, padding: '12px 20px',
+      zIndex: 200, display: 'flex', alignItems: 'center', gap: 14,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent-magenta)', opacity: 0.8 }} />
+        <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Connection lost</span>
+      </div>
+      <button
+        onClick={onRetry}
+        style={{
+          background: 'rgba(0, 180, 255, 0.15)', border: '1px solid rgba(0, 180, 255, 0.3)',
+          borderRadius: 6, padding: '4px 14px', color: 'var(--accent-cyan)',
+          fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-mono)',
+        }}
+      >
+        Retry
+      </button>
+      <button
+        onClick={onDemo}
+        style={{
+          background: 'rgba(100, 130, 200, 0.12)', border: '1px solid rgba(100, 130, 200, 0.25)',
+          borderRadius: 6, padding: '4px 14px', color: '#88aadd',
+          fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-mono)',
+        }}
+      >
+        Use Demo
+      </button>
+    </div>
+  );
 }
 
 // Error boundary for the 3D scene — if WebGL crashes, show fallback
@@ -304,9 +354,11 @@ export default function App() {
     return () => window.removeEventListener('neurevo-command', handler);
   }, [sendCommand]);
 
-  const notify = (msg: string) => {
+  const notifyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notify = (msg: string, duration = 3500) => {
+    if (notifyTimerRef.current) clearTimeout(notifyTimerRef.current);
     setNotification(msg);
-    setTimeout(() => setNotification(null), 2000);
+    notifyTimerRef.current = setTimeout(() => setNotification(null), duration);
   };
 
   const handleStart = useCallback(async (organism: string) => {
@@ -509,10 +561,10 @@ export default function App() {
         setMassivePopulation(nOrganisms);
         notify(`Massive brain-world created (${nOrganisms} organisms)`);
       } else {
-        notify('Massive API unavailable -- check server');
+        notify('Massive API unavailable -- check server', 5000);
       }
     } catch {
-      notify('Massive API unavailable -- check server');
+      notify('Massive API unavailable -- check server', 5000);
     } finally {
       setEcoLoading(false);
     }
@@ -547,13 +599,15 @@ export default function App() {
 
   const handlePoke = useCallback((segment: string) => {
     poke(segment);
-    notify(`Poke ${segment} — sensory neurons activated`);
-  }, [poke]);
+    const demoSuffix = isDemo ? '  (Demo mode — responses are simulated)' : '';
+    notify(`Poke ${segment} — sensory neurons activated${demoSuffix}`);
+  }, [poke, isDemo]);
 
   const handleStim = useCallback((ids: string[]) => {
     stimulate(ids, 30);
-    notify(`Stimulating ${ids.join(', ')} — 30mV current`);
-  }, [stimulate]);
+    const demoSuffix = isDemo ? '  (Demo mode — responses are simulated)' : '';
+    notify(`Stimulating ${ids.join(', ')} — 30mV current${demoSuffix}`);
+  }, [stimulate, isDemo]);
 
   // Fix 4: Keyboard shortcuts
   useEffect(() => {
@@ -616,6 +670,14 @@ export default function App() {
   return (
     <div className="app-root">
       {notification && <div className="notify">{notification}</div>}
+
+      {/* Connection recovery panel — shown when WebSocket connection fails */}
+      {connectionStatus === 'failed' && !isDemo && (
+        <ConnectionRecoveryPanel
+          onRetry={() => handleStart(currentOrganism)}
+          onDemo={() => startDemo(currentOrganism)}
+        />
+      )}
 
       {/* Neuron hover tooltip + detail panel — rendered outside Canvas */}
       <NeuronTooltip />
@@ -893,10 +955,10 @@ export default function App() {
                               } catch { /* stats fetch non-critical */ }
                             }
                           } else {
-                            notify('Ecosystem API unavailable -- using local sim');
+                            notify('Ecosystem API unavailable -- using local sim', 5000);
                           }
                         } catch {
-                          notify('Ecosystem API unavailable -- using local sim');
+                          notify('Ecosystem API unavailable -- using local sim', 5000);
                         } finally {
                           setEcoLoading(false);
                         }
