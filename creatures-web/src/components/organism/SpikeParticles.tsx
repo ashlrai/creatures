@@ -149,6 +149,7 @@ export function SpikeParticles() {
   const nextCascade = useRef(0);
 
   const lastSpikes = useRef<Set<number>>(new Set());
+  const spikesSetRef = useRef<Set<number>>(new Set());
 
   // ---- Load neuron positions & types (same logic as before) ----
   useEffect(() => {
@@ -235,7 +236,9 @@ export function SpikeParticles() {
     if (!frame || !neuronData) return;
 
     // ===== Spawn burst + cascade particles for new spikes =====
-    const currentSpikes = new Set(frame.spikes);
+    const currentSpikes = spikesSetRef.current;
+    currentSpikes.clear();
+    for (const s of (frame.spikes || [])) currentSpikes.add(s);
     let spikeCount = 0;
 
     for (const spikeIdx of currentSpikes) {
@@ -302,7 +305,8 @@ export function SpikeParticles() {
         }
       }
     }
-    lastSpikes.current = currentSpikes;
+    lastSpikes.current.clear();
+    for (const s of currentSpikes) lastSpikes.current.add(s);
 
     // ===== Update burst particles =====
     if (burstRef.current) {
