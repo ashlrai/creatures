@@ -25,7 +25,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-glx libosmesa6
+          sudo apt-get install -y libgl1 libosmesa6
 
       - name: Install creatures-core[dev]
         run: pip install -e "./creatures-core[dev]"

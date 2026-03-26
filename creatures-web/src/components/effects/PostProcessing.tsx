@@ -5,33 +5,12 @@
  * Bloom amplifies the additive-blending glow from neurons, particles,
  * and organism shaders into a dramatic cinematic look.
  */
-import { useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
 import { useSimulationStore } from '../../stores/simulationStore';
 
-let EffectComposer: any = null;
-let Bloom: any = null;
-let ToneMapping: any = null;
-let loaded = false;
-let loadFailed = false;
-
-// Lazy-load postprocessing to avoid crash on import
-try {
-  const pp = require('@react-three/postprocessing');
-  EffectComposer = pp.EffectComposer;
-  Bloom = pp.Bloom;
-  ToneMapping = pp.ToneMapping;
-  loaded = true;
-} catch {
-  loadFailed = true;
-}
+import { EffectComposer, Bloom } from '@react-three/postprocessing';
 
 export function PostProcessing() {
   const frame = useSimulationStore((s) => s.frame);
-
-  if (!loaded || loadFailed || !EffectComposer || !Bloom) {
-    return null;
-  }
 
   // Calculate activity-driven bloom intensity
   const nActive = frame?.n_active ?? 0;
