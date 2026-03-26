@@ -1,5 +1,6 @@
 import { useCallback, useState, useEffect, useRef, useMemo, Component, type ReactNode } from 'react';
 import { Scene } from './components/Scene';
+import { SplitScreenView } from './components/SplitScreenView';
 import { ConnectomeExplorer } from './components/ui/ConnectomeExplorer';
 import { DrugTestingPanel } from './components/ui/DrugTestingPanel';
 import { TransportControls } from './components/ui/TransportControls';
@@ -182,6 +183,7 @@ export default function App() {
   const massiveStepRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [sidebarTab, setSidebarTab] = useState<'brain' | 'tools' | 'science'>('brain');
   const [rightTab, setRightTab] = useState<'overview' | 'activity' | 'analysis'>('overview');
+  const [splitView, setSplitView] = useState(false);
   const [showWelcome, setShowWelcome] = useLocalStorage('neurevo:welcomed', true);
   const [showTutorial, setShowTutorial] = useState(() => !Tutorial.isComplete());
   const autoStarted = useRef(false);
@@ -690,6 +692,14 @@ export default function App() {
             </button>
           </div>
           <button
+            className={`mode-switch-btn${splitView ? ' active' : ''}`}
+            onClick={() => setSplitView(!splitView)}
+            title="Split View: World + Brain side by side"
+            style={{ fontSize: 10, padding: '4px 10px' }}
+          >
+            Split
+          </button>
+          <button
             className={`mode-switch-btn${researchMode ? ' active' : ''}`}
             onClick={() => useUIPreferencesStore.getState().toggleResearchMode()}
             title="Toggle Research Mode"
@@ -1095,6 +1105,10 @@ export default function App() {
                 )}
               </div>
             </div>
+          ) : splitView ? (
+            <SceneErrorBoundary>
+              <SplitScreenView worldType="garden" />
+            </SceneErrorBoundary>
           ) : (
             <SceneErrorBoundary>
               <Scene />

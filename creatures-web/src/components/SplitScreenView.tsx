@@ -1,0 +1,382 @@
+/**
+ * SplitScreenView — dual-canvas layout showing organism + brain side by side.
+ *
+ * LEFT:  World View — organism moving through a realistic environment
+ * RIGHT: Brain View — neural network activity, connectome, consciousness
+ *
+ * Both canvases share the same simulation state via Zustand stores.
+ */
+import { useRef, useState, useMemo } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { OrbitControls, ContactShadows, Text } from '@react-three/drei';
+import * as THREE from 'three';
+import { WormBody } from './organism/WormBody';
+import { FlyBody3D } from './organism/FlyBody3D';
+import { ZebraFishBody3D } from './organism/ZebraFishBody3D';
+import { NeuralNetwork3D } from './organism/NeuralNetwork3D';
+import { ConnectomeGraph3D } from './organism/ConnectomeGraph3D';
+import { SpikeParticles } from './organism/SpikeParticles';
+import { PostProcessing } from './effects/PostProcessing';
+import { ConsciousnessEffects } from './effects/ConsciousnessEffects';
+import { useSimulationStore } from '../stores/simulationStore';
+
+// ── World View Camera ────────────────────────────────────────────
+function WorldCamera() {
+  const frame = useSimulationStore((s) => s.frame);
+  const controlsRef = useRef<any>(null);
+  const targetRef = useRef(new THREE.Vector3(0, 0.05, 0));
+
+  useFrame(({ camera }) => {
+    if (!frame?.center_of_mass || !controlsRef.current) return;
+    const [x, y, z] = frame.center_of_mass;
+    const desired = new THREE.Vector3(x, z + 0.03, -y);
+    targetRef.current.lerp(desired, 0.04);
+    controlsRef.current.target.copy(targetRef.current);
+  });
+
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      target={[0, 0.05, 0]}
+      minDistance={0.15}
+      maxDistance={3}
+      enableDamping
+      dampingFactor={0.08}
+      rotateSpeed={0.4}
+      autoRotate
+      autoRotateSpeed={0.15}
+      maxPolarAngle={Math.PI * 0.48}
+    />
+  );
+}
+
+// ── World Environment ────────────────────────────────────────────
+function WorldEnvironment({ worldType }: { worldType: string }) {
+  const groundColor = useMemo(() => {
+    switch (worldType) {
+      case 'soil': return '#2a1a0a';
+      case 'pond': return '#0a1828';
+      case 'garden': return '#1a2a0a';
+      case 'lab_plate': return '#1a1a1a';
+      default: return '#0a0f18';
+    }
+  }, [worldType]);
+
+  const fogColor = useMemo(() => {
+    switch (worldType) {
+      case 'soil': return '#1a0f08';
+      case 'pond': return '#061828';
+      case 'garden': return '#0a1a05';
+      default: return '#060810';
+    }
+  }, [worldType]);
+
+  return (
+    <>
+      {/* Fog for depth */}
+      <fog attach="fog" args={[fogColor, 0.5, 4]} />
+
+      {/* Ground plane */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
+        <planeGeometry args={[8, 8]} />
+        <meshStandardMaterial
+          color={groundColor}
+          roughness={0.9}
+          metalness={0.0}
+        />
+      </mesh>
+
+      {/* Environment-specific elements */}
+      {worldType === 'garden' && <GardenElements />}
+      {worldType === 'pond' && <PondElements />}
+      {worldType === 'soil' && <SoilElements />}
+
+      {/* Atmospheric particles */}
+      <EnvironmentParticles worldType={worldType} />
+    </>
+  );
+}
+
+function GardenElements() {
+  return (
+    <group>
+      {/* Simple fruit-like spheres */}
+      {[[-0.5, 0.04, 0.3], [0.6, 0.03, -0.2], [-0.3, 0.05, -0.4]].map(([x, y, z], i) => (
+        <mesh key={i} position={[x, y, z]} castShadow>
+          <sphereGeometry args={[0.04 + i * 0.01, 12, 12]} />
+          <meshStandardMaterial
+            color={['#cc3333', '#ccaa22', '#aa4488'][i]}
+            roughness={0.4}
+            emissive={['#330808', '#332200', '#220022'][i]}
+            emissiveIntensity={0.3}
+          />
+        </mesh>
+      ))}
+      {/* Leaf-like planes */}
+      {[[-0.4, 0.01, 0.1], [0.3, 0.01, 0.4], [0.5, 0.01, -0.3]].map(([x, y, z], i) => (
+        <mesh key={`leaf-${i}`} position={[x, y, z]} rotation={[-Math.PI / 2 + 0.1, i * 0.8, 0]}>
+          <planeGeometry args={[0.08, 0.12]} />
+          <meshStandardMaterial
+            color="#1a4a1a"
+            roughness={0.7}
+            side={THREE.DoubleSide}
+            transparent
+            opacity={0.8}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function PondElements() {
+  const waterRef = useRef<THREE.Mesh>(null);
+
+  useFrame(({ clock }) => {
+    if (!waterRef.current) return;
+    (waterRef.current.material as THREE.MeshStandardMaterial).opacity =
+      0.3 + Math.sin(clock.elapsedTime * 0.5) * 0.05;
+  });
+
+  return (
+    <group>
+      {/* Water surface */}
+      <mesh ref={waterRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+        <planeGeometry args={[6, 6]} />
+        <meshStandardMaterial
+          color="#1a4466"
+          transparent
+          opacity={0.3}
+          roughness={0.1}
+          metalness={0.2}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      {/* Pebbles */}
+      {Array.from({ length: 8 }, (_, i) => {
+        const angle = (i / 8) * Math.PI * 2;
+        const r = 0.3 + Math.random() * 0.5;
+        return (
+          <mesh key={i} position={[Math.cos(angle) * r, -0.005, Math.sin(angle) * r]}>
+            <sphereGeometry args={[0.01 + Math.random() * 0.015, 6, 6]} />
+            <meshStandardMaterial color="#4a4a3a" roughness={0.9} />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
+function SoilElements() {
+  return (
+    <group>
+      {/* Small rocks/debris */}
+      {Array.from({ length: 12 }, (_, i) => {
+        const x = (Math.random() - 0.5) * 1.5;
+        const z = (Math.random() - 0.5) * 1.5;
+        return (
+          <mesh key={i} position={[x, -0.005, z]} rotation={[Math.random(), Math.random(), 0]}>
+            <dodecahedronGeometry args={[0.008 + Math.random() * 0.01, 0]} />
+            <meshStandardMaterial color="#3a2a1a" roughness={0.95} />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
+function EnvironmentParticles({ worldType }: { worldType: string }) {
+  const particlesRef = useRef<THREE.Points>(null);
+  const count = 200;
+
+  const { positions, colors } = useMemo(() => {
+    const pos = new Float32Array(count * 3);
+    const col = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * 3;
+      pos[i * 3 + 1] = Math.random() * 1.5;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 3;
+
+      const brightness = 0.1 + Math.random() * 0.15;
+      if (worldType === 'pond') {
+        col[i * 3] = brightness * 0.5;
+        col[i * 3 + 1] = brightness * 0.8;
+        col[i * 3 + 2] = brightness;
+      } else if (worldType === 'garden') {
+        col[i * 3] = brightness * 0.8;
+        col[i * 3 + 1] = brightness;
+        col[i * 3 + 2] = brightness * 0.5;
+      } else {
+        col[i * 3] = brightness;
+        col[i * 3 + 1] = brightness * 0.9;
+        col[i * 3 + 2] = brightness * 0.7;
+      }
+    }
+    return { positions: pos, colors: col };
+  }, [worldType]);
+
+  useFrame(({ clock }) => {
+    if (!particlesRef.current) return;
+    const pos = particlesRef.current.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const arr = pos.array as Float32Array;
+    const t = clock.elapsedTime * 0.1;
+    for (let i = 0; i < count; i++) {
+      arr[i * 3 + 1] += Math.sin(t + i * 0.3) * 0.0002;
+      // Wrap particles
+      if (arr[i * 3 + 1] > 1.5) arr[i * 3 + 1] = 0;
+    }
+    pos.needsUpdate = true;
+  });
+
+  return (
+    <points ref={particlesRef}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        <bufferAttribute attach="attributes-color" args={[colors, 3]} />
+      </bufferGeometry>
+      <pointsMaterial
+        size={0.004}
+        vertexColors
+        transparent
+        opacity={0.4}
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
+        sizeAttenuation
+      />
+    </points>
+  );
+}
+
+// ── Brain View Camera ────────────────────────────────────────────
+function BrainCamera() {
+  return (
+    <OrbitControls
+      target={[0.3, 0.02, 0]}
+      minDistance={0.1}
+      maxDistance={2}
+      enableDamping
+      dampingFactor={0.08}
+      rotateSpeed={0.5}
+      autoRotate
+      autoRotateSpeed={0.05}
+    />
+  );
+}
+
+// ── Organism Body Selector ───────────────────────────────────────
+function OrganismBody() {
+  const experiment = useSimulationStore((s) => s.experiment);
+  const organism = experiment?.organism ?? 'c_elegans';
+
+  if (organism === 'drosophila') return <FlyBody3D />;
+  if (organism === 'zebrafish') return <ZebraFishBody3D />;
+  return <WormBody />;
+}
+
+// ── View Label Overlay ───────────────────────────────────────────
+function ViewLabel({ text }: { text: string }) {
+  return (
+    <div style={{
+      position: 'absolute', top: 6, left: 8, zIndex: 10,
+      fontSize: 9, fontFamily: 'monospace', letterSpacing: '1px',
+      textTransform: 'uppercase',
+      color: 'rgba(140, 170, 200, 0.5)',
+      pointerEvents: 'none',
+    }}>
+      {text}
+    </div>
+  );
+}
+
+// ── Main Split Screen Component ──────────────────────────────────
+interface SplitScreenViewProps {
+  worldType?: string;
+}
+
+export function SplitScreenView({ worldType = 'garden' }: SplitScreenViewProps) {
+  const [splitRatio] = useState(0.5);
+
+  const canvasProps = {
+    gl: { antialias: true, alpha: false, powerPreference: 'high-performance' as const },
+    dpr: [1, 1.5] as [number, number],
+    flat: false,
+  };
+
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: `${splitRatio * 100}% ${(1 - splitRatio) * 100}%`,
+      width: '100%',
+      height: '100%',
+      gap: 2,
+      background: '#020305',
+    }}>
+      {/* LEFT: World View — organism in environment */}
+      <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 4 }}>
+        <ViewLabel text="World View" />
+        <Canvas
+          shadows
+          camera={{ position: [0.3, 0.15, 0.4], fov: 50, near: 0.005, far: 15 }}
+          {...canvasProps}
+          style={{ background: '#050808' }}
+        >
+          {/* Lighting */}
+          <ambientLight intensity={0.2} color="#1a2a40" />
+          <directionalLight
+            position={[2, 3, 1]} intensity={1.0} color="#e8d8c8"
+            castShadow shadow-mapSize={[1024, 1024]}
+          />
+          <directionalLight position={[-1, 2, -2]} intensity={0.3} color="#4488cc" />
+          <hemisphereLight args={['#2a3a50', '#0a0510', 0.4]} />
+
+          {/* Environment */}
+          <WorldEnvironment worldType={worldType} />
+
+          {/* Organism */}
+          <OrganismBody />
+
+          {/* Subtle contact shadow */}
+          <ContactShadows
+            position={[0, -0.008, 0]} opacity={0.3}
+            scale={1.5} blur={2} far={0.5} color="#001020"
+          />
+
+          {/* Camera */}
+          <WorldCamera />
+
+          {/* Consciousness effects (subtle) */}
+          <ConsciousnessEffects />
+          <PostProcessing />
+        </Canvas>
+      </div>
+
+      {/* RIGHT: Brain View — neural activity */}
+      <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 4 }}>
+        <ViewLabel text="Brain View" />
+        <Canvas
+          camera={{ position: [0.44, 0.06, 0.35], fov: 42, near: 0.005, far: 15 }}
+          {...canvasProps}
+          style={{
+            background: 'radial-gradient(ellipse at 50% 40%, #0a0f20 0%, #040408 60%, #010102 100%)',
+          }}
+        >
+          {/* Minimal lighting for brain view */}
+          <ambientLight intensity={0.15} color="#1a2a40" />
+          <directionalLight position={[1, 2, 1]} intensity={0.8} color="#aaccff" />
+          <pointLight position={[0.3, 0.1, 0]} intensity={0.4} color="#0088ff" distance={1} />
+
+          {/* Neural network visualization */}
+          <NeuralNetwork3D />
+          <ConnectomeGraph3D />
+          <SpikeParticles />
+
+          {/* Camera */}
+          <BrainCamera />
+
+          {/* Bloom for brain view */}
+          <PostProcessing />
+        </Canvas>
+      </div>
+    </div>
+  );
+}
