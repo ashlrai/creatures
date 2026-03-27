@@ -102,16 +102,26 @@ class MassiveEcosystem:
         alive = self.alive
 
         # 1. Energy decay — metabolic cost
-        self.energy[alive] -= 0.01 * dt
+        # Higher cost when neural control is active to create real selection pressure
+        metabolic_rate = 0.5 if getattr(self, '_neural_control', False) else 0.01
+        self.energy[alive] -= metabolic_rate * dt
 
         # 2. Movement — steer toward nearest food + noise
-        self._move(dt)
+        # When neural_control is enabled (via BrainWorld), skip hardcoded movement
+        # so the neural network is the ONLY driver of behavior.
+        if not getattr(self, '_neural_control', False):
+            self._move(dt)
 
         # 3. Food consumption — proximity-based
         n_eaten = self._eat(eat_radius=1.5)
 
-        # 4. Death — energy depletion
+        # 4. Death — energy depletion + aging
         newly_dead = alive & (self.energy <= 0)
+        # Age-based death: probability increases with age (max lifespan ~2000 steps)
+        if getattr(self, '_neural_control', False):
+            age_death_prob = np.clip((self.age - 1000) / 1000, 0, 0.01)  # 1% chance/step after age 1000
+            age_death = alive & (self._rng.random(len(alive)) < age_death_prob)
+            newly_dead = newly_dead | age_death
         n_died = int(np.sum(newly_dead))
         self.alive[newly_dead] = False
         self._total_died += n_died
@@ -313,7 +323,7 @@ class MassiveEcosystem:
     # Food respawn
     # ------------------------------------------------------------------
 
-    def _respawn_food(self, respawn_fraction: float = 0.02) -> None:
+    def _respawn_food(self, respawn_fraction: float = 0.10) -> None:
         """Respawn a fraction of eaten food sources each step."""
         dead_food = np.where(~self.food_alive)[0]
         if len(dead_food) == 0:

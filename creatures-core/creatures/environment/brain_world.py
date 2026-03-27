@@ -69,7 +69,10 @@ class BrainWorld:
         if enable_stdp:
             self.engine.init_stdp()
 
-        self.ecosystem = MassiveEcosystem(n_organisms, arena_size, seed=seed)
+        # Food is SCARCE — organisms must use their neural network to find it.
+        # ~2 food sources per organism creates genuine selection pressure.
+        n_food = max(20, n_organisms * 2)
+        self.ecosystem = MassiveEcosystem(n_organisms, arena_size, n_food=n_food, seed=seed)
 
         # Consciousness tracking
         self._enable_consciousness = enable_consciousness
@@ -111,12 +114,73 @@ class BrainWorld:
         # Precompute organism index array (reused every step)
         self._org_indices = np.arange(n_organisms)
 
+        # Disable hardcoded food-seeking in ecosystem — neural network drives ALL movement
+        self.ecosystem._neural_control = True
+
+        # Innate reflex: bias initial weights so food-sensory neurons weakly excite
+        # forward-motor neurons. This gives organisms a baseline food-seeking tendency
+        # that evolution can refine. Without this, random weights produce random
+        # movement and the entire population starves before any useful circuit evolves.
+        self._seed_innate_reflexes()
+
         logger.info(
             "BrainWorld built: %d organisms x %d neurons = %d total, "
             "sensory=%d motor=%d, world=%s",
             n_organisms, neurons_per_organism,
             self.engine.n_total, self.n_sensory, self.n_motor, world_type,
         )
+
+    def _seed_innate_reflexes(self) -> None:
+        """Bias initial synaptic weights to create a baseline food-seeking reflex.
+
+        Without this, random neural networks produce random movement and organisms
+        starve before evolution can find useful circuits. This is biologically
+        realistic — real animals are born with innate reflexes (e.g., C. elegans
+        chemotaxis circuit is genetically specified).
+        """
+        engine = self.engine
+        n_org = engine.n_organisms
+        n_per = self.n_per
+
+        # Food sensory → forward motor pathway
+        food_start, food_end = self.sensory_channels["food"]
+        motor_start = n_per - self.n_motor
+        n_third = self.n_motor // 3
+        forward_neurons = list(range(motor_start, motor_start + n_third))
+
+        # Chemical sensory → turn motor pathway (for gradient following)
+        chem_start, chem_end = self.sensory_channels["chemical"]
+        turn_neurons = list(range(motor_start + 2 * n_third, n_per))
+
+        # For each organism, strengthen food→forward and chemical→turn connections
+        syn_w = engine._to_numpy(engine.syn_w).copy()
+        syn_pre = engine._to_numpy(engine.syn_pre)
+        syn_post = engine._to_numpy(engine.syn_post)
+
+        # Instead of adding synapses (which breaks the per-organism blocking),
+        # implement the innate reflex as a DIRECT CURRENT COUPLING in the
+        # sensory injection step. When food-sensory neurons fire, we directly
+        # inject current into forward-motor neurons. This is like a hardwired
+        # reflex arc that evolution can modulate by strengthening/weakening
+        # the synaptic connections that feed INTO the motor neurons.
+        danger_start, danger_end = self.sensory_channels["danger"]
+        self._innate_food_forward = (
+            list(range(food_start, food_end)),
+            forward_neurons,
+            0.5,  # weak coupling — enough to bias movement, not dominate
+        )
+        self._innate_chem_turn = (
+            list(range(chem_start, chem_end)),
+            turn_neurons,
+            0.3,
+        )
+        self._innate_danger_backward = (
+            list(range(danger_start, danger_end)),
+            list(range(motor_start + n_third, motor_start + 2 * n_third)),
+            0.3,
+        )
+
+        logger.info("Seeded innate reflexes as direct current coupling: food→forward, chemical→turn, danger→backward")
 
     @staticmethod
     def _create_world(world_type: str, arena_size: float) -> Any:
@@ -263,6 +327,25 @@ class BrainWorld:
         global_temp = (org_idx[:, None] * self.n_per + temp_offsets[None, :]).ravel()
         I_ext_np[global_temp] = np.repeat(temp_signal, temp_end - temp_start)
 
+        # --- Innate reflex coupling ---
+        # Directly inject current into motor neurons proportional to sensory activation.
+        # This creates a baseline food-seeking reflex that evolution can modulate.
+        for sensory_ids, motor_ids, strength in [
+            getattr(self, '_innate_food_forward', ([], [], 0)),
+            getattr(self, '_innate_chem_turn', ([], [], 0)),
+            getattr(self, '_innate_danger_backward', ([], [], 0)),
+        ]:
+            if sensory_ids and motor_ids and strength > 0:
+                for m_n in motor_ids:
+                    # Sum sensory current for each organism, inject into motor neuron
+                    sensory_sum = np.zeros(n_org)
+                    for s_n in sensory_ids:
+                        global_s = org_idx * self.n_per + s_n
+                        sensory_sum += I_ext_np[global_s]
+                    avg_sensory = sensory_sum / max(len(sensory_ids), 1)
+                    global_m = org_idx * self.n_per + m_n
+                    I_ext_np[global_m] += avg_sensory * strength
+
         # Convert to backend format in one shot
         self.engine.I_ext = self.engine.xp.array(I_ext_np)
 
@@ -297,8 +380,12 @@ class BrainWorld:
             turn_rate += fr[org_idx * self.n_per + n_idx]
 
         alive_f = alive[:n_org].astype(np.float64)
-        speed = (forward_rate - backward_rate) * 0.0005 * alive_f
-        turn = turn_rate * 0.005 * alive_f
+        # Motor gains — large enough that neural output is the PRIMARY driver of movement.
+        # With ~7 motor neurons × 20Hz firing rate:
+        #   speed = 7*20 * 0.005 = 0.7 units/step (significant movement)
+        #   turn  = 7*20 * 0.02  = 2.8 rad/step (rapid reorientation)
+        speed = (forward_rate - backward_rate) * 0.005 * alive_f
+        turn = turn_rate * 0.02 * alive_f
 
         eco.heading[:n_org] += turn
         eco.x[:n_org] += np.cos(eco.heading[:n_org]) * speed

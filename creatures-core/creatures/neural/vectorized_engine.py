@@ -851,17 +851,23 @@ class VectorizedEngine:
         start_p, end_p = self.get_organism_weight_range(parent_idx)
         start_o, end_o = self.get_organism_weight_range(offspring_idx)
 
+        # Handle unequal synapse counts (from self-connection removal)
+        n_copy = min(end_p - start_p, end_o - start_o)
+        if n_copy <= 0:
+            return
+
         xp = self.xp
-        parent_w = self.syn_w[start_p:end_p]
+        parent_w = self.syn_w[start_p:start_p + n_copy]
 
         # Copy with mutation
         if self._backend == 'mlx':
             import mlx.core as mx
-            noise = mx.random.normal(shape=parent_w.shape) * mutation_sigma
-            self.syn_w = self.syn_w.at[start_o:end_o].add(parent_w + noise - self.syn_w[start_o:end_o])
+            noise = mx.random.normal(shape=(n_copy,)) * mutation_sigma
+            self.syn_w = self.syn_w.at[start_o:start_o + n_copy].add(
+                parent_w + noise - self.syn_w[start_o:start_o + n_copy])
         else:
-            noise = np.random.normal(0, mutation_sigma, size=(end_p - start_p,)).astype(self.syn_w.dtype)
-            self.syn_w[start_o:end_o] = parent_w + noise
+            noise = np.random.normal(0, mutation_sigma, size=n_copy).astype(self.syn_w.dtype)
+            self.syn_w[start_o:start_o + n_copy] = parent_w + noise
 
         # Clip to weight bounds
         if hasattr(self, 'stdp_w_min'):
