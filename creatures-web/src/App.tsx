@@ -62,6 +62,8 @@ import { PanelErrorBoundary } from './components/ErrorBoundary';
 import { useUIPreferencesStore } from './stores/uiPreferencesStore';
 import { CorrelationMatrixConnected as CorrelationMatrix, PopulationProjectionConnected as PopulationProjection, PowerSpectralDensityConnected as PowerSpectralDensity } from './components/ui/AdvancedVizWrappers';
 import { Tutorial } from './components/ui/Tutorial';
+import { GUIDED_EXPERIMENTS, type GuidedExperimentDef } from './data/experiments';
+import { GuidedExperiment } from './components/ui/GuidedExperiment';
 import { SharedView, isShareRoute } from './components/ui/SharedView';
 import {
   NeuralActivitySkeleton,
@@ -230,6 +232,7 @@ export default function App() {
   const [notification, setNotification] = useState<string | null>(null);
   const [showHint, setShowHint] = useState(false);
   const [showConnectomeComparison, setShowConnectomeComparison] = useState(false);
+  const [activeExperiment, setActiveExperiment] = useState<GuidedExperimentDef | null>(null);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showSharePanel, setShowSharePanel] = useState(false);
@@ -1062,6 +1065,19 @@ export default function App() {
 
               {sidebarTab === 'brain' && (
                 <>
+                  {/* Guided experiments */}
+                  <div className="glass">
+                    <div className="glass-label">Guided Experiments</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {GUIDED_EXPERIMENTS.map(exp => (
+                        <button key={exp.id} className="btn btn-ghost" style={{ textAlign: 'left', padding: '6px 8px', fontSize: 11 }}
+                          onClick={() => setActiveExperiment(exp)}>
+                          <span style={{ marginRight: 6 }}>{exp.icon}</span>
+                          {exp.title}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="glass">
                     <div className="glass-label">Neural Activity</div>
                     <div style={{ fontSize: 9, color: 'rgba(140,170,200,0.4)', fontFamily: 'monospace', marginBottom: 4 }}>
@@ -1189,6 +1205,14 @@ export default function App() {
             {rightOpen ? '\u203A' : '\u2039'}
           </button>
           {appMode === 'sim' && <ViewportOverlay />}
+          {activeExperiment && (
+            <GuidedExperiment
+              experiment={activeExperiment}
+              onComplete={() => setActiveExperiment(null)}
+              onPoke={handlePoke}
+              onLesion={handleLesion}
+            />
+          )}
           {appMode === 'eco' ? (
             ecoScale === 'massive' ? (
               <EcosystemView3D
