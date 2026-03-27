@@ -65,6 +65,7 @@ import { Tutorial } from './components/ui/Tutorial';
 import { GUIDED_EXPERIMENTS, type GuidedExperimentDef } from './data/experiments';
 import { GuidedExperiment } from './components/ui/GuidedExperiment';
 import { SharedView, isShareRoute } from './components/ui/SharedView';
+import { WorldCreator } from './components/ui/WorldCreator';
 import {
   NeuralActivitySkeleton,
   InteractionSkeleton,
@@ -240,13 +241,15 @@ export default function App() {
   const [ecoStats, setEcoStats] = useState<{ c_elegans: number; drosophila: number; food: number } | null>(null);
   const [ecoLoading, setEcoLoading] = useState(false);
   // Massive brain-world state
-  const [ecoScale, setEcoScale] = useState<'standard' | 'massive'>('standard');
+  const [ecoScale, setEcoScale] = useState<'standard' | 'massive'>('massive');
   const [massiveId, setMassiveId] = useState<string | null>(null);
   const [massiveOrganisms, setMassiveOrganisms] = useState<MassiveOrganism[]>([]);
   const [massiveNeuralStats, setMassiveNeuralStats] = useState<MassiveNeuralStats | null>(null);
   const [massiveEmergent, setMassiveEmergent] = useState<EmergentEvent[]>([]);
   const [massiveWorldType, setMassiveWorldType] = useState<string>('soil');
   const [massivePopulation, setMassivePopulation] = useState(0);
+  const [massiveNarratives, setMassiveNarratives] = useState<any[]>([]);
+  const massiveWsRef = useRef<WebSocket | null>(null);
   const massiveStepRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [sidebarTab, setSidebarTab] = useState<'brain' | 'tools' | 'science'>('brain');
   const [rightTab, setRightTab] = useState<'overview' | 'structure' | 'dynamics'>('overview');
@@ -493,56 +496,56 @@ export default function App() {
 
   useHashRouter(hashState, handleHashChangeWithOrganism, handleShareState);
 
-  // --- Massive brain-world step + poll loop ---
+  // --- Massive brain-world WebSocket connection ---
   useEffect(() => {
     if (!massiveId || ecoScale !== 'massive') {
-      // Cleanup on unmount or scale change
-      if (massiveStepRef.current) {
-        clearInterval(massiveStepRef.current);
-        massiveStepRef.current = null;
+      if (massiveWsRef.current) {
+        massiveWsRef.current.close();
+        massiveWsRef.current = null;
       }
       return;
     }
 
-    let cancelled = false;
+    // Connect to the backend auto-run WebSocket
+    const wsHost = window.location.hostname === 'neurevo.dev'
+      ? 'creatures-production.up.railway.app'
+      : window.location.host;
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${wsHost}/api/ecosystem/massive/ws/${massiveId}`;
 
-    const poll = async () => {
-      if (cancelled) return;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log('[Ecosystem] WebSocket connected to', massiveId);
+    };
+
+    ws.onmessage = (event) => {
       try {
-        // Step the simulation forward
-        await fetch(`${API_BASE}/api/ecosystem/massive/${massiveId}/step?steps=10`, { method: 'POST' });
-        if (cancelled) return;
-
-        // Get state
-        const stateRes = await fetch(`${API_BASE}/api/ecosystem/massive/${massiveId}`);
-        if (stateRes.ok && !cancelled) {
-          const data = await stateRes.json();
-          if (data.organisms) setMassiveOrganisms(data.organisms);
-          if (data.neural_stats) setMassiveNeuralStats(data.neural_stats);
-          setMassivePopulation(data.total_alive ?? data.organisms?.length ?? 0);
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'ecosystem_state') {
+          if (msg.organisms) setMassiveOrganisms(msg.organisms);
+          if (msg.stats?.neural_stats) setMassiveNeuralStats(msg.stats.neural_stats);
+          if (msg.stats?.total_alive !== undefined) setMassivePopulation(msg.stats.total_alive);
+          if (msg.events) setMassiveEmergent(msg.events);
+          if (msg.narratives) setMassiveNarratives(msg.narratives);
         }
-
-        // Check emergent behaviors (less frequent -- every other poll)
-        if (Math.random() < 0.5) {
-          const emRes = await fetch(`${API_BASE}/api/ecosystem/massive/${massiveId}/emergent`);
-          if (emRes.ok && !cancelled) {
-            const emData = await emRes.json();
-            if (emData.events) setMassiveEmergent(emData.events);
-          }
-        }
-      } catch {
-        // API unavailable -- keep polling, it may recover
+      } catch (e) {
+        console.error('[Ecosystem] Failed to parse message:', e);
       }
     };
 
-    massiveStepRef.current = setInterval(poll, 500);
-    poll(); // Initial fetch
+    ws.onerror = (err) => console.error('[Ecosystem] WebSocket error:', err);
+    ws.onclose = () => {
+      console.log('[Ecosystem] WebSocket disconnected');
+      massiveWsRef.current = null;
+    };
+
+    massiveWsRef.current = ws;
 
     return () => {
-      cancelled = true;
-      if (massiveStepRef.current) {
-        clearInterval(massiveStepRef.current);
-        massiveStepRef.current = null;
+      if (massiveWsRef.current) {
+        massiveWsRef.current.close();
+        massiveWsRef.current = null;
       }
     };
   }, [massiveId, ecoScale]);
@@ -837,6 +840,7 @@ export default function App() {
               </div>
 
               {ecoScale === 'massive' ? (
+                massiveId ? (
                 <>
                   {/* World type selector */}
                   <div className="glass">
@@ -917,6 +921,7 @@ export default function App() {
                     </div>
                   </div>
                 </>
+                ) : null
               ) : (
                 <>
                   {/* Standard ecosystem controls (unchanged) */}
@@ -1215,13 +1220,23 @@ export default function App() {
           )}
           {appMode === 'eco' ? (
             ecoScale === 'massive' ? (
-              <EcosystemView3D
-                massiveId={massiveId ?? undefined}
-                massiveOrganisms={massiveOrganisms}
-                massiveNeuralStats={massiveNeuralStats}
-                emergentEvents={massiveEmergent}
-                worldType={massiveWorldType}
-              />
+              massiveId ? (
+                <EcosystemView3D
+                  massiveId={massiveId}
+                  massiveOrganisms={massiveOrganisms}
+                  massiveNeuralStats={massiveNeuralStats}
+                  emergentEvents={massiveEmergent}
+                  worldType={massiveWorldType}
+                  godNarratives={massiveNarratives}
+                />
+              ) : (
+                <WorldCreator
+                  onCreateWorld={(worldType, nOrganisms, _enableAI) => {
+                    createMassiveEcosystem(worldType, nOrganisms);
+                  }}
+                  loading={ecoLoading}
+                />
+              )
             ) : (
               <EcosystemView
                 ecosystemId={ecosystemId ?? undefined}

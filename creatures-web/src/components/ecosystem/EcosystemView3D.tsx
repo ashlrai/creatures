@@ -37,6 +37,7 @@ interface EcosystemView3DProps {
   massiveNeuralStats?: MassiveNeuralStats | null;
   emergentEvents?: EmergentEvent[];
   worldType?: string;
+  godNarratives?: any[];
 }
 
 // ---------------------------------------------------------------------------
@@ -607,6 +608,7 @@ export function EcosystemView3D({
   massiveNeuralStats,
   emergentEvents,
   worldType,
+  godNarratives,
 }: EcosystemView3DProps) {
   const organisms = massiveOrganisms ?? [];
   const stats = massiveNeuralStats ?? null;
@@ -828,6 +830,60 @@ export function EcosystemView3D({
               {centerAnnouncement.text}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* God Agent narratives panel (bottom-right) */}
+      {godNarratives && godNarratives.length > 0 && (
+        <div style={{
+          position: 'absolute',
+          bottom: 16,
+          right: 16,
+          maxWidth: 340,
+          maxHeight: 260,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+          pointerEvents: 'none',
+          zIndex: 10,
+        }}>
+          <div style={{
+            fontSize: 9,
+            fontFamily: 'var(--font-mono)',
+            color: 'rgba(180, 140, 255, 0.5)',
+            letterSpacing: '0.1em',
+            marginBottom: 2,
+          }}>
+            GOD AGENT
+          </div>
+          {godNarratives.slice(0, 5).map((n: any, i: number) => (
+            <div key={`god-${i}-${n.timestamp ?? i}`} style={{
+              background: 'rgba(6, 8, 18, 0.85)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(180, 140, 255, 0.15)',
+              borderRadius: 8,
+              padding: '6px 12px',
+              fontSize: 10,
+              color: 'rgba(200, 180, 255, 0.8)',
+              fontFamily: 'var(--font-mono)',
+              opacity: 1 - i * 0.15,
+              transition: 'opacity 0.5s',
+            }}>
+              {n.action && (
+                <span style={{
+                  color: 'rgba(255, 200, 100, 0.9)',
+                  fontWeight: 600,
+                  marginRight: 6,
+                  textTransform: 'uppercase',
+                  fontSize: 9,
+                }}>
+                  {n.action}
+                </span>
+              )}
+              {n.analysis || n.text || n.message || JSON.stringify(n)}
+            </div>
+          ))}
         </div>
       )}
     </div>
