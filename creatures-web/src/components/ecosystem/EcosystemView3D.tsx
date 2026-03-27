@@ -184,30 +184,23 @@ function OrganismInstances({
     }
   });
 
-  // Capsule-ish geometry for C. elegans (elongated sphere)
-  const elegansGeom = useMemo(() => new THREE.SphereGeometry(1, 8, 6), []);
-  const drosophilaGeom = useMemo(
-    () => new THREE.SphereGeometry(1, 8, 6),
-    [],
-  );
-
-  // Attach instanced color attributes to geometry BEFORE first render
-  // (MeshStandardMaterial with vertexColors needs the attribute to exist)
-  const elegansGeomWithColor = useMemo(() => {
+  // Geometry with instanced color attribute attached at creation time
+  // (MeshStandardMaterial with vertexColors needs the attribute before first render)
+  const elegansGeom = useMemo(() => {
     const g = new THREE.CapsuleGeometry(0.8, 1.2, 4, 8);
-    const attr = new THREE.InstancedBufferAttribute(elegansColors, 3);
+    const attr = new THREE.InstancedBufferAttribute(new Float32Array(MAX_ORGANISMS * 3), 3);
     attr.setUsage(THREE.DynamicDrawUsage);
     g.setAttribute('color', attr);
     return g;
-  }, [elegansColors]);
+  }, []);
 
-  const drosophilaGeomWithColor = useMemo(() => {
+  const drosophilaGeom = useMemo(() => {
     const g = new THREE.SphereGeometry(1, 8, 6);
-    const attr = new THREE.InstancedBufferAttribute(drosophilaColors, 3);
+    const attr = new THREE.InstancedBufferAttribute(new Float32Array(MAX_ORGANISMS * 3), 3);
     attr.setUsage(THREE.DynamicDrawUsage);
     g.setAttribute('color', attr);
     return g;
-  }, [drosophilaColors]);
+  }, []);
 
   const elegansMat = useMemo(
     () =>
@@ -239,12 +232,12 @@ function OrganismInstances({
     <>
       <instancedMesh
         ref={elegansRef}
-        args={[elegansGeomWithColor, elegansMat, MAX_ORGANISMS]}
+        args={[elegansGeom, elegansMat, MAX_ORGANISMS]}
         frustumCulled={false}
       />
       <instancedMesh
         ref={drosophilaRef}
-        args={[drosophilaGeomWithColor, drosophilaMat, MAX_ORGANISMS]}
+        args={[drosophilaGeom, drosophilaMat, MAX_ORGANISMS]}
         frustumCulled={false}
       />
     </>
