@@ -43,6 +43,8 @@ export interface MassiveOrganism {
   energy: number;
   age?: number;
   generation?: number;
+  lineage_id?: string;
+  lifetime_food_eaten?: number;
 }
 
 /** Neural stats from the massive brain-world state. */

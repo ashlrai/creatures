@@ -34,14 +34,14 @@ function SmoothCamera() {
 
       // Per-organism camera framing — close enough to see detail
       const organism = experiment?.organism ?? 'c_elegans';
-      let yOff = 0.035;   // just above organism for natural viewing angle
-      let zOff = 0.08;    // close enough to see detail
+      let yOff = 0.02;    // just above organism for natural viewing angle
+      let zOff = 0.06;    // close enough to see detail
       if (organism === 'drosophila') {
-        yOff = 0.04;
-        zOff = 0.10;
+        yOff = 0.025;
+        zOff = 0.08;
       } else if (organism === 'zebrafish') {
-        yOff = 0.08;
-        zOff = 0.25;
+        yOff = 0.04;
+        zOff = 0.15;
       }
 
       camera.position.set(
@@ -62,7 +62,7 @@ function SmoothCamera() {
     <OrbitControls
       ref={controlsRef}
       target={[0.45, 0.04, 0]}
-      minDistance={0.08}
+      minDistance={0.02}
       maxDistance={1.5}
       enableDamping
       dampingFactor={0.06}
@@ -98,7 +98,7 @@ export function Scene({ worldType }: SceneProps) {
   return (
     <Canvas
       shadows
-      camera={{ position: [0.43, 0.04, 0.08], fov: 50, near: 0.005, far: 15 }}
+      camera={{ position: [0.43, 0.05, 0.06], fov: 45, near: 0.001, far: 15 }}
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
       dpr={[1, 1.5]}
       flat={false}

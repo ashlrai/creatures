@@ -61,9 +61,11 @@ const _color = new THREE.Color();
 function OrganismInstances({
   organisms,
   neuralStats,
+  onSelectOrganism,
 }: {
   organisms: MassiveOrganism[];
   neuralStats: MassiveNeuralStats | null;
+  onSelectOrganism?: (org: MassiveOrganism | null) => void;
 }) {
   const elegansRef = useRef<THREE.InstancedMesh>(null);
   const drosophilaRef = useRef<THREE.InstancedMesh>(null);
@@ -302,14 +304,157 @@ function OrganismInstances({
         ref={elegansRef}
         args={[elegansGeom, elegansMat, MAX_ORGANISMS]}
         frustumCulled={false}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (e.instanceId !== undefined && onSelectOrganism) {
+            const elegansOrgs = organisms.filter(o => o.species === 0);
+            if (e.instanceId < elegansOrgs.length) {
+              onSelectOrganism(elegansOrgs[e.instanceId]);
+            }
+          }
+        }}
       />
       <instancedMesh
         ref={drosophilaRef}
         args={[drosophilaGeom, drosophilaMat, MAX_ORGANISMS]}
         frustumCulled={false}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (e.instanceId !== undefined && onSelectOrganism) {
+            const drosophilaOrgs = organisms.filter(o => o.species !== 0);
+            if (e.instanceId < drosophilaOrgs.length) {
+              onSelectOrganism(drosophilaOrgs[e.instanceId]);
+            }
+          }
+        }}
       />
     </>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Organism Movement Trails
+// ---------------------------------------------------------------------------
+
+const MAX_TRAIL_ORGANISMS = 20;
+const MAX_TRAIL_LENGTH = 10;
+// Total segments: each organism trail has up to (MAX_TRAIL_LENGTH - 1) segments,
+// each segment = 2 vertices, each vertex = 3 floats
+const MAX_TRAIL_VERTS = MAX_TRAIL_ORGANISMS * (MAX_TRAIL_LENGTH - 1) * 2;
+
+function OrganismTrails({ organisms }: { organisms: MassiveOrganism[] }) {
+  const trailsRef = useRef<Map<string, Array<[number, number]>>>(new Map());
+  const frameCountRef = useRef(0);
+  const lineRef = useRef<THREE.LineSegments>(null);
+
+  const positions = useMemo(() => new Float32Array(MAX_TRAIL_VERTS * 3), []);
+  const colors = useMemo(() => new Float32Array(MAX_TRAIL_VERTS * 3), []);
+
+  const geom = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX_TRAIL_VERTS * 3), 3));
+    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(MAX_TRAIL_VERTS * 3), 3));
+    g.setDrawRange(0, 0);
+    return g;
+  }, []);
+
+  const mat = useMemo(
+    () =>
+      new THREE.LineBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.6,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    [],
+  );
+
+  useFrame(() => {
+    frameCountRef.current++;
+    // Record positions every ~12 frames (~0.2s at 60fps)
+    if (frameCountRef.current % 12 === 0) {
+      const topOrgs = [...organisms]
+        .sort((a, b) => b.energy - a.energy)
+        .slice(0, MAX_TRAIL_ORGANISMS);
+
+      topOrgs.forEach((org, i) => {
+        const key = org.lineage_id ?? `idx-${i}`;
+        const trail = trailsRef.current.get(key) ?? [];
+        trail.push([org.x, org.y]);
+        if (trail.length > MAX_TRAIL_LENGTH) trail.shift();
+        trailsRef.current.set(key, trail);
+      });
+
+      // Prune trails for organisms no longer in top set
+      const activeKeys = new Set(
+        topOrgs.map((o, i) => o.lineage_id ?? `idx-${i}`),
+      );
+      for (const key of trailsRef.current.keys()) {
+        if (!activeKeys.has(key)) trailsRef.current.delete(key);
+      }
+    }
+
+    // Build segment buffer from trail data
+    const posAttr = geom.getAttribute('position') as THREE.BufferAttribute;
+    const colAttr = geom.getAttribute('color') as THREE.BufferAttribute;
+    const posArr = posAttr.array as Float32Array;
+    const colArr = colAttr.array as Float32Array;
+    let vertIdx = 0;
+
+    const topOrgs = [...organisms]
+      .sort((a, b) => b.energy - a.energy)
+      .slice(0, MAX_TRAIL_ORGANISMS);
+
+    topOrgs.forEach((org, i) => {
+      const key = org.lineage_id ?? `idx-${i}`;
+      const trail = trailsRef.current.get(key);
+      if (!trail || trail.length < 2) return;
+
+      // Species color: cyan for c_elegans (0), amber for drosophila (1)
+      const isCelegans = org.species === 0;
+      const baseR = isCelegans ? 0.15 : 0.9;
+      const baseG = isCelegans ? 0.75 : 0.55;
+      const baseB = isCelegans ? 1.0 : 0.1;
+
+      for (let j = 0; j < trail.length - 1; j++) {
+        if (vertIdx >= MAX_TRAIL_VERTS) break;
+        // Opacity fades for older segments
+        const age = j / (trail.length - 1); // 0 = oldest, 1 = newest
+        const fade = 0.2 + age * 0.8;
+
+        // Segment start
+        posArr[vertIdx * 3] = trail[j][0];
+        posArr[vertIdx * 3 + 1] = trail[j][1];
+        posArr[vertIdx * 3 + 2] = 0.03;
+        colArr[vertIdx * 3] = baseR * fade;
+        colArr[vertIdx * 3 + 1] = baseG * fade;
+        colArr[vertIdx * 3 + 2] = baseB * fade;
+        vertIdx++;
+
+        // Segment end
+        posArr[vertIdx * 3] = trail[j + 1][0];
+        posArr[vertIdx * 3 + 1] = trail[j + 1][1];
+        posArr[vertIdx * 3 + 2] = 0.03;
+        colArr[vertIdx * 3] = baseR * fade;
+        colArr[vertIdx * 3 + 1] = baseG * fade;
+        colArr[vertIdx * 3 + 2] = baseB * fade;
+        vertIdx++;
+      }
+    });
+
+    // Zero out remaining
+    for (let k = vertIdx * 3; k < posArr.length; k++) {
+      posArr[k] = 0;
+      colArr[k] = 0;
+    }
+
+    posAttr.needsUpdate = true;
+    colAttr.needsUpdate = true;
+    geom.setDrawRange(0, vertIdx);
+  });
+
+  return <lineSegments ref={lineRef} geometry={geom} material={mat} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -484,6 +629,7 @@ function HudOverlay({
   birthCount,
   deathCount,
   elapsedSeconds,
+  godNarratives,
 }: {
   organisms: MassiveOrganism[];
   neuralStats: MassiveNeuralStats | null;
@@ -495,6 +641,7 @@ function HudOverlay({
   birthCount: number;
   deathCount: number;
   elapsedSeconds: number;
+  godNarratives?: any[];
 }) {
   const worldLabels: Record<string, string> = {
     soil: 'SOIL',
@@ -538,7 +685,7 @@ function HudOverlay({
           fontFamily,
           fontSize: 10,
           lineHeight: '14px',
-          pointerEvents: 'none',
+          pointerEvents: 'auto',
         }}
       >
         <div style={{ color: 'rgba(140,170,200,0.5)' }}>
@@ -593,6 +740,34 @@ function HudOverlay({
             <div>Avg food: <span style={{ color: '#ff8888' }}>{populationStats.mean_lifetime_food?.toFixed(1)}</span></div>
           </div>
         )}
+        <button onClick={() => {
+          const data = {
+            timestamp: new Date().toISOString(),
+            organisms: organisms.map(o => ({
+              x: o.x, y: o.y, species: o.species,
+              energy: o.energy, age: o.age,
+              generation: o.generation, lineage_id: o.lineage_id,
+            })),
+            stats: {
+              alive: organisms.length,
+              ...populationStats,
+            },
+            narratives: godNarratives,
+          };
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `neurevo-ecosystem-${Date.now()}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }} style={{
+          background: 'rgba(0, 180, 255, 0.1)', border: '1px solid rgba(0, 180, 255, 0.2)',
+          borderRadius: 4, padding: '3px 8px', fontSize: 9, color: '#00d4ff',
+          cursor: 'pointer', fontFamily: 'var(--font-mono)', marginTop: 4,
+        }}>
+          Download Data
+        </button>
       </div>
 
       {/* World type (bottom-left) */}
@@ -669,12 +844,14 @@ function SceneContents({
   worldType,
   arenaRadius,
   food,
+  onSelectOrganism,
 }: {
   organisms: MassiveOrganism[];
   neuralStats: MassiveNeuralStats | null;
   worldType: string;
   arenaRadius: number;
   food?: FoodPosition[];
+  onSelectOrganism?: (org: MassiveOrganism | null) => void;
 }) {
   const isEmpty = organisms.length === 0;
 
@@ -707,7 +884,9 @@ function SceneContents({
           <OrganismInstances
             organisms={organisms}
             neuralStats={neuralStats}
+            onSelectOrganism={onSelectOrganism}
           />
+          <OrganismTrails organisms={organisms} />
           <FoodInstances organismCount={organisms.length} arenaRadius={arenaRadius} food={food} />
         </>
       )}
@@ -758,6 +937,9 @@ export function EcosystemView3D({
   const stats = massiveNeuralStats ?? null;
   const events = emergentEvents ?? [];
   const wt = worldType ?? 'soil';
+
+  // Selected organism for inspect panel
+  const [selectedOrg, setSelectedOrg] = useState<MassiveOrganism | null>(null);
 
   // Speed control state
   const [speed, setSpeed] = useState(1.0);
@@ -955,6 +1137,7 @@ export function EcosystemView3D({
           worldType={wt}
           arenaRadius={arenaRadius}
           food={food}
+          onSelectOrganism={setSelectedOrg}
         />
       </Canvas>
 
@@ -970,7 +1153,35 @@ export function EcosystemView3D({
         birthCount={birthCount}
         deathCount={deathCount}
         elapsedSeconds={elapsedSeconds}
+        godNarratives={godNarratives}
       />
+
+      {/* Organism inspect panel */}
+      {selectedOrg && (
+        <div style={{
+          position: 'absolute', top: 60, left: 12, zIndex: 25,
+          background: 'rgba(6, 8, 18, 0.92)', backdropFilter: 'blur(16px)',
+          border: '1px solid rgba(100, 130, 200, 0.2)', borderRadius: 10,
+          padding: '12px 16px', maxWidth: 250,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: selectedOrg.species === 0 ? '#00d4ff' : '#ffaa22' }}>
+              {selectedOrg.species === 0 ? 'C. elegans' : 'Drosophila'}
+            </span>
+            <button onClick={() => setSelectedOrg(null)} style={{
+              background: 'none', border: 'none', color: 'rgba(140,170,200,0.5)', cursor: 'pointer', fontSize: 14, padding: '0 2px',
+            }}>{'\u00d7'}</button>
+          </div>
+          <div style={{ fontSize: 10, color: 'rgba(160,180,210,0.7)', fontFamily: 'var(--font-mono)', display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <div>Generation: <span style={{ color: '#ffcc88' }}>{selectedOrg.generation ?? 0}</span></div>
+            <div>Lineage: <span style={{ color: '#88ffcc' }}>{selectedOrg.lineage_id ?? '?'}</span></div>
+            <div>Energy: <span style={{ color: '#ff8888' }}>{(selectedOrg.energy ?? 0).toFixed(1)}</span></div>
+            <div>Age: <span style={{ color: 'rgba(220,235,255,0.9)' }}>{(selectedOrg.age ?? 0).toFixed(0)}</span></div>
+            <div>Food eaten: <span style={{ color: '#88ccff' }}>{(selectedOrg.lifetime_food_eaten ?? 0).toFixed(0)}</span></div>
+            <div>Position: <span style={{ color: 'rgba(180,200,220,0.7)' }}>({selectedOrg.x.toFixed(1)}, {selectedOrg.y.toFixed(1)})</span></div>
+          </div>
+        </div>
+      )}
 
       {/* Narrative overlay — large and prominent */}
       <div style={{
