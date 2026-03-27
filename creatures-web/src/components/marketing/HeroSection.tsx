@@ -25,9 +25,11 @@ export function HeroSection() {
               <path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </a>
-          <a href="#science" className="hp-hero__btn-secondary">
+          <button className="hp-hero__btn-secondary" onClick={() => {
+            document.getElementById('science')?.scrollIntoView({ behavior: 'smooth' });
+          }}>
             Read the Science
-          </a>
+          </button>
         </div>
       </div>
       <div className="hp-hero__viz" style={{

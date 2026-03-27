@@ -1,7 +1,7 @@
 const FOOTER_LINKS = [
   { label: 'Platform', href: '#/app/sim/c_elegans' },
-  { label: 'GitHub', href: '#' },
-  { label: 'Documentation', href: '#' },
+  { label: 'GitHub', href: 'https://github.com/ashlrai/creatures' },
+  { label: 'API Docs', href: '#/app/sim/c_elegans' },
 ] as const;
 
 export function Footer() {

@@ -81,6 +81,7 @@ body {
   transform: translateX(-100%);
   opacity: 0;
   pointer-events: none;
+  visibility: hidden;
 }
 
 .sidebar-right {
@@ -92,6 +93,7 @@ body {
 }
 .sidebar-right.collapsed {
   transform: translateX(100%);
+  visibility: hidden;
 }
 
 .bottom-bar {

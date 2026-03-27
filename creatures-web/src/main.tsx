@@ -16,7 +16,8 @@ function Root() {
   }, []);
 
   // Marketing homepage for empty hash or #/
-  const isHomepage = !route || route === '#' || route === '#/' || route === '#/home';
+  const isHomepage = !route || route === '#' || route === '#/' || route === '#/home'
+    || route === '#science' || route === '#platform' || route === '#use-cases';
 
   useEffect(() => {
     if (isHomepage) {

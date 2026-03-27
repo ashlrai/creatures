@@ -95,7 +95,7 @@ export function Scene({ worldType }: SceneProps) {
       <ambientLight intensity={0.3} color="#2a3040" />
       <directionalLight
         position={[2, 3, 1]}
-        intensity={1.5}
+        intensity={1.8}
         color="#ffe8d0"
         castShadow
         shadow-mapSize={[1024, 1024]}
@@ -103,6 +103,7 @@ export function Scene({ worldType }: SceneProps) {
         shadow-camera-far={10}
       />
       <directionalLight position={[-1, 2, -2]} intensity={0.5} color="#4488cc" />
+      <pointLight position={[0.4, -0.1, 0]} intensity={0.2} color="#ffaa66" distance={1} />
       <directionalLight position={[0, -1, -2]} intensity={0.3} color="#88ccff" />
 
       <ContactShadows

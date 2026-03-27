@@ -50,7 +50,7 @@ function makeParticleVelocities(
 
 function DefaultParticles() {
   const pointsRef = useRef<THREE.Points>(null);
-  const count = 200;
+  const count = 350;
 
   const { positions, velocities } = useMemo(() => ({
     positions: makeParticlePositions(count, 0.44, 0.2, 0, 2.5, 0.8, 2.0),
@@ -93,7 +93,7 @@ function DefaultGroundPlane() {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0.44, -0.015, 0]}>
       <planeGeometry args={[6, 6]} />
-      <meshStandardMaterial color="#0a1520" roughness={0.9} metalness={0.05} transparent opacity={0.3} />
+      <meshStandardMaterial color="#0a1520" roughness={0.9} metalness={0.05} transparent opacity={0.4} />
     </mesh>
   );
 }
@@ -218,6 +218,7 @@ function DefaultEnvironment() {
       {/* Golden sparkles drifting around the organism */}
       <Sparkles count={40} size={0.4} speed={0.3} opacity={0.3} color="#ffcc88" scale={1.5} position={[0.44, 0.1, 0]} />
       <Sparkles count={30} size={0.25} speed={0.2} opacity={0.2} color="#ffddaa" scale={[2.0, 0.6, 1.5]} position={[0.44, 0.15, 0]} />
+      <Sparkles count={60} scale={2} size={0.001} speed={0.1} color="#ffffff" opacity={0.15} />
 
       {/* Ambient neural glow */}
       <AmbientGlow />

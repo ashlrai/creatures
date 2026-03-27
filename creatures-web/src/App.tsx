@@ -808,7 +808,7 @@ export default function App() {
       <div className="app-content">
         {/* Left sidebar */}
         <div className={`sidebar${leftOpen ? '' : ' collapsed'}`}>
-          {appMode === 'eco' ? (
+          {leftOpen && (appMode === 'eco' ? (
             <>
               {/* Scale selector */}
               <div className="glass">
@@ -1166,7 +1166,7 @@ export default function App() {
               <NeuralActivitySkeleton />
               <InteractionSkeleton />
             </>
-          )}
+          ))}
         </div>
 
         {/* 3D Viewport / Arena */}
@@ -1223,7 +1223,7 @@ export default function App() {
 
         {/* Right sidebar */}
         <div className={`sidebar sidebar-right${rightOpen ? '' : ' collapsed'}`}>
-          {appMode === 'eco' ? (
+          {rightOpen && (appMode === 'eco' ? (
             <div className="glass" style={{ padding: 8, flex: 1, display: 'flex', flexDirection: 'column' }}>
               <div className="glass-label">{ecoScale === 'massive' ? 'Brain-World Info' : 'Ecosystem Info'}</div>
               <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
@@ -1321,7 +1321,7 @@ export default function App() {
                 )}
               </>
             ) : <ConnectomeSkeleton />
-          )}
+          ))}
         </div>
       </div>
 

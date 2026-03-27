@@ -540,11 +540,19 @@ export function FlyBody3D() {
       {/* ============ HEAD ============ */}
       <mesh
         position={HEAD_OFFSET}
-        scale={[0.025, 0.02, 0.022]}
+        scale={[0.030, 0.025, 0.027]}
         material={headMat}
       >
         <sphereGeometry args={[1, 16, 12]} />
       </mesh>
+
+      {/* Antennae */}
+      {[-1, 1].map((side) => (
+        <mesh key={`antenna-${side}`} position={[HEAD_OFFSET[0] + 0.035, HEAD_OFFSET[1] + 0.015, side * 0.008]} rotation={[0, 0, Math.PI * 0.35]}>
+          <cylinderGeometry args={[0.0005, 0.0003, 0.02, 4]} />
+          <meshBasicMaterial color="#1a2530" />
+        </mesh>
+      ))}
 
       {/* Compound eye — right */}
       <mesh
@@ -573,13 +581,21 @@ export function FlyBody3D() {
         <sphereGeometry args={[1, 20, 16]} />
       </mesh>
 
-      {/* ============ ABDOMEN ============ */}
-      <mesh
-        position={ABDOMEN_OFFSET}
-        scale={[0.035, 0.03, 0.03]}
-        material={abdomenMat}
-        geometry={abdomenGeo}
-      />
+      {/* ============ ABDOMEN — 5 overlapping segments tapering toward tail ============ */}
+      {Array.from({ length: 5 }, (_, i) => {
+        const t = i / 4;
+        const segScale = 1 - t * 0.3;
+        const yOff = -0.035 - i * 0.012;
+        return (
+          <mesh
+            key={`abd-${i}`}
+            position={[yOff, ABDOMEN_OFFSET[1], ABDOMEN_OFFSET[2]]}
+            scale={[segScale * 0.035, 0.014, segScale * 0.032]}
+            material={abdomenMat}
+            geometry={abdomenGeo}
+          />
+        );
+      })}
 
       {/* ============ NEURAL INTERIOR (inside thorax) ============ */}
       {/* Synapse lines */}

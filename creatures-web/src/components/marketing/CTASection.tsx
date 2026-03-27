@@ -12,8 +12,8 @@ export function CTASection() {
           <a href="#/app/sim/c_elegans" className="hp-cta__primary">
             Launch Neurevo
           </a>
-          <a href="#" className="hp-cta__secondary">
-            Read the Documentation
+          <a href="https://github.com/ashlrai/creatures" className="hp-cta__secondary" target="_blank" rel="noopener noreferrer">
+            View on GitHub
           </a>
         </div>
       </div>
