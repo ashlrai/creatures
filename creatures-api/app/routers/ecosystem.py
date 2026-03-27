@@ -749,6 +749,30 @@ async def _massive_run_loop(bw_id: str) -> None:
                         pending_events.extend(events)
                         emergent_log.extend(events)
 
+                # --- Quick AI commentary every 100 steps (short observation for narrative feed) ---
+                if step_count % 100 == 0 and step_count % 500 != 0:
+                    if god and god.config.provider != "fallback":
+                        try:
+                            eco = bw.ecosystem
+                            n_alive = int(eco.alive.sum())
+                            max_gen = int(eco.generation[eco.alive].max()) if n_alive > 0 else 0
+                            n_lineages = len(np.unique(eco.lineage_id[eco.alive])) if n_alive > 0 else 0
+
+                            quick_prompt = (
+                                f"In ONE sentence (max 30 words), describe the most notable thing happening "
+                                f"in this ecosystem. Population: {n_alive}, generation: {max_gen}, "
+                                f"lineages: {n_lineages}, births: {eco._total_born}, deaths: {eco._total_died}, "
+                                f"food: {int(eco.food_alive.sum())}."
+                            )
+                            quick_response = await god._call_llm(quick_prompt)
+                            pending_narratives.append({
+                                "step": step_count,
+                                "analysis": quick_response[:200],
+                                "type": "quick_observation",
+                            })
+                        except Exception as e:
+                            logger.debug(f"Quick commentary failed: {e}")
+
                 # --- God Agent analysis every 500 steps ---
                 if step_count % 500 == 0:
                     eco = bw.ecosystem

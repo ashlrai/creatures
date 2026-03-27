@@ -9,6 +9,7 @@ import type {
   EmergentEvent,
 } from './EcosystemView';
 import { EvolutionTimeline } from '../ui/EvolutionTimeline';
+import { GodChat } from '../ui/GodChat';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -743,6 +744,7 @@ interface CenterAnnouncement {
 }
 
 export function EcosystemView3D({
+  massiveId,
   massiveOrganisms,
   massiveNeuralStats,
   emergentEvents,
@@ -1030,6 +1032,9 @@ export function EcosystemView3D({
           </div>
         </div>
       )}
+
+      {/* God Agent chat panel (top-right) */}
+      <GodChat bwId={massiveId ?? null} />
 
       {/* God Agent narratives panel (bottom-right) */}
       {godNarratives && godNarratives.length > 0 && (

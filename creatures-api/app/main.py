@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "creatures-core"))
 
 import asyncio
 
-from app.routers import analysis, consciousness, deep_evolution, ecosystem, evolution, experiments, export, export_advanced, god, history, metrics, morphology, neurons, pharmacology, ws
+from app.routers import analysis, consciousness, deep_evolution, ecosystem, evolution, experiments, export, export_advanced, god, god_tools, history, metrics, morphology, neurons, pharmacology, ws
 from app.services.evolution_manager import EvolutionManager
 from app.services.simulation_manager import SimulationManager
 from creatures.storage.persistence import NeurevoStore
@@ -78,6 +78,7 @@ app.include_router(experiments.router)
 app.include_router(export.router)
 app.include_router(export_advanced.router)
 app.include_router(god.router)
+app.include_router(god_tools.router)
 app.include_router(morphology.router)
 app.include_router(neurons.router)
 app.include_router(pharmacology.router)
@@ -95,6 +96,7 @@ api_compat.include_router(evolution.router)
 api_compat.include_router(export.router)
 api_compat.include_router(export_advanced.router)
 api_compat.include_router(god.router)
+api_compat.include_router(god_tools.router)
 api_compat.include_router(morphology.router)
 api_compat.include_router(neurons.router)
 api_compat.include_router(deep_evolution.router)
