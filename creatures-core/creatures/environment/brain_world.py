@@ -150,10 +150,14 @@ class BrainWorld:
         eco_stats = eco.step(dt)
 
         # 4b. INHERIT: Copy parent neural weights to offspring with mutation
+        # Only for organisms within engine range (overcapacity slots have no neural net)
+        n_engine_org = self.engine.n_organisms
         if hasattr(eco, '_last_births') and eco._last_births:
-            parents = np.array([p for p, _ in eco._last_births])
-            offspring = np.array([o for _, o in eco._last_births])
-            self._inherit_neural_weights(parents, offspring)
+            valid = [(p, o) for p, o in eco._last_births if p < n_engine_org and o < n_engine_org]
+            if valid:
+                parents = np.array([p for p, _ in valid])
+                offspring = np.array([o for _, o in valid])
+                self._inherit_neural_weights(parents, offspring)
             eco._last_births = []  # Clear after processing
 
         # 5. Step the world environment (dynamic features)
@@ -195,6 +199,7 @@ class BrainWorld:
         """
         eco = self.ecosystem
         org_idx = self._org_indices
+        n_org = len(org_idx)  # engine organisms (may be < total ecosystem slots)
 
         # Build I_ext as numpy, convert at the end
         I_ext_np = np.zeros(self.engine.n_total, dtype=np.float32)
@@ -208,24 +213,26 @@ class BrainWorld:
             else:
                 food_sample = food_alive_idx
 
-            dx = eco.x[:, None] - eco.food_x[food_sample][None, :]
-            dy = eco.y[:, None] - eco.food_y[food_sample][None, :]
+            # Only compute for engine organisms (first n_org), not overcapacity slots
+            dx = eco.x[:n_org, None] - eco.food_x[food_sample][None, :]
+            dy = eco.y[:n_org, None] - eco.food_y[food_sample][None, :]
             dist = np.sqrt(dx * dx + dy * dy)
             nearest_dist = np.min(dist, axis=1)
 
+            alive_org = alive[:n_org]
             food_signal = np.clip(1.0 - nearest_dist / 5.0, 0.0, 1.0) * 30.0
-            food_signal *= alive
+            food_signal *= alive_org
 
             nearest_idx = np.argmin(dist, axis=1)
-            best_dx = dx[org_idx, nearest_idx]
-            best_dy = dy[org_idx, nearest_idx]
+            best_dx = dx[np.arange(n_org), nearest_idx]
+            best_dy = dy[np.arange(n_org), nearest_idx]
             best_dist = nearest_dist + 1e-8
 
-            heading = eco.heading
+            heading = eco.heading[:n_org]
             food_dir_x = -best_dx / best_dist
             food_dir_y = -best_dy / best_dist
             alignment = np.cos(heading) * food_dir_x + np.sin(heading) * food_dir_y
-            chemical_signal = np.clip(alignment, -1.0, 1.0) * 20.0 * alive
+            chemical_signal = np.clip(alignment, -1.0, 1.0) * 20.0 * alive_org
 
             # Food channel
             food_start, food_end = self.sensory_channels["food"]
@@ -240,7 +247,8 @@ class BrainWorld:
             I_ext_np[global_chem] = np.repeat(chemical_signal, chem_end - chem_start)
 
         # --- Danger signal ---
-        danger_signal = np.clip(1.0 - eco.energy / 50.0, 0.0, 1.0) * 25.0 * alive
+        alive_org = alive[:n_org]
+        danger_signal = np.clip(1.0 - eco.energy[:n_org] / 50.0, 0.0, 1.0) * 25.0 * alive_org
         danger_start, danger_end = self.sensory_channels["danger"]
         danger_offsets = np.arange(danger_start, danger_end)
         global_danger = (org_idx[:, None] * self.n_per + danger_offsets[None, :]).ravel()
@@ -248,8 +256,8 @@ class BrainWorld:
 
         # --- Temperature signal ---
         half = eco.arena_size / 2.0
-        temp_normalized = (eco.y + half) / eco.arena_size
-        temp_signal = temp_normalized * 15.0 * alive
+        temp_normalized = (eco.y[:n_org] + half) / eco.arena_size
+        temp_signal = temp_normalized * 15.0 * alive_org
         temp_start, temp_end = self.sensory_channels["temperature"]
         temp_offsets = np.arange(temp_start, temp_end)
         global_temp = (org_idx[:, None] * self.n_per + temp_offsets[None, :]).ravel()
@@ -269,32 +277,32 @@ class BrainWorld:
         converts to numpy for ecosystem movement computation.
         """
         eco = self.ecosystem
-        n = eco.n
         org_idx = self._org_indices
+        n_org = len(org_idx)
 
         # Read firing rates — convert to numpy if needed
         fr = self.engine._to_numpy(self.engine.firing_rate)
 
         # Pool motor neuron rates (loop over ~7 neuron indices, not organisms)
-        forward_rate = np.zeros(n)
+        forward_rate = np.zeros(n_org)
         for n_idx in self.motor_forward:
             forward_rate += fr[org_idx * self.n_per + n_idx]
 
-        backward_rate = np.zeros(n)
+        backward_rate = np.zeros(n_org)
         for n_idx in self.motor_backward:
             backward_rate += fr[org_idx * self.n_per + n_idx]
 
-        turn_rate = np.zeros(n)
+        turn_rate = np.zeros(n_org)
         for n_idx in self.motor_turn:
             turn_rate += fr[org_idx * self.n_per + n_idx]
 
-        alive_f = alive.astype(np.float64)
+        alive_f = alive[:n_org].astype(np.float64)
         speed = (forward_rate - backward_rate) * 0.0005 * alive_f
         turn = turn_rate * 0.005 * alive_f
 
-        eco.heading += turn
-        eco.x += np.cos(eco.heading) * speed
-        eco.y += np.sin(eco.heading) * speed
+        eco.heading[:n_org] += turn
+        eco.x[:n_org] += np.cos(eco.heading[:n_org]) * speed
+        eco.y[:n_org] += np.sin(eco.heading[:n_org]) * speed
 
         half = eco.arena_size / 2.0
         eco.x = ((eco.x + half) % eco.arena_size) - half
