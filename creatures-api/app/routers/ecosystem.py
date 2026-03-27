@@ -790,6 +790,9 @@ async def _massive_run_loop(bw_id: str) -> None:
                 subscribers = _brain_world_subscribers.get(bw_id, {})
                 if subscribers:
                     state_data = bw.get_state()
+                    # Get rich population stats
+                    pop_stats = bw.get_population_stats() if hasattr(bw, 'get_population_stats') else {}
+
                     message = {
                         "type": "ecosystem_state",
                         "organisms": state_data.get("organisms", []),
@@ -798,6 +801,7 @@ async def _massive_run_loop(bw_id: str) -> None:
                             for k, v in state_data.items()
                             if k not in ("organisms", "consciousness_history")
                         },
+                        "population_stats": pop_stats,
                         "events": pending_events[-50:],
                         "narratives": pending_narratives[-10:],
                         "step": step_count,

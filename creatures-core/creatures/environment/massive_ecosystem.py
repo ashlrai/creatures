@@ -64,6 +64,13 @@ class MassiveEcosystem:
         self.food_energy = np.full(n_food, 50.0)
         self.food_alive = np.ones(n_food, dtype=bool)
 
+        # --- Generational tracking arrays ---
+        self.generation = np.zeros(n_organisms, dtype=np.int32)  # generation counter per organism
+        self.parent_id = np.full(n_organisms, -1, dtype=np.int32)  # parent index (-1 = no parent)
+        self.lineage_id = np.arange(n_organisms, dtype=np.int32)  # unique lineage ID
+        self._next_lineage_id = n_organisms  # counter for new lineage IDs
+        self.lifetime_food = np.zeros(n_organisms, dtype=np.float32)  # food eaten in lifetime
+
         # Bookkeeping
         self._rng = rng
         self._step_count = 0
@@ -230,7 +237,10 @@ class MassiveEcosystem:
             unique_food, first_eater = np.unique(
                 food_eaten_global, return_index=True
             )
-            self.energy[eaters[first_eater]] += self.food_energy[unique_food]
+            food_energy_consumed = self.food_energy[unique_food]
+            self.energy[eaters[first_eater]] += food_energy_consumed
+            # Track lifetime food consumption
+            self.lifetime_food[eaters[first_eater]] += food_energy_consumed
             self.food_alive[unique_food] = False
             n_eaten += len(unique_food)
 
@@ -272,7 +282,19 @@ class MassiveEcosystem:
         self.speed[slots] = self.speed[parents]
         self.alive[slots] = True
 
+        # Track generational lineage
+        self.generation[slots] = self.generation[parents] + 1
+        self.parent_id[slots] = parents
+        self.lifetime_food[slots] = 0.0
+        # Each offspring inherits parent's lineage
+        for i, (p, s) in enumerate(zip(parents, slots)):
+            self.lineage_id[s] = self.lineage_id[p]
+
         self._total_born += n_births
+
+        # Store parent-offspring mapping for neural weight inheritance
+        self._last_births = list(zip(parents.tolist(), slots.tolist()))
+
         return n_births
 
     # ------------------------------------------------------------------

@@ -57,6 +57,7 @@ class BrainWorld:
         enable_stdp: bool = False,
         enable_consciousness: bool = False,
         consciousness_interval: int = 500,
+        mutation_sigma: float = 0.02,
     ) -> None:
         self.engine = VectorizedEngine(use_gpu=use_gpu, neuron_model=neuron_model)
         if connectome is not None:
@@ -104,6 +105,9 @@ class BrainWorld:
         self.time_ms: float = 0.0
         self._step_count: int = 0
 
+        # Neural evolution: mutation strength for inherited weights
+        self._mutation_sigma = mutation_sigma
+
         # Precompute organism index array (reused every step)
         self._org_indices = np.arange(n_organisms)
 
@@ -145,6 +149,13 @@ class BrainWorld:
         # 4. WORLD: Step the ecosystem (food, death, reproduction)
         eco_stats = eco.step(dt)
 
+        # 4b. INHERIT: Copy parent neural weights to offspring with mutation
+        if hasattr(eco, '_last_births') and eco._last_births:
+            parents = np.array([p for p, _ in eco._last_births])
+            offspring = np.array([o for _, o in eco._last_births])
+            self._inherit_neural_weights(parents, offspring)
+            eco._last_births = []  # Clear after processing
+
         # 5. Step the world environment (dynamic features)
         if hasattr(self.world, "step"):
             self.world.step(dt)
@@ -161,6 +172,16 @@ class BrainWorld:
             result["consciousness"] = self._last_consciousness
 
         return result
+
+    # ------------------------------------------------------------------
+    # Neural weight inheritance
+    # ------------------------------------------------------------------
+
+    def _inherit_neural_weights(self, parent_indices: np.ndarray, offspring_indices: np.ndarray) -> None:
+        """Copy parent neural weights to offspring with mutation."""
+        mutation_sigma = getattr(self, '_mutation_sigma', 0.02)
+        for parent_idx, offspring_idx in zip(parent_indices, offspring_indices):
+            self.engine.inherit_weights(int(parent_idx), int(offspring_idx), mutation_sigma)
 
     # ------------------------------------------------------------------
     # Sensory injection (fully vectorized -- no loops over organisms)
@@ -316,6 +337,34 @@ class BrainWorld:
         # Keep last 100 measurements
         if len(self._consciousness_history) > 100:
             self._consciousness_history = self._consciousness_history[-100:]
+
+    # ------------------------------------------------------------------
+    # Population statistics
+    # ------------------------------------------------------------------
+
+    def get_population_stats(self) -> dict[str, Any]:
+        """Rich statistics for the God Agent and frontend."""
+        eco = self.ecosystem
+        alive = eco.alive
+        alive_idx = alive.nonzero()[0]
+
+        if len(alive_idx) == 0:
+            return {'alive': 0, 'extinct': True}
+
+        return {
+            'alive': int(alive.sum()),
+            'mean_energy': float(eco.energy[alive].mean()),
+            'max_generation': int(eco.generation[alive].max()),
+            'mean_generation': float(eco.generation[alive].mean()),
+            'n_lineages': int(len(np.unique(eco.lineage_id[alive]))),
+            'mean_lifetime_food': float(eco.lifetime_food[alive].mean()),
+            'oldest_age': float(eco.age[alive].max()),
+            'mean_age': float(eco.age[alive].mean()),
+            'species_counts': {
+                'c_elegans': int((eco.species[alive] == 0).sum()),
+                'drosophila': int((eco.species[alive] == 1).sum()),
+            },
+        }
 
     # ------------------------------------------------------------------
     # State for visualization

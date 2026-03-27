@@ -38,6 +38,7 @@ interface EcosystemView3DProps {
   emergentEvents?: EmergentEvent[];
   worldType?: string;
   godNarratives?: any[];
+  populationStats?: any;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,14 +111,21 @@ function OrganismInstances({
       _obj.rotation.set(0, 0, heading);
       _obj.updateMatrix();
 
+      // If organism has generation data, blend color toward gold for higher generations
+      const generation = org.generation ?? 0;
+      const genFactor = Math.min(generation / 50, 1); // normalize to 50 generations
+
       if (isCelegans) {
         eMesh.setMatrixAt(eIdx, _obj.matrix);
         // Cyan base, lerp toward green/red by energy
-        _color.setRGB(
-          0.1 * (1 - e) + 0.0 * e,
-          0.5 * (1 - e) + 0.85 * e,
-          0.6 + 0.4 * e,
-        );
+        let r = 0.1 * (1 - e) + 0.0 * e;
+        let g = 0.5 * (1 - e) + 0.85 * e;
+        let b = 0.6 + 0.4 * e;
+        // Mix species color with gold based on generation
+        r = r * (1 - genFactor * 0.3) + 1.0 * genFactor * 0.3;
+        g = g * (1 - genFactor * 0.3) + 0.85 * genFactor * 0.3;
+        b = b * (1 - genFactor * 0.3) + 0.15 * genFactor * 0.3;
+        _color.setRGB(r, g, b);
         elegansColors[eIdx * 3] = _color.r;
         elegansColors[eIdx * 3 + 1] = _color.g;
         elegansColors[eIdx * 3 + 2] = _color.b;
@@ -125,11 +133,14 @@ function OrganismInstances({
       } else {
         dMesh.setMatrixAt(dIdx, _obj.matrix);
         // Amber base, lerp by energy
-        _color.setRGB(
-          0.8 + 0.2 * e,
-          0.35 + 0.35 * e,
-          0.05 + 0.1 * (1 - e),
-        );
+        let r = 0.8 + 0.2 * e;
+        let g = 0.35 + 0.35 * e;
+        let b = 0.05 + 0.1 * (1 - e);
+        // Mix species color with gold based on generation
+        r = r * (1 - genFactor * 0.3) + 1.0 * genFactor * 0.3;
+        g = g * (1 - genFactor * 0.3) + 0.85 * genFactor * 0.3;
+        b = b * (1 - genFactor * 0.3) + 0.15 * genFactor * 0.3;
+        _color.setRGB(r, g, b);
         drosophilaColors[dIdx * 3] = _color.r;
         drosophilaColors[dIdx * 3 + 1] = _color.g;
         drosophilaColors[dIdx * 3 + 2] = _color.b;
@@ -380,12 +391,14 @@ function HudOverlay({
   emergentEvents,
   worldType,
   populationTrend,
+  populationStats,
 }: {
   organisms: MassiveOrganism[];
   neuralStats: MassiveNeuralStats | null;
   emergentEvents: EmergentEvent[];
   worldType: string;
   populationTrend: 'up' | 'down' | 'stable';
+  populationStats?: any;
 }) {
   const worldLabels: Record<string, string> = {
     soil: 'SOIL',
@@ -456,6 +469,15 @@ function HudOverlay({
               Rate: {neuralStats.mean_firing_rate.toFixed(3)}
             </div>
           </>
+        )}
+        {/* Evolution stats — show when available */}
+        {populationStats?.max_generation > 0 && (
+          <div style={{ marginTop: 8, borderTop: '1px solid rgba(80,130,200,0.1)', paddingTop: 6 }}>
+            <div style={{ fontSize: 8, color: 'rgba(140,170,200,0.4)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Evolution</div>
+            <div>Generation: <span style={{ color: '#ffcc88' }}>{populationStats.max_generation}</span></div>
+            <div>Lineages: <span style={{ color: '#88ffcc' }}>{populationStats.n_lineages}</span></div>
+            <div>Avg food: <span style={{ color: '#ff8888' }}>{populationStats.mean_lifetime_food?.toFixed(1)}</span></div>
+          </div>
         )}
       </div>
 
@@ -609,6 +631,7 @@ export function EcosystemView3D({
   emergentEvents,
   worldType,
   godNarratives,
+  populationStats,
 }: EcosystemView3DProps) {
   const organisms = massiveOrganisms ?? [];
   const stats = massiveNeuralStats ?? null;
@@ -773,6 +796,7 @@ export function EcosystemView3D({
         emergentEvents={events}
         worldType={wt}
         populationTrend={populationTrend}
+        populationStats={populationStats}
       />
 
       {/* Narrative overlay */}

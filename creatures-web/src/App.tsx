@@ -249,6 +249,7 @@ export default function App() {
   const [massiveWorldType, setMassiveWorldType] = useState<string>('soil');
   const [massivePopulation, setMassivePopulation] = useState(0);
   const [massiveNarratives, setMassiveNarratives] = useState<any[]>([]);
+  const [massivePopStats, setMassivePopStats] = useState<any>(null);
   const massiveWsRef = useRef<WebSocket | null>(null);
   const massiveStepRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [sidebarTab, setSidebarTab] = useState<'brain' | 'tools' | 'science'>('brain');
@@ -528,6 +529,7 @@ export default function App() {
           if (msg.stats?.total_alive !== undefined) setMassivePopulation(msg.stats.total_alive);
           if (msg.events) setMassiveEmergent(msg.events);
           if (msg.narratives) setMassiveNarratives(msg.narratives);
+          if (msg.population_stats) setMassivePopStats(msg.population_stats);
         }
       } catch (e) {
         console.error('[Ecosystem] Failed to parse message:', e);
@@ -1228,6 +1230,7 @@ export default function App() {
                   emergentEvents={massiveEmergent}
                   worldType={massiveWorldType}
                   godNarratives={massiveNarratives}
+                  populationStats={massivePopStats}
                 />
               ) : (
                 <WorldCreator

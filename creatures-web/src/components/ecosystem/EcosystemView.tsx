@@ -42,6 +42,7 @@ export interface MassiveOrganism {
   species: number; // 0 = c_elegans, 1 = drosophila
   energy: number;
   age?: number;
+  generation?: number;
 }
 
 /** Neural stats from the massive brain-world state. */

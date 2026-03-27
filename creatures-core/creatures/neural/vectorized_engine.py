@@ -817,6 +817,51 @@ class VectorizedEngine:
             self.n_synapses,
         )
 
+    # ------------------------------------------------------------------
+    # Heritable neural evolution
+    # ------------------------------------------------------------------
+
+    def get_organism_weight_range(self, org_idx: int) -> tuple[int, int]:
+        """Return (start, end) indices into syn_w for organism org_idx."""
+        synapses_per_org = self.n_synapses // max(self.n_organisms, 1)
+        start = org_idx * synapses_per_org
+        end = start + synapses_per_org
+        return (start, end)
+
+    def inherit_weights(self, parent_idx: int, offspring_idx: int, mutation_sigma: float = 0.02) -> None:
+        """Copy parent's synaptic weights to offspring with Gaussian mutation."""
+        start_p, end_p = self.get_organism_weight_range(parent_idx)
+        start_o, end_o = self.get_organism_weight_range(offspring_idx)
+
+        xp = self.xp
+        parent_w = self.syn_w[start_p:end_p]
+
+        # Copy with mutation
+        if self._backend == 'mlx':
+            import mlx.core as mx
+            noise = mx.random.normal(shape=parent_w.shape) * mutation_sigma
+            self.syn_w = self.syn_w.at[start_o:end_o].add(parent_w + noise - self.syn_w[start_o:end_o])
+        else:
+            noise = np.random.normal(0, mutation_sigma, size=(end_p - start_p,)).astype(self.syn_w.dtype)
+            self.syn_w[start_o:end_o] = parent_w + noise
+
+        # Clip to weight bounds
+        if hasattr(self, 'stdp_w_min'):
+            self.syn_w = xp.clip(self.syn_w, self.stdp_w_min, self.stdp_w_max)
+
+        # Also inherit Izhikevich parameters if they exist
+        if hasattr(self, 'iz_a') and self.iz_a is not None:
+            n_per = self.n_per if hasattr(self, 'n_per') else self.n_total // max(self.n_organisms, 1)
+            p_start, p_end = parent_idx * n_per, (parent_idx + 1) * n_per
+            o_start, o_end = offspring_idx * n_per, (offspring_idx + 1) * n_per
+            for param in [self.iz_a, self.iz_b, self.iz_c, self.iz_d]:
+                if param is not None:
+                    if self._backend == 'mlx':
+                        param_val = param[p_start:p_end]
+                        param = param.at[o_start:o_end].add(param_val - param[o_start:o_end])
+                    else:
+                        param[o_start:o_end] = param[p_start:p_end]
+
 
 # ======================================================================
 # Benchmark
