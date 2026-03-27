@@ -612,6 +612,12 @@ export default function App() {
     };
   }, [currentOrganism, appMode, researchMode]);
 
+  // --- Drug handler for guided experiments ---
+  const handleDrug = useCallback((drug: string, dose: number) => {
+    sendCommand({ type: 'apply_drug', compound: drug, dose });
+    notify(`Applied ${drug} at dose ${dose}`);
+  }, [sendCommand]);
+
   // --- Share button handler ---
   const handleShare = useCallback(() => {
     setShowSharePanel(true);
@@ -896,7 +902,14 @@ export default function App() {
                   {/* Co-Creator Panel */}
                   <CoCreatorPanel massiveId={massiveId} apiBase={API_BASE} onNotify={notify} onOpenDeepEvolution={() => setShowDeepEvolution(true)} />
                 </>
-                ) : null
+                ) : (
+                  <div className="glass" style={{ textAlign: 'center', padding: 16 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>No world created yet</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-label)', lineHeight: 1.4 }}>
+                      Configure and launch a world using the viewport panel, then use this sidebar for divine interventions.
+                    </div>
+                  </div>
+                )
               ) : (
                 <>
                   {/* Standard ecosystem controls (unchanged) */}
@@ -1191,6 +1204,7 @@ export default function App() {
               onComplete={() => setActiveExperiment(null)}
               onPoke={handlePoke}
               onLesion={handleLesion}
+              onDrug={handleDrug}
             />
           )}
           {appMode === 'eco' ? (
