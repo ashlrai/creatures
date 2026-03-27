@@ -3,7 +3,8 @@ const RAILWAY_API = 'https://creatures-production.up.railway.app';
 
 const isProduction = typeof window !== 'undefined' && window.location.hostname === 'neurevo.dev';
 
-export const API_BASE = import.meta.env.VITE_API_URL || (isProduction ? RAILWAY_API : '');
+// In production, ALWAYS use RAILWAY_API. VITE_API_URL only for local dev override.
+export const API_BASE = isProduction ? RAILWAY_API : (import.meta.env.VITE_API_URL || '');
 
 export const WS_HOST = isProduction
   ? 'creatures-production.up.railway.app'
