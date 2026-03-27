@@ -138,8 +138,6 @@ class BrainWorld:
         realistic — real animals are born with innate reflexes (e.g., C. elegans
         chemotaxis circuit is genetically specified).
         """
-        engine = self.engine
-        n_org = engine.n_organisms
         n_per = self.n_per
 
         # Food sensory → forward motor pathway
@@ -151,11 +149,6 @@ class BrainWorld:
         # Chemical sensory → turn motor pathway (for gradient following)
         chem_start, chem_end = self.sensory_channels["chemical"]
         turn_neurons = list(range(motor_start + 2 * n_third, n_per))
-
-        # For each organism, strengthen food→forward and chemical→turn connections
-        syn_w = engine._to_numpy(engine.syn_w).copy()
-        syn_pre = engine._to_numpy(engine.syn_pre)
-        syn_post = engine._to_numpy(engine.syn_post)
 
         # Instead of adding synapses (which breaks the per-organism blocking),
         # implement the innate reflex as a DIRECT CURRENT COUPLING in the
