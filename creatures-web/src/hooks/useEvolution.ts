@@ -2,12 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEvolutionStore } from '../stores/evolutionStore';
 import type { EvolutionRun, EvolutionWsMessage, GenerationStats, GodReport } from '../types/evolution';
 
-const RAILWAY_API = 'https://creatures-production.up.railway.app';
-const API_BASE = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' && window.location.hostname === 'neurevo.dev' ? RAILWAY_API : '/api');
-const WS_HOST = typeof window !== 'undefined' && window.location.hostname === 'neurevo.dev'
-  ? 'creatures-production.up.railway.app'
-  : window?.location?.host ?? 'localhost:5173';
-const WS_BASE = typeof window !== 'undefined' ? `wss://${WS_HOST}` : 'ws://localhost:5173';
+import { API_BASE, WS_BASE } from '../config';
 
 /**
  * Hook that drives evolution via the real backend API and WebSocket stream.

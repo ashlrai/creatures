@@ -1,8 +1,5 @@
 import { useCallback, useState, useEffect, useRef, useMemo, Component, type ReactNode } from 'react';
-
-// API base URL — Railway backend in production, local proxy in dev
-const RAILWAY_API = 'https://creatures-production.up.railway.app';
-const API_BASE = typeof window !== 'undefined' && window.location.hostname === 'neurevo.dev' ? RAILWAY_API : '';
+import { API_BASE, WS_HOST } from './config';
 import { Scene } from './components/Scene';
 import { SplitScreenView } from './components/SplitScreenView';
 import { ConnectomeExplorer } from './components/ui/ConnectomeExplorer';
@@ -511,11 +508,8 @@ export default function App() {
     }
 
     // Connect to the backend auto-run WebSocket
-    const wsHost = window.location.hostname === 'neurevo.dev'
-      ? 'creatures-production.up.railway.app'
-      : window.location.host;
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${wsHost}/api/ecosystem/massive/ws/${massiveId}`;
+    const wsUrl = `${wsProtocol}//${WS_HOST}/api/ecosystem/massive/ws/${massiveId}`;
 
     const ws = new WebSocket(wsUrl);
 

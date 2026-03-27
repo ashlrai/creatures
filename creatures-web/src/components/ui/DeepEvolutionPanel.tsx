@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const API_BASE = typeof window !== 'undefined' && window.location.hostname === 'neurevo.dev'
-  ? 'https://creatures-production.up.railway.app' : '';
+import { API_BASE } from '../../config';
 
 interface RunStatus {
   run_id: string;

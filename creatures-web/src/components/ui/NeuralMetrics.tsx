@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSimulationStore } from '../../stores/simulationStore';
 
-const API_BASE = '/api';
+import { API_BASE } from '../../config';
 const POLL_INTERVAL_MS = 2000;
 
 interface NetworkSummary {

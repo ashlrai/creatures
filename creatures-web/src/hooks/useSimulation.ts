@@ -3,12 +3,7 @@ import { useSimulationStore } from '../stores/simulationStore';
 import { useTransportStore } from '../stores/transportStore';
 import type { SimulationFrame, ExperimentInfo } from '../types/simulation';
 
-const RAILWAY_API = 'https://creatures-production.up.railway.app';
-const API_BASE = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' && window.location.hostname === 'neurevo.dev' ? RAILWAY_API : '/api');
-const WS_HOST = typeof window !== 'undefined' && window.location.hostname === 'neurevo.dev'
-  ? 'creatures-production.up.railway.app'
-  : window?.location?.host ?? 'localhost:5173';
-const WS_BASE = typeof window !== 'undefined' ? `wss://${WS_HOST}` : 'ws://localhost:5173';
+import { API_BASE, WS_BASE } from '../config';
 const INITIAL_RECONNECT_DELAYS = [1000, 2000, 4000]; // initial backoff steps
 const MAX_RECONNECT_BACKOFF = 30_000; // cap for indefinite retries
 const MAX_RECONNECT_ATTEMPTS = 10; // show recovery panel after this many failures
