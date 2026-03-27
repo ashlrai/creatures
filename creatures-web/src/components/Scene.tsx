@@ -88,34 +88,34 @@ export function Scene({ worldType }: SceneProps) {
       dpr={[1, 1.5]}
       flat={false}
       style={{
-        background: 'radial-gradient(ellipse at 50% 40%, #0a0f20 0%, #040408 60%, #010102 100%)',
+        background: 'linear-gradient(180deg, #1a2a3a 0%, #0d1a2a 40%, #0a1520 100%)',
       }}
     >
-      {/* Professional 3-point lighting rig */}
-      <ambientLight intensity={0.15} color="#1a2a40" />
+      {/* Natural 3-point lighting rig */}
+      <ambientLight intensity={0.3} color="#2a3040" />
       <directionalLight
         position={[2, 3, 1]}
-        intensity={1.2}
-        color="#c8d8ff"
+        intensity={1.5}
+        color="#ffe8d0"
         castShadow
         shadow-mapSize={[1024, 1024]}
         shadow-camera-near={0.1}
         shadow-camera-far={10}
       />
-      <directionalLight position={[-1, 2, -2]} intensity={0.4} color="#4488cc" />
-      <pointLight position={[0, -0.5, 0]} intensity={0.3} color="#0066ff" distance={2} decay={2} />
-      <hemisphereLight args={['#1a2a40', '#000510', 0.5]} />
+      <directionalLight position={[-1, 2, -2]} intensity={0.5} color="#4488cc" />
+      <directionalLight position={[0, -1, -2]} intensity={0.3} color="#88ccff" />
 
       <ContactShadows
         position={[0.4, -0.01, 0]}
-        opacity={0.25}
+        opacity={0.4}
         scale={2}
         blur={2}
         far={1}
-        color="#001020"
+        color="#102030"
       />
 
-      <gridHelper args={[4, 40, '#0a1525', '#060c18']} position={[0.4, -0.01, 0]} />
+      {/* Atmospheric fog for depth */}
+      <fog attach="fog" args={['#0a1520', 0.5, 4]} />
 
       {/* Environment: background color, fog, lighting, ground, particles */}
       <EnvironmentBackground worldType={worldType} />

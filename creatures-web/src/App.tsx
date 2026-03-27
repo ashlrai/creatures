@@ -247,6 +247,8 @@ export default function App() {
   const [sidebarTab, setSidebarTab] = useState<'brain' | 'tools' | 'science'>('brain');
   const [rightTab, setRightTab] = useState<'overview' | 'structure' | 'dynamics'>('overview');
   const [splitView, setSplitView] = useState(false);
+  const [leftOpen, setLeftOpen] = useState(false);
+  const [rightOpen, setRightOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useLocalStorage('neurevo:welcomed', true);
   const [showTutorial, setShowTutorial] = useState(() => !Tutorial.isComplete());
   const autoStarted = useRef(false);
@@ -782,24 +784,15 @@ export default function App() {
             </button>
           </div>
           <button
-            className={`mode-switch-btn${splitView ? ' active' : ''}`}
-            onClick={() => setSplitView(!splitView)}
-            title="Split View: World + Brain side by side"
-            style={{ fontSize: 10, padding: '4px 10px' }}
-          >
-            Split
-          </button>
-          <button
             className={`mode-switch-btn${researchMode ? ' active' : ''}`}
             onClick={() => useUIPreferencesStore.getState().toggleResearchMode()}
             title="Toggle Research Mode"
-            style={{ fontSize: 10, padding: '4px 10px' }}
+            style={{ fontSize: 10, padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4 }}
           >
-            Research
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </button>
           <ConnectionIndicator status={connectionStatus} connected={connected} attempts={reconnectAttempts} isDemo={isDemo} />
           {frame && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-label)' }}>{frame.t_ms.toFixed(0)}ms</span>}
-          <VideoRecorder />
           <button
             className="btn btn-ghost"
             style={{ fontSize: 11, padding: '3px 10px', position: 'relative' }}
@@ -814,7 +807,7 @@ export default function App() {
       {/* Main content */}
       <div className="app-content">
         {/* Left sidebar */}
-        <div className="sidebar">
+        <div className={`sidebar${leftOpen ? '' : ' collapsed'}`}>
           {appMode === 'eco' ? (
             <>
               {/* Scale selector */}
@@ -1102,6 +1095,9 @@ export default function App() {
 
               {sidebarTab === 'tools' && (
                 <>
+                  <PanelErrorBoundary name="Video Recorder">
+                    <VideoRecorder />
+                  </PanelErrorBoundary>
                   <div className="glass">
                     <div className="glass-label">Neuron Surgery</div>
                     <div style={{ fontSize: 10, color: 'var(--text-label)', marginBottom: 4 }}>Lesion neuron</div>
@@ -1175,6 +1171,21 @@ export default function App() {
 
         {/* 3D Viewport / Arena */}
         <div className="viewport">
+          {/* Sidebar toggle buttons */}
+          <button
+            className="sidebar-toggle sidebar-toggle-left"
+            onClick={() => setLeftOpen(!leftOpen)}
+            style={{ left: leftOpen ? 220 : 0 }}
+          >
+            {leftOpen ? '\u2039' : '\u203A'}
+          </button>
+          <button
+            className="sidebar-toggle sidebar-toggle-right"
+            onClick={() => setRightOpen(!rightOpen)}
+            style={{ right: rightOpen ? 280 : 0 }}
+          >
+            {rightOpen ? '\u203A' : '\u2039'}
+          </button>
           {appMode === 'eco' ? (
             ecoScale === 'massive' ? (
               <EcosystemView3D
@@ -1211,7 +1222,7 @@ export default function App() {
         </div>
 
         {/* Right sidebar */}
-        <div className="sidebar sidebar-right">
+        <div className={`sidebar sidebar-right${rightOpen ? '' : ' collapsed'}`}>
           {appMode === 'eco' ? (
             <div className="glass" style={{ padding: 8, flex: 1, display: 'flex', flexDirection: 'column' }}>
               <div className="glass-label">{ecoScale === 'massive' ? 'Brain-World Info' : 'Ecosystem Info'}</div>
@@ -1348,9 +1359,9 @@ export default function App() {
         />
       )}
 
-      {/* Protocol timeline & results — positioned above bottom bar */}
-      {appMode === 'sim' && (
-        <div style={{ position: 'fixed', bottom: 56, left: 180, right: 260, zIndex: 30, pointerEvents: 'auto' }}>
+      {/* Protocol timeline & results — only shown in research mode */}
+      {appMode === 'sim' && researchMode && (
+        <div style={{ position: 'fixed', bottom: 48, left: 16, right: 16, zIndex: 30, pointerEvents: 'auto' }}>
           <PanelErrorBoundary name="Protocol Timeline">
             <ProtocolTimeline />
           </PanelErrorBoundary>

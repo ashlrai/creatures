@@ -50,11 +50,11 @@ function makeParticleVelocities(
 
 function DefaultParticles() {
   const pointsRef = useRef<THREE.Points>(null);
-  const count = 120;
+  const count = 200;
 
   const { positions, velocities } = useMemo(() => ({
-    positions: makeParticlePositions(count, 0.44, 0.3, 0, 2.0, 0.6, 1.5),
-    velocities: makeParticleVelocities(count, 0.004, 0.003, 0.004),
+    positions: makeParticlePositions(count, 0.44, 0.2, 0, 2.5, 0.8, 2.0),
+    velocities: makeParticleVelocities(count, 0.003, 0.002, 0.003),
   }), []);
 
   useFrame(() => {
@@ -63,10 +63,10 @@ function DefaultParticles() {
     const arr = posAttr.array as Float32Array;
     for (let i = 0; i < count; i++) {
       arr[i * 3] += velocities[i * 3];
-      arr[i * 3 + 1] += velocities[i * 3 + 1] * 0.5 + 0.0005;
+      arr[i * 3 + 1] += velocities[i * 3 + 1] * 0.5 + 0.0003;
       arr[i * 3 + 2] += velocities[i * 3 + 2];
       if (arr[i * 3 + 1] > 0.7) arr[i * 3 + 1] = -0.05;
-      if (Math.abs(arr[i * 3] - 0.44) > 1.5) arr[i * 3] = 0.44 + (Math.random() - 0.5) * 1.0;
+      if (Math.abs(arr[i * 3] - 0.44) > 1.5) arr[i * 3] = 0.44 + (Math.random() - 0.5) * 1.5;
     }
     posAttr.needsUpdate = true;
   });
@@ -77,11 +77,11 @@ function DefaultParticles() {
         <bufferAttribute attach="attributes-position" array={positions} count={count} itemSize={3} />
       </bufferGeometry>
       <pointsMaterial
-        color="#3366cc"
-        size={0.012}
+        color="#ffddaa"
+        size={0.003}
         sizeAttenuation
         transparent
-        opacity={0.15}
+        opacity={0.4}
         blending={THREE.AdditiveBlending}
         depthWrite={false}
       />
@@ -90,41 +90,10 @@ function DefaultParticles() {
 }
 
 function DefaultGroundPlane() {
-  const texture = useMemo(() => {
-    const size = 512;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#050508';
-    ctx.fillRect(0, 0, size, size);
-    ctx.strokeStyle = 'rgba(40, 60, 100, 0.12)';
-    ctx.lineWidth = 1;
-    const gridSpacing = size / 32;
-    for (let i = 0; i <= 32; i++) {
-      const pos = i * gridSpacing;
-      ctx.beginPath(); ctx.moveTo(pos, 0); ctx.lineTo(pos, size); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0, pos); ctx.lineTo(size, pos); ctx.stroke();
-    }
-    ctx.strokeStyle = 'rgba(50, 80, 130, 0.18)';
-    ctx.lineWidth = 1.5;
-    const majorSpacing = size / 8;
-    for (let i = 0; i <= 8; i++) {
-      const pos = i * majorSpacing;
-      ctx.beginPath(); ctx.moveTo(pos, 0); ctx.lineTo(pos, size); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0, pos); ctx.lineTo(size, pos); ctx.stroke();
-    }
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(4, 4);
-    return tex;
-  }, []);
-
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0.44, -0.003, 0]}>
-      <planeGeometry args={[4, 4]} />
-      <meshStandardMaterial map={texture} color="#080a10" roughness={0.95} metalness={0.05} transparent opacity={0.9} />
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0.44, -0.015, 0]}>
+      <planeGeometry args={[6, 6]} />
+      <meshStandardMaterial color="#0a1520" roughness={0.9} metalness={0.05} transparent opacity={0.3} />
     </mesh>
   );
 }
@@ -237,27 +206,18 @@ function AmbientGlow() {
 function DefaultEnvironment() {
   return (
     <>
-      <color attach="background" args={['#020210']} />
-      <fog attach="fog" args={['#020408', 1.5, 8]} />
-
-      {/* Lighting */}
-      <ambientLight intensity={0.15} color="#1a2a4a" />
-      <directionalLight position={[5, 8, 3]} intensity={0.8} color="#88ccff" castShadow />
-      <directionalLight position={[-3, 4, -2]} intensity={0.3} color="#ff8844" />
-      <pointLight position={[0.44, 0.3, 0.2]} intensity={0.5} color="#00d4ff" distance={5} decay={2} />
-      <pointLight position={[0.44, 0.05, -0.1]} intensity={0.3} color="#6655aa" distance={2} decay={2} />
-      <directionalLight position={[-0.5, 0.3, -1]} intensity={0.35} color="#4466aa" />
-      <pointLight position={[0.44, 0.1, -0.25]} intensity={0.2} color="#335588" distance={2} decay={2} />
-      <pointLight position={[0.44, -0.1, 0.05]} intensity={0.15} color="#ff6633" distance={1.5} decay={2} />
+      <color attach="background" args={['#0a1520']} />
 
       {/* Ground */}
       <DefaultGroundPlane />
-      <gridHelper args={[4, 40, '#0a1525', '#0a1525']} position={[0.44, -0.01, 0]} />
 
-      {/* Particles */}
-      <Sparkles count={120} size={0.35} speed={0.06} opacity={0.15} color="#4488dd" scale={[2.0, 0.6, 1.5]} position={[0.44, 0.15, 0]} />
+      {/* Warm floating particles */}
       <DefaultParticles />
       <MicroParticles />
+
+      {/* Golden sparkles drifting around the organism */}
+      <Sparkles count={40} size={0.4} speed={0.3} opacity={0.3} color="#ffcc88" scale={1.5} position={[0.44, 0.1, 0]} />
+      <Sparkles count={30} size={0.25} speed={0.2} opacity={0.2} color="#ffddaa" scale={[2.0, 0.6, 1.5]} position={[0.44, 0.15, 0]} />
 
       {/* Ambient neural glow */}
       <AmbientGlow />

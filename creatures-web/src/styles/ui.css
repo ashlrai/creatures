@@ -30,7 +30,7 @@ body {
 
 .app-root {
   display: grid;
-  grid-template-rows: 44px 1fr 40px;
+  grid-template-rows: 40px 1fr 36px;
   width: 100vw;
   height: 100vh;
 }
@@ -48,7 +48,7 @@ body {
 
 .app-content {
   display: grid;
-  grid-template-columns: 180px 1fr 260px;
+  grid-template-columns: 1fr;
   overflow: hidden;
   position: relative;
 }
@@ -59,7 +59,12 @@ body {
 }
 
 .sidebar {
-  background: var(--bg-panel);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 220px;
+  height: 100%;
+  background: rgba(6, 8, 18, 0.88);
   border-right: 1px solid var(--border-subtle);
   backdrop-filter: blur(var(--blur));
   padding: 12px;
@@ -67,21 +72,69 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  z-index: 5;
+  z-index: 15;
+  transform: translateX(0);
+  transition: transform 0.3s ease, opacity 0.3s ease;
   scroll-behavior: smooth;
+}
+.sidebar.collapsed {
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .sidebar-right {
+  left: auto;
+  right: 0;
+  width: 280px;
   border-right: none;
   border-left: 1px solid var(--border-subtle);
+}
+.sidebar-right.collapsed {
+  transform: translateX(100%);
 }
 
 .bottom-bar {
   background: var(--bg-panel);
   border-top: 1px solid var(--border-subtle);
   backdrop-filter: blur(var(--blur));
-  padding: 4px 16px;
+  height: 36px;
+  padding: 2px 16px;
   z-index: 10;
+}
+
+/* Sidebar toggle buttons */
+.sidebar-toggle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 48px;
+  background: rgba(6, 8, 18, 0.7);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-label);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  z-index: 16;
+  backdrop-filter: blur(16px);
+  transition: background 0.2s, color 0.2s;
+}
+.sidebar-toggle:hover {
+  background: rgba(0, 180, 255, 0.1);
+  color: var(--accent-cyan);
+}
+.sidebar-toggle-left {
+  left: 0;
+  border-radius: 0 6px 6px 0;
+  border-left: none;
+}
+.sidebar-toggle-right {
+  right: 0;
+  border-radius: 6px 0 0 6px;
+  border-right: none;
 }
 
 /* Glass panels */
@@ -976,16 +1029,15 @@ body {
 
 /* ─── Responsive: tablet ──────────────────────────────────────────── */
 @media (max-width: 1100px) {
-  .app-content { grid-template-columns: 160px 1fr 220px; }
-  .sidebar { padding: 8px; gap: 8px; }
+  .sidebar { width: 200px; padding: 8px; gap: 8px; }
+  .sidebar-right { width: 240px; }
 }
 
 @media (max-width: 900px) {
-  .app-content { grid-template-columns: 0px 1fr 0px; }
   .sidebar, .sidebar-right { display: none; }
+  .sidebar-toggle { display: none; }
   .app-header { padding: 0 8px; gap: 6px; font-size: 11px; }
-  .bottom-bar { height: 44px; }
-  .app-root { grid-template-rows: 38px 1fr 44px; }
+  .app-root { grid-template-rows: 38px 1fr 36px; }
 }
 
 @media (max-width: 600px) {
