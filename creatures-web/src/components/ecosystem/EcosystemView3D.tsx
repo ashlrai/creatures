@@ -8,6 +8,7 @@ import type {
   MassiveNeuralStats,
   EmergentEvent,
 } from './EcosystemView';
+import { EvolutionTimeline } from '../ui/EvolutionTimeline';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -39,6 +40,7 @@ interface EcosystemView3DProps {
   worldType?: string;
   godNarratives?: any[];
   populationStats?: any;
+  sendEcoCommand?: (cmd: Record<string, unknown>) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -632,11 +634,21 @@ export function EcosystemView3D({
   worldType,
   godNarratives,
   populationStats,
+  sendEcoCommand,
 }: EcosystemView3DProps) {
   const organisms = massiveOrganisms ?? [];
   const stats = massiveNeuralStats ?? null;
   const events = emergentEvents ?? [];
   const wt = worldType ?? 'soil';
+
+  // Speed control state
+  const [speed, setSpeed] = useState(1.0);
+
+  const handleSpeedChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = Number(e.target.value);
+    setSpeed(value);
+    sendEcoCommand?.({ type: 'speed', value });
+  }, [sendEcoCommand]);
 
   // Frustum size for orthographic camera (~arena fits on screen)
   const frustum = ARENA_RADIUS * 1.3;
@@ -910,6 +922,57 @@ export function EcosystemView3D({
           ))}
         </div>
       )}
+
+      {/* Speed control slider (bottom-center, above timeline) */}
+      <div style={{
+        position: 'absolute',
+        bottom: 140,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        background: 'rgba(6,8,18,0.8)',
+        backdropFilter: 'blur(12px)',
+        border: '1px solid rgba(80,130,200,0.12)',
+        borderRadius: 8,
+        padding: '4px 12px',
+        zIndex: 10,
+      }}>
+        <span style={{ fontSize: 9, color: 'rgba(140,170,200,0.4)', fontFamily: 'var(--font-mono)' }}>0.1x</span>
+        <input
+          type="range"
+          min={0.1}
+          max={20}
+          step={0.1}
+          value={speed}
+          onChange={handleSpeedChange}
+          style={{ width: 120, accentColor: '#00d4ff', cursor: 'pointer' }}
+        />
+        <span style={{ fontSize: 9, color: 'rgba(140,170,200,0.4)', fontFamily: 'var(--font-mono)' }}>20x</span>
+        <span style={{
+          fontSize: 10,
+          color: speed > 5 ? 'rgba(255,180,80,0.8)' : 'rgba(0,212,255,0.7)',
+          fontFamily: 'var(--font-mono)',
+          fontWeight: 600,
+          minWidth: 32,
+          textAlign: 'right',
+        }}>
+          {speed.toFixed(1)}x
+        </span>
+      </div>
+
+      {/* Evolution timeline graph (bottom-center) */}
+      <div style={{
+        position: 'absolute',
+        bottom: 12,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        pointerEvents: 'none',
+        zIndex: 10,
+      }}>
+        <EvolutionTimeline width={300} height={120} />
+      </div>
     </div>
   );
 }

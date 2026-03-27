@@ -66,6 +66,7 @@ import { GUIDED_EXPERIMENTS, type GuidedExperimentDef } from './data/experiments
 import { GuidedExperiment } from './components/ui/GuidedExperiment';
 import { SharedView, isShareRoute } from './components/ui/SharedView';
 import { WorldCreator } from './components/ui/WorldCreator';
+import { CoCreatorPanel } from './components/ui/CoCreatorPanel';
 import {
   NeuralActivitySkeleton,
   InteractionSkeleton,
@@ -530,6 +531,16 @@ export default function App() {
           if (msg.events) setMassiveEmergent(msg.events);
           if (msg.narratives) setMassiveNarratives(msg.narratives);
           if (msg.population_stats) setMassivePopStats(msg.population_stats);
+
+          // Dispatch evolution data for the EvolutionTimeline graph
+          window.dispatchEvent(new CustomEvent('neurevo-evo-data', {
+            detail: {
+              population: msg.stats?.total_alive ?? 0,
+              generation: msg.population_stats?.max_generation ?? 0,
+              lineages: msg.population_stats?.n_lineages ?? 0,
+              step: msg.step ?? 0,
+            }
+          }));
         }
       } catch (e) {
         console.error('[Ecosystem] Failed to parse message:', e);
@@ -551,6 +562,13 @@ export default function App() {
       }
     };
   }, [massiveId, ecoScale]);
+
+  // --- Send command to massive brain-world WebSocket ---
+  const sendEcoCommand = useCallback((cmd: Record<string, unknown>) => {
+    if (massiveWsRef.current?.readyState === WebSocket.OPEN) {
+      massiveWsRef.current.send(JSON.stringify(cmd));
+    }
+  }, []);
 
   // --- Create massive brain-world ---
   const createMassiveEcosystem = useCallback(async (worldType: string, nOrganisms = 1000, neuronsPerOrg = 50) => {
@@ -879,49 +897,8 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* Neural stats panel */}
-                  <div className="glass">
-                    <div className="glass-label">Neural Stats</div>
-                    <div className="stat-row">
-                      <span className="stat-label">Total neurons</span>
-                      <span className="stat-value" style={{ color: 'var(--accent-cyan)' }}>
-                        {massiveNeuralStats ? massiveNeuralStats.total_neurons.toLocaleString() : '--'}
-                      </span>
-                    </div>
-                    <div className="stat-row">
-                      <span className="stat-label">Active neurons</span>
-                      <span className="stat-value" style={{ color: 'var(--accent-green)' }}>
-                        {massiveNeuralStats
-                          ? `${((massiveNeuralStats.total_fired / Math.max(1, massiveNeuralStats.total_neurons)) * 100).toFixed(1)}%`
-                          : '--'}
-                      </span>
-                    </div>
-                    <div className="stat-row">
-                      <span className="stat-label">Mean firing rate</span>
-                      <span className="stat-value" style={{ color: 'var(--accent-amber)' }}>
-                        {massiveNeuralStats ? massiveNeuralStats.mean_firing_rate.toFixed(4) : '--'}
-                      </span>
-                    </div>
-                    <div className="stat-row">
-                      <span className="stat-label">Emergent behaviors</span>
-                      <span className="stat-value" style={{ color: 'var(--accent-magenta)' }}>
-                        {massiveEmergent.length}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Population display */}
-                  <div className="glass">
-                    <div className="glass-label">Population</div>
-                    <div className="stat-row">
-                      <span className="stat-label">Alive</span>
-                      <span className="stat-value stat-cyan">{massivePopulation.toLocaleString()}</span>
-                    </div>
-                    <div className="stat-row">
-                      <span className="stat-label">Displayed</span>
-                      <span className="stat-value" style={{ color: 'var(--text-secondary)' }}>{massiveOrganisms.length.toLocaleString()}</span>
-                    </div>
-                  </div>
+                  {/* Co-Creator Panel */}
+                  <CoCreatorPanel massiveId={massiveId} apiBase={API_BASE} onNotify={notify} />
                 </>
                 ) : null
               ) : (
@@ -1231,6 +1208,7 @@ export default function App() {
                   worldType={massiveWorldType}
                   godNarratives={massiveNarratives}
                   populationStats={massivePopStats}
+                  sendEcoCommand={sendEcoCommand}
                 />
               ) : (
                 <WorldCreator

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
 from typing import Literal
@@ -46,6 +47,9 @@ _brain_world_narratives: dict[str, list[dict]] = {}
 # Active auto-run tasks and subscriber sets for massive brain-worlds
 _brain_world_tasks: dict[str, asyncio.Task] = {}
 _brain_world_subscribers: dict[str, dict[str, WebSocket]] = {}
+
+# Speed multiplier per brain-world (1.0 = real-time)
+_brain_world_speed: dict[str, float] = {}
 
 # Timeline history: eco_id -> list of {step, time_ms, populations}
 _timeline_history: dict[str, list[dict]] = {}
@@ -726,64 +730,69 @@ async def _massive_run_loop(bw_id: str) -> None:
 
     try:
         while True:
-            # Step the brain-world
-            stats = bw.step(dt=1.0)
-            step_count += 1
+            # Read current speed multiplier
+            speed = _brain_world_speed.get(bw_id, 1.0)
+            batch_size = max(1, int(10 * speed))  # 10 steps at 1x, 100 at 10x
 
-            # --- Emergent detection every 100 steps ---
-            if detector and step_count % 100 == 0:
-                state = bw.get_emergent_state()
-                events = detector.observe(state)
-                if events:
-                    pending_events.extend(events)
-                    emergent_log.extend(events)
+            for _ in range(batch_size):
+                # Step the brain-world
+                stats = bw.step(dt=1.0)
+                step_count += 1
 
-            # --- God Agent analysis every 500 steps ---
-            if step_count % 500 == 0:
-                eco = bw.ecosystem
-                n_alive = int(eco.alive.sum())
-                mean_energy = (
-                    float(eco.energy[eco.alive].mean()) if n_alive > 0 else 0.0
-                )
+                # --- Emergent detection every 100 steps ---
+                if detector and step_count % 100 == 0:
+                    state = bw.get_emergent_state()
+                    events = detector.observe(state)
+                    if events:
+                        pending_events.extend(events)
+                        emergent_log.extend(events)
 
-                god.observe(
-                    generation_stats={
-                        "generation": step_count,
-                        "best_fitness": float(eco.energy[eco.alive].max())
-                        if n_alive > 0
-                        else 0.0,
-                        "mean_fitness": mean_energy,
-                        "std_fitness": float(eco.energy[eco.alive].std())
-                        if n_alive > 1
-                        else 0.0,
-                    },
-                    population_summary={
-                        "total_alive": n_alive,
-                        "c_elegans": int((eco.species[eco.alive] == 0).sum()),
-                        "drosophila": int((eco.species[eco.alive] == 1).sum()),
-                    },
-                    environment_state={
-                        "arena_size": eco.arena_size,
-                        "food_alive": int(eco.food_alive.sum()),
-                    },
-                )
+                # --- God Agent analysis every 500 steps ---
+                if step_count % 500 == 0:
+                    eco = bw.ecosystem
+                    n_alive = int(eco.alive.sum())
+                    mean_energy = (
+                        float(eco.energy[eco.alive].mean()) if n_alive > 0 else 0.0
+                    )
 
-                report = await god.analyze_and_intervene()
+                    god.observe(
+                        generation_stats={
+                            "generation": step_count,
+                            "best_fitness": float(eco.energy[eco.alive].max())
+                            if n_alive > 0
+                            else 0.0,
+                            "mean_fitness": mean_energy,
+                            "std_fitness": float(eco.energy[eco.alive].std())
+                            if n_alive > 1
+                            else 0.0,
+                        },
+                        population_summary={
+                            "total_alive": n_alive,
+                            "c_elegans": int((eco.species[eco.alive] == 0).sum()),
+                            "drosophila": int((eco.species[eco.alive] == 1).sum()),
+                        },
+                        environment_state={
+                            "arena_size": eco.arena_size,
+                            "food_alive": int(eco.food_alive.sum()),
+                        },
+                    )
 
-                # Apply interventions to the ecosystem
-                descriptions = apply_all_interventions(eco, report)
+                    report = await god.analyze_and_intervene()
 
-                narrative_entry = {
-                    "step": step_count,
-                    "analysis": report.get("analysis", ""),
-                    "interventions_applied": descriptions,
-                    "hypothesis": report.get("hypothesis", ""),
-                }
-                pending_narratives.append(narrative_entry)
-                narrative_log.append(narrative_entry)
-                # Cap narrative log
-                if len(narrative_log) > 200:
-                    del narrative_log[:len(narrative_log) - 200]
+                    # Apply interventions to the ecosystem
+                    descriptions = apply_all_interventions(eco, report)
+
+                    narrative_entry = {
+                        "step": step_count,
+                        "analysis": report.get("analysis", ""),
+                        "interventions_applied": descriptions,
+                        "hypothesis": report.get("hypothesis", ""),
+                    }
+                    pending_narratives.append(narrative_entry)
+                    narrative_log.append(narrative_entry)
+                    # Cap narrative log
+                    if len(narrative_log) > 200:
+                        del narrative_log[:len(narrative_log) - 200]
 
             # --- Broadcast to subscribers every 10 steps ---
             if step_count % 10 == 0:
@@ -805,6 +814,7 @@ async def _massive_run_loop(bw_id: str) -> None:
                         "events": pending_events[-50:],
                         "narratives": pending_narratives[-10:],
                         "step": step_count,
+                        "speed": speed,
                     }
 
                     dead_ids: list[str] = []
@@ -828,8 +838,9 @@ async def _massive_run_loop(bw_id: str) -> None:
                     )
                     break
 
-            # Yield to event loop — target ~60 steps/s
-            await asyncio.sleep(0.016)
+            # Yield to event loop — sleep less at higher speeds
+            sleep_time = max(0.02, 0.1 / speed)
+            await asyncio.sleep(sleep_time)
 
     except asyncio.CancelledError:
         pass
@@ -846,6 +857,17 @@ def _ensure_run_loop(bw_id: str) -> None:
         return  # already running
     task = asyncio.create_task(_massive_run_loop(bw_id))
     _brain_world_tasks[bw_id] = task
+
+
+@router.post("/massive/{bw_id}/speed")
+async def set_massive_speed(bw_id: str, speed: float = 1.0):
+    """Set the simulation speed multiplier for a massive brain-world."""
+    if bw_id not in _brain_worlds:
+        raise HTTPException(404, f"Brain-world {bw_id} not found")
+    clamped = max(0.1, min(speed, 50.0))
+    _brain_world_speed[bw_id] = clamped
+    logger.info("Set speed for brain-world %s to %.1fx", bw_id, clamped)
+    return {"speed": clamped}
 
 
 @router.websocket("/massive/ws/{bw_id}")
@@ -874,12 +896,19 @@ async def massive_ecosystem_ws(websocket: WebSocket, bw_id: str):
     _ensure_run_loop(bw_id)
 
     try:
-        # Keep the connection alive — listen for client messages
-        # (e.g. pings or future commands)
+        # Keep the connection alive — listen for client commands
         while True:
-            data = await websocket.receive_text()
-            # Could handle commands here in the future
-            logger.debug("Received from WS %s: %s", ws_id, data[:100])
+            raw = await websocket.receive_text()
+            try:
+                data = json.loads(raw)
+                if data.get("type") == "speed":
+                    value = float(data.get("value", 1.0))
+                    _brain_world_speed[bw_id] = max(0.1, min(value, 50.0))
+                    logger.info("WS %s set speed for %s to %.1f", ws_id, bw_id, _brain_world_speed[bw_id])
+                else:
+                    logger.debug("Received from WS %s: %s", ws_id, raw[:100])
+            except (ValueError, TypeError):
+                logger.debug("Received non-JSON from WS %s: %s", ws_id, raw[:100])
     except WebSocketDisconnect:
         logger.info("WebSocket %s disconnected from brain-world %s", ws_id, bw_id)
     except Exception as e:

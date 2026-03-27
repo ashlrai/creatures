@@ -350,6 +350,8 @@ class MassiveEcosystem:
                     "species": int(self.species[i]),
                     "energy": float(self.energy[i]),
                     "age": float(self.age[i]),
+                    "generation": int(self.generation[i]),
+                    "lineage_id": int(self.lineage_id[i]),
                 }
                 for i in indices
             ],
