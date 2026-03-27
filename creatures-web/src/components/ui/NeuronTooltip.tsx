@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSimulationStore } from '../../stores/simulationStore';
 import { HARDCODED_GENES } from '../organism/NeuralNetwork3D';
+import { NEURON_ROLES } from '../../data/neuronRoles';
 
 const TYPE_LABELS: Record<string, string> = {
   sensory: 'Sensory',
@@ -103,6 +104,13 @@ export function NeuronTooltip() {
         <div style={{ marginBottom: 2 }}>
           <span style={{ color: '#889' }}>Neurotransmitter: </span>
           <span style={{ color: '#c8d8ff' }}>{hoveredNeuron.nt}</span>
+        </div>
+      )}
+
+      {/* Role summary */}
+      {NEURON_ROLES[hoveredNeuron.id] && (
+        <div style={{ fontSize: 9, color: 'rgba(0, 212, 255, 0.5)', marginTop: 2, maxWidth: 200 }}>
+          {NEURON_ROLES[hoveredNeuron.id].role}
         </div>
       )}
 

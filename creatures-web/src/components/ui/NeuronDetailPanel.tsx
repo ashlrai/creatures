@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSimulationStore } from '../../stores/simulationStore';
+import { NEURON_ROLES } from '../../data/neuronRoles';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -372,6 +373,15 @@ export function NeuronDetailPanel() {
                   <span className="neuron-detail-panel__nt">{profile.nt}</span>
                 )}
               </div>
+              {NEURON_ROLES[profile.id] && (
+                <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(0, 180, 255, 0.06)', borderRadius: 6, border: '1px solid rgba(0, 180, 255, 0.1)' }}>
+                  <div style={{ fontSize: 10, color: 'var(--accent-cyan)', fontWeight: 600, marginBottom: 2 }}>Role</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>{NEURON_ROLES[profile.id].role}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-label)', marginTop: 4 }}>
+                    Pathway: {NEURON_ROLES[profile.id].pathway}
+                  </div>
+                </div>
+              )}
             </div>
             <button
               className="neuron-detail-panel__close"

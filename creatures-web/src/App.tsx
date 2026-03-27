@@ -18,6 +18,7 @@ import { GenerationTimeline } from './components/evolution/GenerationTimeline';
 import { EcosystemView, type MassiveOrganism, type MassiveNeuralStats, type EmergentEvent } from './components/ecosystem/EcosystemView';
 import { EcosystemView3D } from './components/ecosystem/EcosystemView3D';
 import { SpeciesComparison } from './components/ui/SpeciesComparison';
+import { ViewportOverlay } from './components/ui/ViewportOverlay';
 import { useSimulation } from './hooks/useSimulation';
 import { useDemoMode } from './hooks/useDemoMode';
 import { useLocalStorage } from './hooks/useLocalStorage';
@@ -601,6 +602,7 @@ export default function App() {
 
   const handlePoke = useCallback((segment: string) => {
     poke(segment);
+    window.dispatchEvent(new Event('neurevo-poke'));
     const demoSuffix = isDemo ? '  (Demo mode — responses are simulated)' : '';
     notify(`Poke ${segment} — sensory neurons activated${demoSuffix}`);
   }, [poke, isDemo]);
@@ -1186,6 +1188,7 @@ export default function App() {
           >
             {rightOpen ? '\u203A' : '\u2039'}
           </button>
+          {appMode === 'sim' && <ViewportOverlay />}
           {appMode === 'eco' ? (
             ecoScale === 'massive' ? (
               <EcosystemView3D

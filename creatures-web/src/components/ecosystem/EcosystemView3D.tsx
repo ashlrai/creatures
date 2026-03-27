@@ -1,4 +1,4 @@
-import { useRef, useMemo, useEffect } from 'react';
+import { useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Text } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
@@ -378,11 +378,13 @@ function HudOverlay({
   neuralStats,
   emergentEvents,
   worldType,
+  populationTrend,
 }: {
   organisms: MassiveOrganism[];
   neuralStats: MassiveNeuralStats | null;
   emergentEvents: EmergentEvent[];
   worldType: string;
+  populationTrend: 'up' | 'down' | 'stable';
 }) {
   const worldLabels: Record<string, string> = {
     soil: 'SOIL',
@@ -434,6 +436,12 @@ function HudOverlay({
         </div>
         <div style={{ color: 'rgba(0,212,255,0.7)' }}>
           Organisms: {organisms.length}
+          {populationTrend === 'up' && (
+            <span style={{ color: 'rgba(0,255,136,0.8)', marginLeft: 4 }}>{'\u2191'}</span>
+          )}
+          {populationTrend === 'down' && (
+            <span style={{ color: 'rgba(255,100,100,0.8)', marginLeft: 4 }}>{'\u2193'}</span>
+          )}
         </div>
         {neuralStats && (
           <>
@@ -574,6 +582,26 @@ function SceneContents({
 // Main exported component
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Narrative event type
+// ---------------------------------------------------------------------------
+
+interface NarrativeEvent {
+  text: string;
+  icon: string;
+  time: number;
+}
+
+// ---------------------------------------------------------------------------
+// Center announcement type
+// ---------------------------------------------------------------------------
+
+interface CenterAnnouncement {
+  text: string;
+  icon: string;
+  time: number;
+}
+
 export function EcosystemView3D({
   massiveOrganisms,
   massiveNeuralStats,
@@ -587,6 +615,115 @@ export function EcosystemView3D({
 
   // Frustum size for orthographic camera (~arena fits on screen)
   const frustum = ARENA_RADIUS * 1.3;
+
+  // -------------------------------------------------------------------------
+  // Narrative overlay state
+  // -------------------------------------------------------------------------
+  const [narratives, setNarratives] = useState<NarrativeEvent[]>([]);
+  const [centerAnnouncement, setCenterAnnouncement] = useState<CenterAnnouncement | null>(null);
+  const prevPopulationRef = useRef<number>(organisms.length);
+  const prevEventsLenRef = useRef<number>(events.length);
+  const centerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const addNarrative = useCallback((text: string, icon: string) => {
+    setNarratives((prev) => {
+      const next = [{ text, icon, time: Date.now() }, ...prev];
+      return next.slice(0, 8);
+    });
+  }, []);
+
+  // Generate narrative events from emergentEvents changes
+  useEffect(() => {
+    if (events.length <= prevEventsLenRef.current) {
+      prevEventsLenRef.current = events.length;
+      return;
+    }
+    // Process new events
+    const newEvents = events.slice(prevEventsLenRef.current);
+    prevEventsLenRef.current = events.length;
+
+    for (const ev of newEvents) {
+      const label = ev.behavior_type.replace(/_/g, ' ');
+      const conf = (ev.confidence * 100).toFixed(0);
+      addNarrative(
+        `${label} detected (confidence: ${conf}%)`,
+        ev.behavior_type === 'aggregation' ? '\u{1F331}' : // seedling
+        ev.behavior_type === 'trail_following' ? '\u{1F43E}' : // paw prints
+        ev.behavior_type === 'avoidance_learning' ? '\u{26A0}\u{FE0F}' : // warning
+        '\u{1F52C}', // microscope
+      );
+
+      // Major event: high confidence center announcement
+      if (ev.confidence > 0.9) {
+        const majorLabel = label.toUpperCase();
+        setCenterAnnouncement({
+          text: `${majorLabel} — ${ev.description}`,
+          icon: '\u{2728}', // sparkles
+          time: Date.now(),
+        });
+        if (centerTimeoutRef.current) clearTimeout(centerTimeoutRef.current);
+        centerTimeoutRef.current = setTimeout(() => setCenterAnnouncement(null), 3000);
+      }
+    }
+  }, [events, addNarrative]);
+
+  // Generate narrative events from population changes
+  useEffect(() => {
+    const prev = prevPopulationRef.current;
+    const curr = organisms.length;
+    prevPopulationRef.current = curr;
+
+    if (prev === 0 && curr === 0) return;
+    const delta = curr - prev;
+    const pctChange = prev > 0 ? Math.abs(delta) / prev : (curr > 0 ? 1 : 0);
+
+    if (pctChange >= 0.1 && Math.abs(delta) >= 2) {
+      if (delta > 0) {
+        addNarrative(`Population growing: ${curr} organisms (+${delta})`, '\u{1F4C8}');
+      } else {
+        addNarrative(`Population declining: ${curr} organisms (${delta})`, '\u{1F4C9}');
+
+        // Extinction event — center announcement
+        if (curr === 0) {
+          setCenterAnnouncement({
+            text: 'EXTINCTION — All organisms perished',
+            icon: '\u{1F480}', // skull
+            time: Date.now(),
+          });
+          if (centerTimeoutRef.current) clearTimeout(centerTimeoutRef.current);
+          centerTimeoutRef.current = setTimeout(() => setCenterAnnouncement(null), 3000);
+        }
+      }
+    }
+  }, [organisms.length, addNarrative]);
+
+  // Auto-remove stale narratives (older than 15s)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const cutoff = Date.now() - 15000;
+      setNarratives((prev) => {
+        const filtered = prev.filter((n) => n.time > cutoff);
+        return filtered.length === prev.length ? prev : filtered;
+      });
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Cleanup center timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (centerTimeoutRef.current) clearTimeout(centerTimeoutRef.current);
+    };
+  }, []);
+
+  // Population trend for HUD
+  const populationTrend = useMemo(() => {
+    const prev = prevPopulationRef.current;
+    const curr = organisms.length;
+    if (curr > prev) return 'up';
+    if (curr < prev) return 'down';
+    return 'stable';
+  }, [organisms.length]);
 
   return (
     <div
@@ -633,7 +770,66 @@ export function EcosystemView3D({
         neuralStats={stats}
         emergentEvents={events}
         worldType={wt}
+        populationTrend={populationTrend}
       />
+
+      {/* Narrative overlay */}
+      <div style={{
+        position: 'absolute', bottom: 16, left: 16,
+        maxWidth: 360, maxHeight: 280, overflow: 'hidden',
+        display: 'flex', flexDirection: 'column-reverse', gap: 6,
+        pointerEvents: 'none', zIndex: 10,
+      }}>
+        {narratives.slice(0, 6).map((n, i) => (
+          <div key={n.time} style={{
+            background: 'rgba(6, 8, 18, 0.85)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(80, 130, 200, 0.12)',
+            borderRadius: 8, padding: '6px 12px',
+            fontSize: 11, color: 'rgba(180, 200, 220, 0.8)',
+            fontFamily: 'var(--font-mono)',
+            opacity: 1 - (i * 0.12),
+            transition: 'opacity 0.5s',
+          }}>
+            <span style={{ marginRight: 6 }}>{n.icon}</span>
+            {n.text}
+          </div>
+        ))}
+      </div>
+
+      {/* Major event announcement (center, dramatic) */}
+      {centerAnnouncement && (
+        <div style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0, bottom: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'none', zIndex: 20,
+        }}>
+          <div style={{
+            background: 'rgba(6, 8, 18, 0.9)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(120, 160, 255, 0.2)',
+            borderRadius: 16, padding: '20px 40px',
+            textAlign: 'center',
+            animation: 'fadeInScale 0.4s ease-out',
+          }}>
+            <div style={{
+              fontSize: 32, marginBottom: 8,
+            }}>
+              {centerAnnouncement.icon}
+            </div>
+            <div style={{
+              fontSize: 16,
+              fontWeight: 600,
+              color: 'rgba(200, 220, 255, 0.9)',
+              fontFamily: 'var(--font-mono)',
+              letterSpacing: '0.05em',
+            }}>
+              {centerAnnouncement.text}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
