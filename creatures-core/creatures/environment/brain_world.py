@@ -194,7 +194,6 @@ class BrainWorld:
         format in one shot (avoids per-element MLX conversions).
         """
         eco = self.ecosystem
-        n = eco.n
         org_idx = self._org_indices
 
         # Build I_ext as numpy, convert at the end

@@ -87,7 +87,6 @@ class MassiveEcosystem:
         Returns a summary dict suitable for dashboards / logging.
         """
         alive = self.alive
-        rng = self._rng
 
         # 1. Energy decay — metabolic cost
         self.energy[alive] -= 0.01 * dt

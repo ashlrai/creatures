@@ -9,7 +9,6 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 
@@ -251,7 +250,6 @@ class DeepEvolutionRunner:
         if len(alive_idx) == 0:
             return [], []
 
-        xp = engine.xp
         n_per = engine.n_per if hasattr(engine, "n_per") else engine.n_total // max(engine.n_organisms, 1)
         # Build a generic neuron ID list for the per-organism topology
         neuron_ids = [f"n{i}" for i in range(n_per)]

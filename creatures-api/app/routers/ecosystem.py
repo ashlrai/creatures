@@ -736,7 +736,7 @@ async def _massive_run_loop(bw_id: str) -> None:
 
             for _ in range(batch_size):
                 # Step the brain-world
-                stats = bw.step(dt=1.0)
+                bw.step(dt=1.0)
                 step_count += 1
 
                 # --- Emergent detection every 100 steps ---

@@ -9,7 +9,7 @@ with p-values, effect sizes, and confidence scores.
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Any
 
 import numpy as np
