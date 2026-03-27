@@ -850,13 +850,21 @@ async def _massive_run_loop(bw_id: str) -> None:
         _brain_world_tasks.pop(bw_id, None)
 
 
-def _ensure_run_loop(bw_id: str) -> None:
+_brain_world_starting: set[str] = set()  # guard against double-launch
+
+
+async def _ensure_run_loop(bw_id: str) -> None:
     """Start the background auto-run loop for bw_id if not already running."""
+    if bw_id in _brain_world_starting:
+        return
     existing = _brain_world_tasks.get(bw_id)
-    if existing is not None and not existing.done():
+    if existing and not existing.done():
         return  # already running
-    task = asyncio.create_task(_massive_run_loop(bw_id))
-    _brain_world_tasks[bw_id] = task
+    _brain_world_starting.add(bw_id)
+    try:
+        _brain_world_tasks[bw_id] = asyncio.create_task(_massive_run_loop(bw_id))
+    finally:
+        _brain_world_starting.discard(bw_id)
 
 
 @router.post("/massive/{bw_id}/speed")
@@ -893,7 +901,7 @@ async def massive_ecosystem_ws(websocket: WebSocket, bw_id: str):
     _brain_world_subscribers.setdefault(bw_id, {})[ws_id] = websocket
 
     # Ensure the auto-run loop is active
-    _ensure_run_loop(bw_id)
+    await _ensure_run_loop(bw_id)
 
     try:
         # Keep the connection alive — listen for client commands

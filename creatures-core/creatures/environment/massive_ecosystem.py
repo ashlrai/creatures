@@ -71,6 +71,19 @@ class MassiveEcosystem:
         self._next_lineage_id = n_organisms  # counter for new lineage IDs
         self.lifetime_food = np.zeros(n_organisms, dtype=np.float32)  # food eaten in lifetime
 
+        # Reserve 20% overcapacity for reproduction (initially dead)
+        overcapacity = int(n_organisms * 0.2)
+        if overcapacity > 0:
+            total_slots = n_organisms + overcapacity
+            for attr in ['x', 'y', 'heading', 'energy', 'alive', 'species', 'age',
+                         'speed', 'generation', 'parent_id', 'lineage_id', 'lifetime_food']:
+                old = getattr(self, attr)
+                new = np.zeros(total_slots, dtype=old.dtype)
+                new[:n_organisms] = old
+                setattr(self, attr, new)
+            self.alive[n_organisms:] = False  # extra slots start dead
+            self.n = total_slots  # update total slot count
+
         # Bookkeeping
         self._rng = rng
         self._step_count = 0

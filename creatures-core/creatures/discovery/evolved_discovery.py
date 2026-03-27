@@ -396,7 +396,7 @@ class EvolvedDiscoveryEngine:
                     f"Spearman rho = {rho:.3f} (p = {p:.4f}) between mean absolute "
                     f"synaptic weight and organism fitness across the full population. "
                     f"{'Stronger' if rho > 0 else 'Weaker'} synapses are associated with "
-                    f"{'higher' if rho > 0 else 'higher'} survival."
+                    f"{'higher' if rho > 0 else 'lower'} survival."
                 ),
                 category="genotype_fitness",
                 evidence={

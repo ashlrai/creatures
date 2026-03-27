@@ -164,6 +164,7 @@ class VectorizedEngine:
         self.n_per: int = 0
         self.n_total: int = 0
         self.n_synapses: int = 0
+        self._synapse_offsets: np.ndarray | None = None  # (n_organisms+1,) start indices per org
 
         # State arrays (initialised in build)
         self.v: Any = None
@@ -435,6 +436,16 @@ class VectorizedEngine:
         local_pre = all_pre - org_offsets
         local_post = all_post - org_offsets
         mask = local_pre != local_post
+
+        # Compute per-organism synapse offsets BEFORE filtering
+        # org_id for each synapse (before filtering)
+        org_ids = np.repeat(np.arange(n_organisms, dtype=np.int64), n_syn_per_org)
+        # Keep only surviving org_ids to count per-org synapses after filtering
+        surviving_org_ids = org_ids[mask]
+        counts_per_org = np.bincount(surviving_org_ids, minlength=n_organisms)
+        self._synapse_offsets = np.zeros(n_organisms + 1, dtype=np.int64)
+        np.cumsum(counts_per_org, out=self._synapse_offsets[1:])
+
         all_pre = all_pre[mask]
         all_post = all_post[mask]
 
@@ -747,6 +758,9 @@ class VectorizedEngine:
         self.syn_w = xp.array(all_w)
         self.n_synapses = len(all_pre)
 
+        # Uniform synapse offsets — each organism has exactly n_template synapses
+        self._synapse_offsets = np.arange(n_organisms + 1, dtype=np.int64) * n_template
+
         self._eval(
             self.v, self.fired, self.firing_rate, self.I_ext,
             self.u, self.iz_a, self.iz_b, self.iz_c, self.iz_d,
@@ -823,6 +837,10 @@ class VectorizedEngine:
 
     def get_organism_weight_range(self, org_idx: int) -> tuple[int, int]:
         """Return (start, end) indices into syn_w for organism org_idx."""
+        if self._synapse_offsets is not None:
+            return (int(self._synapse_offsets[org_idx]),
+                    int(self._synapse_offsets[org_idx + 1]))
+        # Fallback for engines built before offsets were tracked
         synapses_per_org = self.n_synapses // max(self.n_organisms, 1)
         start = org_idx * synapses_per_org
         end = start + synapses_per_org
@@ -854,11 +872,13 @@ class VectorizedEngine:
             n_per = self.n_per if hasattr(self, 'n_per') else self.n_total // max(self.n_organisms, 1)
             p_start, p_end = parent_idx * n_per, (parent_idx + 1) * n_per
             o_start, o_end = offspring_idx * n_per, (offspring_idx + 1) * n_per
-            for param in [self.iz_a, self.iz_b, self.iz_c, self.iz_d]:
+            for attr in ['iz_a', 'iz_b', 'iz_c', 'iz_d']:
+                param = getattr(self, attr, None)
                 if param is not None:
                     if self._backend == 'mlx':
                         param_val = param[p_start:p_end]
-                        param = param.at[o_start:o_end].add(param_val - param[o_start:o_end])
+                        new_param = param.at[o_start:o_end].add(param_val - param[o_start:o_end])
+                        setattr(self, attr, new_param)
                     else:
                         param[o_start:o_end] = param[p_start:p_end]
 

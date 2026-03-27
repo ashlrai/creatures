@@ -203,9 +203,8 @@ class DeepEvolutionRunner:
                     run["status"] = "completed"
                     break
 
-                # Yield to event loop periodically
-                if step % 1000 == 0:
-                    await asyncio.sleep(0)
+                # Yield after every batch to keep server responsive
+                await asyncio.sleep(0)
 
         except Exception as e:
             logger.error(f"Deep evolution {run_id} error: {e}")
