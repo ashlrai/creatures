@@ -58,10 +58,12 @@ def detect_provider(config: LLMConfig) -> str:
     if anthropic_key:
         return "anthropic"
 
-    # Check OpenAI
+    # Check OpenAI (uses same OpenAI-compatible endpoint with correct base URL)
     openai_key = os.environ.get("OPENAI_API_KEY")
     if openai_key:
-        return "xai"  # uses OpenAI-compatible endpoint
+        config.api_base = "https://api.openai.com/v1"
+        config.model = "gpt-4o-mini"
+        return "xai"  # reuses OpenAI-compatible caller
 
     logger.warning("No LLM provider available — using heuristic fallback")
     return "fallback"

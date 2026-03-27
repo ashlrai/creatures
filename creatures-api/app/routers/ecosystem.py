@@ -890,21 +890,17 @@ async def _massive_run_loop(bw_id: str) -> None:
         _brain_world_tasks.pop(bw_id, None)
 
 
-_brain_world_starting: set[str] = set()  # guard against double-launch
+_brain_world_locks: dict[str, asyncio.Lock] = {}  # per-bw lock for task creation
 
 
 async def _ensure_run_loop(bw_id: str) -> None:
     """Start the background auto-run loop for bw_id if not already running."""
-    if bw_id in _brain_world_starting:
-        return
-    existing = _brain_world_tasks.get(bw_id)
-    if existing and not existing.done():
-        return  # already running
-    _brain_world_starting.add(bw_id)
-    try:
+    lock = _brain_world_locks.setdefault(bw_id, asyncio.Lock())
+    async with lock:
+        existing = _brain_world_tasks.get(bw_id)
+        if existing and not existing.done():
+            return  # already running
         _brain_world_tasks[bw_id] = asyncio.create_task(_massive_run_loop(bw_id))
-    finally:
-        _brain_world_starting.discard(bw_id)
 
 
 @router.post("/massive/{bw_id}/speed")

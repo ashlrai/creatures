@@ -3,7 +3,7 @@
 from __future__ import annotations
 import logging
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/god", tags=["god-tools"])
@@ -43,7 +43,7 @@ def _get_god_and_context(bw_id: str) -> tuple:
 
 class AskRequest(BaseModel):
     bw_id: str
-    question: str
+    question: str = Field(..., max_length=500)
 
 
 @router.post("/ask")
@@ -78,7 +78,7 @@ Answer concisely and scientifically. Reference specific data points. If you can 
 
 class ExperimentRequest(BaseModel):
     bw_id: str
-    topic: str = ""
+    topic: str = Field("", max_length=300)
 
 
 @router.post("/propose-experiment")
@@ -157,7 +157,7 @@ Write as a scientific narrative, not bullet points."""
 
 class TuningRequest(BaseModel):
     bw_id: str
-    goal: str = "improve evolution speed"
+    goal: str = Field("improve evolution speed", max_length=300)
 
 
 @router.post("/suggest-tuning")
