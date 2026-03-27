@@ -48,15 +48,20 @@ def detect_provider(config: LLMConfig) -> str:
     except Exception:
         pass
 
-    # Check Anthropic
+    # Check xAI Grok first (preferred — already configured as default model)
+    xai_key = config.api_key or os.environ.get("XAI_API_KEY")
+    if xai_key:
+        return "xai"
+
+    # Check Anthropic Claude
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
     if anthropic_key:
         return "anthropic"
 
-    # Check for API key
-    api_key = config.api_key or os.environ.get("XAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
-    if api_key:
-        return "xai"
+    # Check OpenAI
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    if openai_key:
+        return "xai"  # uses OpenAI-compatible endpoint
 
     logger.warning("No LLM provider available — using heuristic fallback")
     return "fallback"
