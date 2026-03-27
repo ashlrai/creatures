@@ -88,16 +88,39 @@ function OrganismInstances({
       const org = organisms[i];
       const isCelegans = org.species === 0;
 
-      // Energy-based color: green (high) -> red (low), plus neural glow boost
+      // Normalize energy: raw value can be 0-5000+, map to 0-1
+      const normalizedEnergy = Math.min(1, Math.max(0, org.energy / 200));
+
+      // Neural glow boost (subtle shimmer when neurons fire)
       const glowBoost =
         firingGlow *
-        0.3 *
+        0.15 *
         (0.7 + 0.3 * Math.sin(t * 6 + org.x * 0.4 + org.y * 0.4));
-      const e = Math.min(1, org.energy + glowBoost);
+      const e = Math.min(1, normalizedEnergy + glowBoost);
 
-      // Size scales with energy
-      const baseScale = isCelegans ? 0.25 : 0.2;
-      const scale = baseScale * (0.6 + e * 0.6);
+      // Dead organisms: scale to 0 (skip rendering)
+      if (e < 0.01) {
+        _obj.scale.set(0, 0, 0);
+        _obj.updateMatrix();
+        if (isCelegans) {
+          eMesh.setMatrixAt(eIdx, _obj.matrix);
+          elegansColors[eIdx * 3] = 0;
+          elegansColors[eIdx * 3 + 1] = 0;
+          elegansColors[eIdx * 3 + 2] = 0;
+          eIdx++;
+        } else {
+          dMesh.setMatrixAt(dIdx, _obj.matrix);
+          drosophilaColors[dIdx * 3] = 0;
+          drosophilaColors[dIdx * 3 + 1] = 0;
+          drosophilaColors[dIdx * 3 + 2] = 0;
+          dIdx++;
+        }
+        continue;
+      }
+
+      // Size scales with energy — dying organisms shrink, thriving organisms grow
+      const baseScale = isCelegans ? 0.3 : 0.25;
+      const scale = baseScale * (0.4 + e * 0.8);
 
       // Heading from position hash (deterministic per-organism wobble)
       const heading =
@@ -105,24 +128,49 @@ function OrganismInstances({
 
       _obj.position.set(org.x, org.y, 0.05);
       if (isCelegans) {
-        // Elongated: scale X more than Y/Z
-        _obj.scale.set(scale * 2.5, scale, scale);
+        // Elongated capsule points in heading direction
+        _obj.scale.set(scale * 2.8, scale, scale);
       } else {
-        _obj.scale.set(scale, scale, scale);
+        // Drosophila slightly elongated in heading direction too
+        _obj.scale.set(scale * 1.4, scale, scale);
       }
       _obj.rotation.set(0, 0, heading);
       _obj.updateMatrix();
 
-      // If organism has generation data, blend color toward gold for higher generations
+      // Energy-based color: red (dying) -> species color (mid) -> bright white/gold (thriving)
+      // e < 0.3: red/dark -> species color
+      // e 0.3-0.7: species color
+      // e > 0.7: species color -> bright white/gold
       const generation = org.generation ?? 0;
-      const genFactor = Math.min(generation / 50, 1); // normalize to 50 generations
+      const genFactor = Math.min(generation / 50, 1);
+
+      // Dying color (dark red)
+      const dyingR = 0.7, dyingG = 0.08, dyingB = 0.05;
+      // Thriving color (bright white-gold)
+      const thriveR = 1.4, thriveG = 1.3, thriveB = 0.9;
 
       if (isCelegans) {
         eMesh.setMatrixAt(eIdx, _obj.matrix);
-        // Cyan base, lerp toward green/red by energy
-        let r = 0.1 * (1 - e) + 0.0 * e;
-        let g = 0.5 * (1 - e) + 0.85 * e;
-        let b = 0.6 + 0.4 * e;
+        // Species base: cyan (0.15, 0.75, 1.0)
+        let r: number, g: number, b: number;
+        if (e < 0.3) {
+          // Dying -> species: blend from red to cyan
+          const f = e / 0.3;
+          r = dyingR * (1 - f) + 0.15 * f;
+          g = dyingG * (1 - f) + 0.75 * f;
+          b = dyingB * (1 - f) + 1.0 * f;
+        } else if (e > 0.7) {
+          // Species -> thriving: blend from cyan to bright white-gold
+          const f = (e - 0.7) / 0.3;
+          r = 0.15 * (1 - f) + thriveR * f;
+          g = 0.75 * (1 - f) + thriveG * f;
+          b = 1.0 * (1 - f) + thriveB * f;
+        } else {
+          // Mid range: species cyan
+          r = 0.15;
+          g = 0.75;
+          b = 1.0;
+        }
         // Mix species color with gold based on generation
         r = r * (1 - genFactor * 0.3) + 1.0 * genFactor * 0.3;
         g = g * (1 - genFactor * 0.3) + 0.85 * genFactor * 0.3;
@@ -134,10 +182,23 @@ function OrganismInstances({
         eIdx++;
       } else {
         dMesh.setMatrixAt(dIdx, _obj.matrix);
-        // Amber base, lerp by energy
-        let r = 0.8 + 0.2 * e;
-        let g = 0.35 + 0.35 * e;
-        let b = 0.05 + 0.1 * (1 - e);
+        // Species base: amber (0.9, 0.55, 0.1)
+        let r: number, g: number, b: number;
+        if (e < 0.3) {
+          const f = e / 0.3;
+          r = dyingR * (1 - f) + 0.9 * f;
+          g = dyingG * (1 - f) + 0.55 * f;
+          b = dyingB * (1 - f) + 0.1 * f;
+        } else if (e > 0.7) {
+          const f = (e - 0.7) / 0.3;
+          r = 0.9 * (1 - f) + thriveR * f;
+          g = 0.55 * (1 - f) + thriveG * f;
+          b = 0.1 * (1 - f) + thriveB * f;
+        } else {
+          r = 0.9;
+          g = 0.55;
+          b = 0.1;
+        }
         // Mix species color with gold based on generation
         r = r * (1 - genFactor * 0.3) + 1.0 * genFactor * 0.3;
         g = g * (1 - genFactor * 0.3) + 0.85 * genFactor * 0.3;
@@ -206,10 +267,10 @@ function OrganismInstances({
     () =>
       new THREE.MeshStandardMaterial({
         vertexColors: true,
-        emissive: new THREE.Color(0x00d4ff),
-        emissiveIntensity: 0.6,
-        roughness: 0.5,
-        metalness: 0.1,
+        emissive: new THREE.Color(0x88ccff),
+        emissiveIntensity: 0.8,
+        roughness: 0.4,
+        metalness: 0.15,
         toneMapped: false,
       }),
     [],
@@ -219,10 +280,10 @@ function OrganismInstances({
     () =>
       new THREE.MeshStandardMaterial({
         vertexColors: true,
-        emissive: new THREE.Color(0xffaa22),
-        emissiveIntensity: 0.6,
-        roughness: 0.5,
-        metalness: 0.1,
+        emissive: new THREE.Color(0xffcc66),
+        emissiveIntensity: 0.8,
+        roughness: 0.4,
+        metalness: 0.15,
         toneMapped: false,
       }),
     [],
@@ -272,7 +333,7 @@ function FoodInstances({ organismCount }: { organismCount: number }) {
     const t = clock.getElapsedTime();
 
     for (let i = 0; i < foodCount; i++) {
-      const pulse = 0.12 + 0.04 * Math.sin(t * 2.5 + i * 1.3);
+      const pulse = 0.3 + 0.1 * Math.sin(t * 2.5 + i * 1.3);
       _obj.position.set(positions[i][0], positions[i][1], 0.02);
       _obj.scale.set(pulse, pulse, pulse);
       _obj.rotation.set(0, 0, 0);
@@ -293,10 +354,10 @@ function FoodInstances({ organismCount }: { organismCount: number }) {
   const mat = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
-        color: 0x00ff88,
-        emissive: new THREE.Color(0x00ff88),
-        emissiveIntensity: 1.2,
-        roughness: 0.3,
+        color: 0x44ff88,
+        emissive: new THREE.Color(0x44ff88),
+        emissiveIntensity: 2.0,
+        roughness: 0.2,
         toneMapped: false,
       }),
     [],
@@ -315,8 +376,25 @@ function FoodInstances({ organismCount }: { organismCount: number }) {
 // Arena Environment
 // ---------------------------------------------------------------------------
 
+// Grid colors and opacity vary by world type for distinct visual identity
+const GRID_STYLES: Record<string, { color: number; opacity: number; divisions: number }> = {
+  soil: { color: 0x3a2510, opacity: 0.06, divisions: GRID_DIVISIONS },
+  pond: { color: 0x1e3260, opacity: 0.1, divisions: GRID_DIVISIONS },
+  lab_plate: { color: 0x404040, opacity: 0.15, divisions: GRID_DIVISIONS * 2 },
+  abstract: { color: 0x1e3250, opacity: 0.08, divisions: GRID_DIVISIONS },
+};
+
+const BOUNDARY_COLORS: Record<string, number> = {
+  soil: 0x5a3820,
+  pond: 0x2848a0,
+  lab_plate: 0x606060,
+  abstract: 0x284678,
+};
+
 function Arena({ worldType }: { worldType: string }) {
   const groundColor = GROUND_COLORS[worldType] ?? GROUND_COLORS.abstract;
+  const gridStyle = GRID_STYLES[worldType] ?? GRID_STYLES.abstract;
+  const boundaryColor = BOUNDARY_COLORS[worldType] ?? BOUNDARY_COLORS.abstract;
 
   return (
     <>
@@ -326,21 +404,21 @@ function Arena({ worldType }: { worldType: string }) {
         <meshStandardMaterial color={groundColor} roughness={1} />
       </mesh>
 
-      {/* Subtle grid */}
+      {/* Grid — denser for lab_plate, tinted by world type */}
       <gridHelper
         args={[
           ARENA_RADIUS * 2,
-          GRID_DIVISIONS,
-          0x1e3250,
-          0x1e3250,
+          gridStyle.divisions,
+          gridStyle.color,
+          gridStyle.color,
         ]}
         rotation={[Math.PI / 2, 0, 0]}
         position={[0, 0, 0.001]}
       >
         <meshBasicMaterial
           attach="material"
-          color={0x1e3250}
-          opacity={0.08}
+          color={gridStyle.color}
+          opacity={gridStyle.opacity}
           transparent
           depthWrite={false}
         />
@@ -350,8 +428,8 @@ function Arena({ worldType }: { worldType: string }) {
       <mesh position={[0, 0, 0.002]}>
         <ringGeometry args={[ARENA_RADIUS - 0.08, ARENA_RADIUS, 64]} />
         <meshBasicMaterial
-          color={0x284678}
-          opacity={0.25}
+          color={boundaryColor}
+          opacity={0.35}
           transparent
           depthWrite={false}
         />
@@ -390,6 +468,10 @@ function HudOverlay({
   worldType,
   populationTrend,
   populationStats,
+  speed,
+  birthCount,
+  deathCount,
+  elapsedSeconds,
 }: {
   organisms: MassiveOrganism[];
   neuralStats: MassiveNeuralStats | null;
@@ -397,6 +479,10 @@ function HudOverlay({
   worldType: string;
   populationTrend: 'up' | 'down' | 'stable';
   populationStats?: any;
+  speed: number;
+  birthCount: number;
+  deathCount: number;
+  elapsedSeconds: number;
 }) {
   const worldLabels: Record<string, string> = {
     soil: 'SOIL',
@@ -446,6 +532,15 @@ function HudOverlay({
         <div style={{ color: 'rgba(140,170,200,0.5)' }}>
           MASSIVE BRAIN-WORLD
         </div>
+        {/* Speed indicator — prominent */}
+        <div style={{
+          color: speed > 5 ? 'rgba(255,180,80,0.9)' : 'rgba(0,255,136,0.8)',
+          fontSize: 13,
+          fontWeight: 700,
+          marginBottom: 4,
+        }}>
+          {speed.toFixed(1)}x SPEED
+        </div>
         <div style={{ color: 'rgba(0,212,255,0.7)' }}>
           Organisms: {organisms.length}
           {populationTrend === 'up' && (
@@ -454,6 +549,15 @@ function HudOverlay({
           {populationTrend === 'down' && (
             <span style={{ color: 'rgba(255,100,100,0.8)', marginLeft: 4 }}>{'\u2193'}</span>
           )}
+        </div>
+        <div style={{ color: 'rgba(0,255,136,0.65)' }}>
+          Births: {birthCount}
+        </div>
+        <div style={{ color: 'rgba(255,100,100,0.65)' }}>
+          Deaths: {deathCount}
+        </div>
+        <div style={{ color: 'rgba(160,160,200,0.5)', fontSize: 9 }}>
+          Elapsed: {Math.floor(elapsedSeconds / 60)}m {Math.floor(elapsedSeconds % 60)}s
         </div>
         {neuralStats && (
           <>
@@ -646,6 +750,35 @@ export function EcosystemView3D({
     sendEcoCommand?.({ type: 'speed', value });
   }, [sendEcoCommand]);
 
+  // Birth / death tracking
+  const [birthCount, setBirthCount] = useState(0);
+  const [deathCount, setDeathCount] = useState(0);
+  const prevOrgCountRef = useRef<number>(organisms.length);
+  const startTimeRef = useRef<number>(Date.now());
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Track births and deaths from population changes
+  useEffect(() => {
+    const prev = prevOrgCountRef.current;
+    const curr = organisms.length;
+    prevOrgCountRef.current = curr;
+    if (prev === 0 && curr === 0) return;
+    const delta = curr - prev;
+    if (delta > 0) {
+      setBirthCount((c) => c + delta);
+    } else if (delta < 0) {
+      setDeathCount((c) => c + Math.abs(delta));
+    }
+  }, [organisms.length]);
+
+  // Elapsed time ticker
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Frustum size for orthographic camera (~arena fits on screen)
   const frustum = ARENA_RADIUS * 1.3;
 
@@ -805,27 +938,34 @@ export function EcosystemView3D({
         worldType={wt}
         populationTrend={populationTrend}
         populationStats={populationStats}
+        speed={speed}
+        birthCount={birthCount}
+        deathCount={deathCount}
+        elapsedSeconds={elapsedSeconds}
       />
 
-      {/* Narrative overlay */}
+      {/* Narrative overlay — large and prominent */}
       <div style={{
-        position: 'absolute', bottom: 16, left: 16,
-        maxWidth: 360, maxHeight: 280, overflow: 'hidden',
-        display: 'flex', flexDirection: 'column-reverse', gap: 6,
+        position: 'absolute', bottom: 150, left: 16,
+        maxWidth: 420, maxHeight: 320, overflow: 'hidden',
+        display: 'flex', flexDirection: 'column-reverse', gap: 8,
         pointerEvents: 'none', zIndex: 10,
       }}>
-        {narratives.slice(0, 6).map((n, i) => (
+        {narratives.slice(0, 3).map((n, i) => (
           <div key={n.time} style={{
-            background: 'rgba(6, 8, 18, 0.85)',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(80, 130, 200, 0.12)',
-            borderRadius: 8, padding: '6px 12px',
-            fontSize: 11, color: 'rgba(180, 200, 220, 0.8)',
+            background: 'rgba(6, 8, 18, 0.92)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(100, 160, 255, 0.2)',
+            borderRadius: 10, padding: '10px 16px',
+            fontSize: i === 0 ? 14 : 12,
+            fontWeight: i === 0 ? 600 : 400,
+            color: i === 0 ? 'rgba(220, 235, 255, 0.95)' : 'rgba(180, 200, 220, 0.75)',
             fontFamily: 'var(--font-mono)',
-            opacity: 1 - (i * 0.12),
+            opacity: 1 - (i * 0.2),
             transition: 'opacity 0.5s',
+            textShadow: i === 0 ? '0 0 8px rgba(100,160,255,0.3)' : 'none',
           }}>
-            <span style={{ marginRight: 6 }}>{n.icon}</span>
+            <span style={{ marginRight: 8, fontSize: i === 0 ? 16 : 13 }}>{n.icon}</span>
             {n.text}
           </div>
         ))}
