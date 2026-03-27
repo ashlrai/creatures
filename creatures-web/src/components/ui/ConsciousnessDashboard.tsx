@@ -42,6 +42,8 @@ export function ConsciousnessDashboard() {
   const frameCountRef = useRef(0);
   const lastComputeRef = useRef(0);
 
+  const [showInfo, setShowInfo] = useState(false);
+
   const experiment = useSimulationStore((s) => s.experiment);
   const frame = useSimulationStore((s) => s.frame);
   const connectionStatus = useSimulationStore((s) => s.connectionStatus);
@@ -439,11 +441,33 @@ export function ConsciousnessDashboard() {
         }}
       >
         <span>Consciousness Metrics</span>
-        {loading && (
-          <span style={{ color: 'rgba(0, 204, 255, 0.6)', fontSize: '9px' }}>
-            ...
-          </span>
-        )}
+        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {loading && (
+            <span style={{ color: 'rgba(0, 204, 255, 0.6)', fontSize: '9px' }}>
+              ...
+            </span>
+          )}
+          <button
+            onClick={() => setShowInfo((v) => !v)}
+            style={{
+              background: showInfo ? 'rgba(0, 204, 255, 0.15)' : 'transparent',
+              border: '1px solid rgba(80, 120, 200, 0.3)',
+              borderRadius: '4px',
+              color: showInfo ? '#00ccff' : 'rgba(140, 170, 200, 0.5)',
+              cursor: 'pointer',
+              fontSize: '9px',
+              fontFamily: 'monospace',
+              width: '16px',
+              height: '16px',
+              padding: 0,
+              lineHeight: '14px',
+              textAlign: 'center',
+            }}
+            title="Toggle metric explanations"
+          >
+            ?
+          </button>
+        </span>
       </div>
       <canvas
         ref={canvasRef}
@@ -451,6 +475,43 @@ export function ConsciousnessDashboard() {
         height={170}
         style={{ width: '220px', height: '170px', borderRadius: 4, display: 'block' }}
       />
+      {showInfo && (
+        <div
+          style={{
+            marginTop: '6px',
+            padding: '6px',
+            background: 'rgba(0, 10, 30, 0.6)',
+            border: '1px solid rgba(80, 120, 200, 0.12)',
+            borderRadius: '4px',
+            fontFamily: 'monospace',
+            fontSize: '8px',
+            lineHeight: '1.5',
+            color: 'rgba(140, 170, 200, 0.7)',
+          }}
+        >
+          <div style={{ marginBottom: '4px' }}>
+            <span style={{ color: '#00ccff' }}>{'Φ'}</span>{' '}
+            Integrated Information — measures how much the brain processes
+            information as a coordinated whole vs. independent parts. Higher =
+            more integrated.
+          </div>
+          <div style={{ marginBottom: '4px' }}>
+            <span style={{ color: '#44ff88' }}>CN</span>{' '}
+            Neural Complexity — how many distinct activity patterns the network
+            visits. High = rich repertoire of states.
+          </div>
+          <div style={{ marginBottom: '4px' }}>
+            <span style={{ color: '#ffaa44' }}>PCI</span>{' '}
+            Perturbational Complexity — how complex is the brain's response to
+            stimulation. Used clinically to assess consciousness levels.
+          </div>
+          <div>
+            <span style={{ color: '#ff4488' }}>Sync</span>{' '}
+            Synchrony — do neurons fire together? High sync = coordinated
+            activity; too high = seizure-like.
+          </div>
+        </div>
+      )}
     </div>
   );
 }

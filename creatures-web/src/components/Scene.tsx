@@ -17,6 +17,7 @@ import { useSimulationStore } from '../stores/simulationStore';
 
 function SmoothCamera() {
   const frame = useSimulationStore((s) => s.frame);
+  const experiment = useSimulationStore((s) => s.experiment);
   const controlsRef = useRef<any>(null);
   const targetRef = useRef(new THREE.Vector3(0.45, 0.015, 0));
   const hasSnapped = useRef(false);
@@ -30,14 +31,25 @@ function SmoothCamera() {
       // Snap camera to organism with consistent framing angle
       targetRef.current.copy(desired);
       controlsRef.current.target.copy(desired);
-      // Frame organism: small Y offset (1.5x organism height), moderate Z distance
+
+      // Per-organism camera offsets (zebrafish is ~4x bigger)
+      const organism = experiment?.organism ?? 'c_elegans';
+      let yOff = 0.025;
+      let zOff = 0.2;
+      if (organism === 'zebrafish') {
+        yOff = 0.04;
+        zOff = 0.35;
+      }
+
       camera.position.set(
         desired.x,
-        desired.y + 0.025,
-        desired.z + 0.2,
+        desired.y + yOff,
+        desired.z + zOff,
       );
       hasSnapped.current = true;
     } else {
+      // Safety valve: reject outlier frames to prevent camera shake
+      if (desired.distanceTo(targetRef.current) > 0.005) return;
       targetRef.current.lerp(desired, 0.05);
       controlsRef.current.target.copy(targetRef.current);
     }

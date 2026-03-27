@@ -13,6 +13,8 @@ from pydantic import BaseModel
 from creatures.environment.brain_world import BrainWorld
 from creatures.environment.ecosystem import Ecosystem, EcosystemConfig
 from creatures.environment.emergent_detector import EmergentBehaviorDetector
+from creatures.god.agent import GodAgent, GodConfig
+from creatures.god.ecosystem_integration import apply_all_interventions
 from creatures.environment.sensory_world import (
     ChemicalGradient,
     SensoryWorld,
@@ -36,6 +38,14 @@ ecosystems: dict[str, Ecosystem] = {}
 _brain_worlds: dict[str, BrainWorld] = {}
 _brain_world_detectors: dict[str, EmergentBehaviorDetector] = {}
 _brain_world_emergent: dict[str, list[dict]] = {}
+
+# God Agent per brain-world + narrative log
+_brain_world_god: dict[str, GodAgent] = {}
+_brain_world_narratives: dict[str, list[dict]] = {}
+
+# Active auto-run tasks and subscriber sets for massive brain-worlds
+_brain_world_tasks: dict[str, asyncio.Task] = {}
+_brain_world_subscribers: dict[str, dict[str, WebSocket]] = {}
 
 # Timeline history: eco_id -> list of {step, time_ms, populations}
 _timeline_history: dict[str, list[dict]] = {}
@@ -683,3 +693,201 @@ async def get_massive_emergent(bw_id: str):
         "total_events": len(events),
         "events": events[-100:],  # most recent 100
     }
+
+
+# ======================================================================
+# Massive brain-world auto-run loop + WebSocket
+# ======================================================================
+
+
+async def _massive_run_loop(bw_id: str) -> None:
+    """Background loop: steps BrainWorld continuously, broadcasts state,
+    runs emergent detection every 100 steps, and God Agent every 500 steps."""
+    bw = _brain_worlds.get(bw_id)
+    if bw is None:
+        return
+
+    detector = _brain_world_detectors.get(bw_id)
+    emergent_log = _brain_world_emergent.setdefault(bw_id, [])
+    narrative_log = _brain_world_narratives.setdefault(bw_id, [])
+
+    # Lazily create God Agent for this brain-world (heuristic fallback —
+    # no LLM key required)
+    if bw_id not in _brain_world_god:
+        _brain_world_god[bw_id] = GodAgent(
+            config=GodConfig(provider="fallback"),
+            run_id=bw_id,
+        )
+    god = _brain_world_god[bw_id]
+
+    step_count = 0
+    pending_events: list[dict] = []
+    pending_narratives: list[dict] = []
+
+    try:
+        while True:
+            # Step the brain-world
+            stats = bw.step(dt=1.0)
+            step_count += 1
+
+            # --- Emergent detection every 100 steps ---
+            if detector and step_count % 100 == 0:
+                state = bw.get_emergent_state()
+                events = detector.observe(state)
+                if events:
+                    pending_events.extend(events)
+                    emergent_log.extend(events)
+
+            # --- God Agent analysis every 500 steps ---
+            if step_count % 500 == 0:
+                eco = bw.ecosystem
+                n_alive = int(eco.alive.sum())
+                mean_energy = (
+                    float(eco.energy[eco.alive].mean()) if n_alive > 0 else 0.0
+                )
+
+                god.observe(
+                    generation_stats={
+                        "generation": step_count,
+                        "best_fitness": float(eco.energy[eco.alive].max())
+                        if n_alive > 0
+                        else 0.0,
+                        "mean_fitness": mean_energy,
+                        "std_fitness": float(eco.energy[eco.alive].std())
+                        if n_alive > 1
+                        else 0.0,
+                    },
+                    population_summary={
+                        "total_alive": n_alive,
+                        "c_elegans": int((eco.species[eco.alive] == 0).sum()),
+                        "drosophila": int((eco.species[eco.alive] == 1).sum()),
+                    },
+                    environment_state={
+                        "arena_size": eco.arena_size,
+                        "food_alive": int(eco.food_alive.sum()),
+                    },
+                )
+
+                report = await god.analyze_and_intervene()
+
+                # Apply interventions to the ecosystem
+                descriptions = apply_all_interventions(eco, report)
+
+                narrative_entry = {
+                    "step": step_count,
+                    "analysis": report.get("analysis", ""),
+                    "interventions_applied": descriptions,
+                    "hypothesis": report.get("hypothesis", ""),
+                }
+                pending_narratives.append(narrative_entry)
+                narrative_log.append(narrative_entry)
+                # Cap narrative log
+                if len(narrative_log) > 200:
+                    del narrative_log[:len(narrative_log) - 200]
+
+            # --- Broadcast to subscribers every 10 steps ---
+            if step_count % 10 == 0:
+                subscribers = _brain_world_subscribers.get(bw_id, {})
+                if subscribers:
+                    state_data = bw.get_state()
+                    message = {
+                        "type": "ecosystem_state",
+                        "organisms": state_data.get("organisms", []),
+                        "stats": {
+                            k: v
+                            for k, v in state_data.items()
+                            if k not in ("organisms", "consciousness_history")
+                        },
+                        "events": pending_events[-50:],
+                        "narratives": pending_narratives[-10:],
+                        "step": step_count,
+                    }
+
+                    dead_ids: list[str] = []
+                    for ws_id, ws in list(subscribers.items()):
+                        try:
+                            await ws.send_json(message)
+                        except Exception:
+                            dead_ids.append(ws_id)
+                    for ws_id in dead_ids:
+                        subscribers.pop(ws_id, None)
+
+                    # Clear pending after broadcast
+                    pending_events.clear()
+                    pending_narratives.clear()
+
+                # If no subscribers remain, stop the loop
+                if not _brain_world_subscribers.get(bw_id):
+                    logger.info(
+                        "No subscribers for brain-world %s, stopping auto-run",
+                        bw_id,
+                    )
+                    break
+
+            # Yield to event loop — target ~60 steps/s
+            await asyncio.sleep(0.016)
+
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.error("Auto-run loop error for %s: %s", bw_id, e)
+    finally:
+        _brain_world_tasks.pop(bw_id, None)
+
+
+def _ensure_run_loop(bw_id: str) -> None:
+    """Start the background auto-run loop for bw_id if not already running."""
+    existing = _brain_world_tasks.get(bw_id)
+    if existing is not None and not existing.done():
+        return  # already running
+    task = asyncio.create_task(_massive_run_loop(bw_id))
+    _brain_world_tasks[bw_id] = task
+
+
+@router.websocket("/massive/ws/{bw_id}")
+async def massive_ecosystem_ws(websocket: WebSocket, bw_id: str):
+    """Stream massive brain-world state in real-time with auto-run.
+
+    On connect the server starts a background loop that:
+    - Steps the BrainWorld continuously
+    - Broadcasts state every 10 steps
+    - Runs emergent behavior detection every 100 steps
+    - Runs God Agent analysis every 500 steps and applies interventions
+    - Includes narrative events in each broadcast
+    """
+    await websocket.accept()
+
+    bw = _brain_worlds.get(bw_id)
+    if bw is None:
+        await websocket.close(code=4004, reason="Brain-world not found")
+        return
+
+    # Register subscriber
+    ws_id = uuid.uuid4().hex[:8]
+    _brain_world_subscribers.setdefault(bw_id, {})[ws_id] = websocket
+
+    # Ensure the auto-run loop is active
+    _ensure_run_loop(bw_id)
+
+    try:
+        # Keep the connection alive — listen for client messages
+        # (e.g. pings or future commands)
+        while True:
+            data = await websocket.receive_text()
+            # Could handle commands here in the future
+            logger.debug("Received from WS %s: %s", ws_id, data[:100])
+    except WebSocketDisconnect:
+        logger.info("WebSocket %s disconnected from brain-world %s", ws_id, bw_id)
+    except Exception as e:
+        logger.error("WebSocket error for %s/%s: %s", bw_id, ws_id, e)
+        try:
+            await websocket.close(code=1011, reason=str(e)[:120])
+        except Exception:
+            pass
+    finally:
+        # Unsubscribe
+        subs = _brain_world_subscribers.get(bw_id, {})
+        subs.pop(ws_id, None)
+        if not subs:
+            # Last subscriber gone — loop will stop itself on next broadcast check
+            _brain_world_subscribers.pop(bw_id, None)

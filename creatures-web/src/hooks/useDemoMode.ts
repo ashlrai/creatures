@@ -8,7 +8,7 @@ interface DemoData {
   frames: SimulationFrame[];
 }
 
-const CROSSFADE_FRAMES = 30; // blend last N frames into first N for seamless loop
+const CROSSFADE_FRAMES = 50; // blend last N frames into first N for seamless loop
 
 function lerpFrame(a: SimulationFrame, b: SimulationFrame, t: number): SimulationFrame {
   const lerp = (x: number, y: number) => x + (y - x) * t;
@@ -157,7 +157,7 @@ export function useDemoMode() {
         if (distFromEnd <= CROSSFADE_FRAMES && total > CROSSFADE_FRAMES * 2) {
           const blendIdx = CROSSFADE_FRAMES - distFromEnd; // 0 to CROSSFADE_FRAMES
           const t = blendIdx / CROSSFADE_FRAMES; // 0 to 1
-          const startFrame = d.frames[blendIdx];
+          const startFrame = d.frames[blendIdx + CROSSFADE_FRAMES];
           const endFrame = d.frames[idx];
           frame = lerpFrame(endFrame, startFrame, t);
         } else {
