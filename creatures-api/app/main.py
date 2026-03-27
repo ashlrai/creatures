@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "creatures-core"))
 
 import asyncio
 
-from app.routers import analysis, consciousness, ecosystem, evolution, experiments, export, export_advanced, god, history, metrics, morphology, neurons, pharmacology, ws
+from app.routers import analysis, consciousness, deep_evolution, ecosystem, evolution, experiments, export, export_advanced, god, history, metrics, morphology, neurons, pharmacology, ws
 from app.services.evolution_manager import EvolutionManager
 from app.services.simulation_manager import SimulationManager
 from creatures.storage.persistence import NeurevoStore
@@ -83,6 +83,7 @@ app.include_router(neurons.router)
 app.include_router(pharmacology.router)
 app.include_router(ws.router)
 app.include_router(history.router)
+app.include_router(deep_evolution.router)
 
 # Also mount routes WITHOUT /api prefix at /api/* for frontend compatibility
 # (in production, frontend calls /api/experiments but route is at /experiments)
@@ -96,6 +97,7 @@ api_compat.include_router(export_advanced.router)
 api_compat.include_router(god.router)
 api_compat.include_router(morphology.router)
 api_compat.include_router(neurons.router)
+api_compat.include_router(deep_evolution.router)
 app.include_router(api_compat)
 
 

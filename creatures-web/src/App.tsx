@@ -67,6 +67,7 @@ import { GuidedExperiment } from './components/ui/GuidedExperiment';
 import { SharedView, isShareRoute } from './components/ui/SharedView';
 import { WorldCreator } from './components/ui/WorldCreator';
 import { CoCreatorPanel } from './components/ui/CoCreatorPanel';
+import { DeepEvolutionPanel } from './components/ui/DeepEvolutionPanel';
 import {
   NeuralActivitySkeleton,
   InteractionSkeleton,
@@ -238,6 +239,7 @@ export default function App() {
   const [hasInteracted, setHasInteracted] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showSharePanel, setShowSharePanel] = useState(false);
+  const [showDeepEvolution, setShowDeepEvolution] = useState(false);
   const [ecosystemId, setEcosystemId] = useState<string | null>(null);
   const [ecoStats, setEcoStats] = useState<{ c_elegans: number; drosophila: number; food: number } | null>(null);
   const [ecoLoading, setEcoLoading] = useState(false);
@@ -898,7 +900,7 @@ export default function App() {
                   </div>
 
                   {/* Co-Creator Panel */}
-                  <CoCreatorPanel massiveId={massiveId} apiBase={API_BASE} onNotify={notify} />
+                  <CoCreatorPanel massiveId={massiveId} apiBase={API_BASE} onNotify={notify} onOpenDeepEvolution={() => setShowDeepEvolution(true)} />
                 </>
                 ) : null
               ) : (
@@ -1380,6 +1382,21 @@ export default function App() {
           state={buildShareableState()}
           onClose={() => setShowSharePanel(false)}
         />
+      )}
+
+      {/* Deep Evolution overlay */}
+      {showDeepEvolution && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100 }}>
+          <DeepEvolutionPanel />
+          <button onClick={() => setShowDeepEvolution(false)} style={{
+            position: 'absolute', top: 16, right: 16, zIndex: 21,
+            background: 'none', border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: 6, padding: '4px 12px', color: 'rgba(255,255,255,0.5)',
+            fontSize: 12, cursor: 'pointer',
+          }}>
+            Close
+          </button>
+        </div>
       )}
 
       {/* Protocol timeline & results — only shown in research mode */}

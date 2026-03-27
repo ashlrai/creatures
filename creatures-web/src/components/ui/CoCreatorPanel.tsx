@@ -4,9 +4,10 @@ interface Props {
   massiveId: string | null;
   apiBase: string;
   onNotify: (msg: string) => void;
+  onOpenDeepEvolution?: () => void;
 }
 
-export function CoCreatorPanel({ massiveId, apiBase, onNotify }: Props) {
+export function CoCreatorPanel({ massiveId, apiBase, onNotify, onOpenDeepEvolution }: Props) {
   const [mutationRate, setMutationRate] = useState(0.02);
 
   const triggerEvent = useCallback(async (eventType: string, label: string) => {
@@ -62,6 +63,12 @@ export function CoCreatorPanel({ massiveId, apiBase, onNotify }: Props) {
             }}>
             ⏩ Fast-Forward 1000 Steps
           </button>
+          {onOpenDeepEvolution && (
+            <button className="btn btn-primary" style={{ textAlign: 'left', fontSize: 11, padding: '6px 8px', marginTop: 4 }}
+              onClick={onOpenDeepEvolution}>
+              🧬 Deep Evolution — Run 1000+ generations
+            </button>
+          )}
         </div>
       </div>
 
