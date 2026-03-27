@@ -191,20 +191,23 @@ function OrganismInstances({
     [],
   );
 
-  // Attach instanced color attributes after mount
-  useEffect(() => {
-    const attach = (
-      mesh: THREE.InstancedMesh | null,
-      buf: Float32Array,
-    ) => {
-      if (!mesh) return;
-      const attr = new THREE.InstancedBufferAttribute(buf, 3);
-      attr.setUsage(THREE.DynamicDrawUsage);
-      mesh.geometry.setAttribute('color', attr);
-    };
-    attach(elegansRef.current, elegansColors);
-    attach(drosophilaRef.current, drosophilaColors);
-  }, [elegansColors, drosophilaColors]);
+  // Attach instanced color attributes to geometry BEFORE first render
+  // (MeshStandardMaterial with vertexColors needs the attribute to exist)
+  const elegansGeomWithColor = useMemo(() => {
+    const g = new THREE.CapsuleGeometry(0.8, 1.2, 4, 8);
+    const attr = new THREE.InstancedBufferAttribute(elegansColors, 3);
+    attr.setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute('color', attr);
+    return g;
+  }, [elegansColors]);
+
+  const drosophilaGeomWithColor = useMemo(() => {
+    const g = new THREE.SphereGeometry(1, 8, 6);
+    const attr = new THREE.InstancedBufferAttribute(drosophilaColors, 3);
+    attr.setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute('color', attr);
+    return g;
+  }, [drosophilaColors]);
 
   const elegansMat = useMemo(
     () =>
@@ -236,12 +239,12 @@ function OrganismInstances({
     <>
       <instancedMesh
         ref={elegansRef}
-        args={[elegansGeom, elegansMat, MAX_ORGANISMS]}
+        args={[elegansGeomWithColor, elegansMat, MAX_ORGANISMS]}
         frustumCulled={false}
       />
       <instancedMesh
         ref={drosophilaRef}
-        args={[drosophilaGeom, drosophilaMat, MAX_ORGANISMS]}
+        args={[drosophilaGeomWithColor, drosophilaMat, MAX_ORGANISMS]}
         frustumCulled={false}
       />
     </>
