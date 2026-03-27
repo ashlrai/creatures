@@ -592,9 +592,9 @@ function SceneContents({
         </>
       )}
 
-      <EffectComposer>
-        <Bloom luminanceThreshold={0.3} luminanceSmoothing={0.9} intensity={0.8} mipmapBlur />
-      </EffectComposer>
+      {/* EffectComposer/Bloom disabled — @react-three/postprocessing v3.0.4
+          crashes with "Cannot read properties of undefined (reading 'length')"
+          when the scene changes. Using emissive materials for glow instead. */}
     </>
   );
 }
