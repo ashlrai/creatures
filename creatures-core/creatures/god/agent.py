@@ -145,7 +145,7 @@ You can also:
    or propose experiments testing consciousness hypotheses.
 """
 
-        return f"""You are the God Agent overseeing an evolutionary simulation of virtual \
+        prompt = f"""You are the God Agent overseeing an evolutionary simulation of virtual \
 organisms with real biological neural networks (spiking Izhikevich neurons, real \
 connectome topology, STDP learning, MLX GPU acceleration).
 
@@ -186,6 +186,28 @@ Analyze the current evolutionary trajectory and respond with a JSON object:
 Be creative but grounded in real neuroscience and consciousness science (IIT, Global \
 Workspace Theory). Make interventions that will produce genuine scientific insight \
 about how neural circuits evolve, learn, and develop consciousness-like properties."""
+
+        # Add evolutionary context
+        if self.observations:
+            latest = self.observations[-1]
+            stats = latest.get("stats", {})
+            pop = latest.get("population", {})
+            env = latest.get("environment", {})
+
+            prompt += "\n\nEVOLUTIONARY CONTEXT:\n"
+            prompt += f"  Max generation reached: {stats.get('max_generation', 'unknown')}\n"
+            prompt += f"  Surviving lineages: {stats.get('n_lineages', 'unknown')}\n"
+            prompt += f"  Total births: {pop.get('births_total', 'unknown')}\n"
+            prompt += f"  Total deaths: {pop.get('deaths_total', 'unknown')}\n"
+            prompt += f"  Mean organism age: {stats.get('mean_age', 'unknown')}\n"
+
+            behaviors = env.get("emergent_behaviors", [])
+            if behaviors:
+                prompt += "\nEMERGENT BEHAVIORS DETECTED:\n"
+                for b in behaviors:
+                    prompt += f"  - {b}\n"
+
+        return prompt
 
     async def _call_llm(self, prompt: str) -> str:
         """Call LLM via configured provider (auto-detects Ollama → API → fallback)."""

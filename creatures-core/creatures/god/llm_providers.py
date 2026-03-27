@@ -2,6 +2,7 @@
 
 Supports multiple backends:
   - Ollama (local, free, runs on Apple Silicon)
+  - Anthropic Claude (cloud API)
   - xAI/Grok (cloud API)
   - Any OpenAI-compatible API
 
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class LLMConfig:
     """Configuration for LLM provider."""
-    provider: str = "auto"  # "auto", "ollama", "xai", "openai"
+    provider: str = "auto"  # "auto", "ollama", "anthropic", "xai", "openai"
     api_key: str | None = None
     api_base: str = "https://api.x.ai/v1"
     model: str = "grok-4-1-fast-reasoning"
@@ -47,6 +48,11 @@ def detect_provider(config: LLMConfig) -> str:
     except Exception:
         pass
 
+    # Check Anthropic
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+    if anthropic_key:
+        return "anthropic"
+
     # Check for API key
     api_key = config.api_key or os.environ.get("XAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
     if api_key:
@@ -65,6 +71,8 @@ async def call_llm(prompt: str, config: LLMConfig) -> str:
 
     if provider == "ollama":
         return await _call_ollama(prompt, config)
+    elif provider == "anthropic":
+        return await _call_anthropic(prompt, config)
     elif provider in ("xai", "openai"):
         return await _call_openai_compatible(prompt, config)
     else:
@@ -97,6 +105,37 @@ async def _call_ollama(prompt: str, config: LLMConfig) -> str:
     except Exception as e:
         logger.warning(f"Ollama call failed: {e}")
         raise RuntimeError(f"Ollama call failed: {e}") from e
+
+
+async def _call_anthropic(prompt: str, config: LLMConfig) -> str:
+    """Call Anthropic Claude API directly."""
+    import httpx
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("No ANTHROPIC_API_KEY environment variable")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-sonnet-4-20250514",
+                    "max_tokens": min(config.max_tokens, 4096),
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["content"][0]["text"]
+    except Exception as e:
+        logger.warning(f"Anthropic call failed: {e}")
+        raise RuntimeError(f"Anthropic call failed: {e}") from e
 
 
 async def _call_openai_compatible(prompt: str, config: LLMConfig) -> str:

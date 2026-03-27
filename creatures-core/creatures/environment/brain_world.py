@@ -48,7 +48,7 @@ class BrainWorld:
         self,
         n_organisms: int = 10_000,
         neurons_per_organism: int = 100,
-        arena_size: float = 50.0,
+        arena_size: float = 0,
         world_type: str = "soil",
         seed: int = 42,
         use_gpu: bool = True,
@@ -68,6 +68,10 @@ class BrainWorld:
         # Enable STDP for online learning
         if enable_stdp:
             self.engine.init_stdp()
+
+        # If arena_size is 0 or not provided, auto-scale based on population
+        if arena_size <= 0:
+            arena_size = max(50.0, float(int(n_organisms ** 0.5) * 3))
 
         # Food is SCARCE — organisms must use their neural network to find it.
         # ~2 food sources per organism creates genuine selection pressure.

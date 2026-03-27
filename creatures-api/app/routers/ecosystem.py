@@ -11,6 +11,8 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+import numpy as np
+
 from creatures.environment.brain_world import BrainWorld
 from creatures.environment.ecosystem import Ecosystem, EcosystemConfig
 from creatures.environment.emergent_detector import EmergentBehaviorDetector
@@ -719,7 +721,7 @@ async def _massive_run_loop(bw_id: str) -> None:
     # no LLM key required)
     if bw_id not in _brain_world_god:
         _brain_world_god[bw_id] = GodAgent(
-            config=GodConfig(provider="fallback"),
+            config=GodConfig(provider="auto"),
             run_id=bw_id,
         )
     god = _brain_world_god[bw_id]
@@ -755,25 +757,33 @@ async def _massive_run_loop(bw_id: str) -> None:
                         float(eco.energy[eco.alive].mean()) if n_alive > 0 else 0.0
                     )
 
+                    # Get rich population stats
+                    pop_stats = bw.get_population_stats() if hasattr(bw, 'get_population_stats') else {}
+
+                    # Emergent behaviors
+                    recent_events = pending_events[-5:] if pending_events else []
+                    event_descriptions = [str(e.get('description', e.get('behavior_type', ''))) for e in recent_events]
+
                     god.observe(
                         generation_stats={
-                            "generation": step_count,
-                            "best_fitness": float(eco.energy[eco.alive].max())
-                            if n_alive > 0
-                            else 0.0,
-                            "mean_fitness": mean_energy,
-                            "std_fitness": float(eco.energy[eco.alive].std())
-                            if n_alive > 1
-                            else 0.0,
+                            "step": step_count,
+                            "best_fitness": pop_stats.get("mean_lifetime_food", 0),
+                            "mean_fitness": pop_stats.get("mean_energy", 0),
+                            "std_fitness": 0,
+                            "max_generation": pop_stats.get("max_generation", 0),
+                            "n_lineages": pop_stats.get("n_lineages", 0),
+                            "mean_age": pop_stats.get("mean_age", 0),
                         },
                         population_summary={
-                            "total_alive": n_alive,
-                            "c_elegans": int((eco.species[eco.alive] == 0).sum()),
-                            "drosophila": int((eco.species[eco.alive] == 1).sum()),
+                            "total_alive": pop_stats.get("alive", n_alive),
+                            "births_total": eco._total_born,
+                            "deaths_total": eco._total_died,
+                            **pop_stats.get("species_counts", {}),
                         },
                         environment_state={
                             "arena_size": eco.arena_size,
                             "food_alive": int(eco.food_alive.sum()),
+                            "emergent_behaviors": event_descriptions,
                         },
                     )
 
@@ -802,6 +812,14 @@ async def _massive_run_loop(bw_id: str) -> None:
                     # Get rich population stats
                     pop_stats = bw.get_population_stats() if hasattr(bw, 'get_population_stats') else {}
 
+                    # Add food positions (capped at 300 for performance)
+                    eco = bw.ecosystem
+                    food_data = []
+                    alive_food = np.where(eco.food_alive)[0]
+                    sample_food = alive_food[:300] if len(alive_food) > 300 else alive_food
+                    for idx in sample_food:
+                        food_data.append({"x": float(eco.food_x[idx]), "y": float(eco.food_y[idx])})
+
                     message = {
                         "type": "ecosystem_state",
                         "organisms": state_data.get("organisms", []),
@@ -815,6 +833,7 @@ async def _massive_run_loop(bw_id: str) -> None:
                         "narratives": pending_narratives[-10:],
                         "step": step_count,
                         "speed": speed,
+                        "food": food_data,
                     }
 
                     dead_ids: list[str] = []

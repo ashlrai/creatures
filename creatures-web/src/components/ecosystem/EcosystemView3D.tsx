@@ -14,7 +14,7 @@ import { EvolutionTimeline } from '../ui/EvolutionTimeline';
 // Constants
 // ---------------------------------------------------------------------------
 
-const ARENA_RADIUS = 25; // world units (matches backend arena_size)
+const DEFAULT_ARENA_RADIUS = 25; // fallback when no organisms present
 const MAX_ORGANISMS = 2048;
 const MAX_FOOD = 256;
 const GRID_DIVISIONS = 20;
@@ -31,6 +31,11 @@ const GROUND_COLORS: Record<string, string> = {
 // Props
 // ---------------------------------------------------------------------------
 
+interface FoodPosition {
+  x: number;
+  y: number;
+}
+
 interface EcosystemView3DProps {
   ecosystemId?: string | null;
   massiveId?: string | null;
@@ -41,6 +46,7 @@ interface EcosystemView3DProps {
   godNarratives?: any[];
   populationStats?: any;
   sendEcoCommand?: (cmd: Record<string, unknown>) => void;
+  food?: FoodPosition[];
 }
 
 // ---------------------------------------------------------------------------
@@ -309,23 +315,26 @@ function OrganismInstances({
 // Food Instances
 // ---------------------------------------------------------------------------
 
-function FoodInstances({ organismCount }: { organismCount: number }) {
+function FoodInstances({ organismCount, arenaRadius, food }: { organismCount: number; arenaRadius: number; food?: FoodPosition[] }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const foodCount = useMemo(
-    () => Math.min(MAX_FOOD, Math.max(12, Math.floor(organismCount * 0.15))),
-    [organismCount],
-  );
 
-  // Deterministic food positions seeded from count
-  const positions = useMemo(() => {
+  // Use real food data when available, otherwise fall back to deterministic positions
+  const hasRealFood = food && food.length > 0;
+  const foodCount = hasRealFood
+    ? Math.min(MAX_FOOD, food.length)
+    : Math.min(MAX_FOOD, Math.max(12, Math.floor(organismCount * 0.15)));
+
+  // Fallback deterministic food positions seeded from count
+  const fallbackPositions = useMemo(() => {
     const pos: [number, number][] = [];
-    for (let i = 0; i < foodCount; i++) {
-      const angle = (i / foodCount) * Math.PI * 2 + i * 2.39996; // golden angle
-      const r = Math.sqrt((i + 1) / (foodCount + 1)) * ARENA_RADIUS * 0.85;
+    const count = Math.min(MAX_FOOD, Math.max(12, Math.floor(organismCount * 0.15)));
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + i * 2.39996; // golden angle
+      const r = Math.sqrt((i + 1) / (count + 1)) * arenaRadius * 0.85;
       pos.push([Math.cos(angle) * r, Math.sin(angle) * r]);
     }
     return pos;
-  }, [foodCount]);
+  }, [organismCount, arenaRadius]);
 
   useFrame(({ clock }) => {
     const mesh = meshRef.current;
@@ -334,7 +343,9 @@ function FoodInstances({ organismCount }: { organismCount: number }) {
 
     for (let i = 0; i < foodCount; i++) {
       const pulse = 0.3 + 0.1 * Math.sin(t * 2.5 + i * 1.3);
-      _obj.position.set(positions[i][0], positions[i][1], 0.02);
+      const fx = hasRealFood ? food[i].x : fallbackPositions[i]?.[0] ?? 0;
+      const fy = hasRealFood ? food[i].y : fallbackPositions[i]?.[1] ?? 0;
+      _obj.position.set(fx, fy, 0.02);
       _obj.scale.set(pulse, pulse, pulse);
       _obj.rotation.set(0, 0, 0);
       _obj.updateMatrix();
@@ -391,7 +402,7 @@ const BOUNDARY_COLORS: Record<string, number> = {
   abstract: 0x284678,
 };
 
-function Arena({ worldType }: { worldType: string }) {
+function Arena({ worldType, arenaRadius }: { worldType: string; arenaRadius: number }) {
   const groundColor = GROUND_COLORS[worldType] ?? GROUND_COLORS.abstract;
   const gridStyle = GRID_STYLES[worldType] ?? GRID_STYLES.abstract;
   const boundaryColor = BOUNDARY_COLORS[worldType] ?? BOUNDARY_COLORS.abstract;
@@ -400,14 +411,14 @@ function Arena({ worldType }: { worldType: string }) {
     <>
       {/* Ground plane */}
       <mesh rotation={[0, 0, 0]} position={[0, 0, -0.01]}>
-        <circleGeometry args={[ARENA_RADIUS, 64]} />
+        <circleGeometry args={[arenaRadius, 64]} />
         <meshStandardMaterial color={groundColor} roughness={1} />
       </mesh>
 
       {/* Grid — denser for lab_plate, tinted by world type */}
       <gridHelper
         args={[
-          ARENA_RADIUS * 2,
+          arenaRadius * 2,
           gridStyle.divisions,
           gridStyle.color,
           gridStyle.color,
@@ -426,7 +437,7 @@ function Arena({ worldType }: { worldType: string }) {
 
       {/* Arena boundary ring */}
       <mesh position={[0, 0, 0.002]}>
-        <ringGeometry args={[ARENA_RADIUS - 0.08, ARENA_RADIUS, 64]} />
+        <ringGeometry args={[arenaRadius - 0.08, arenaRadius, 64]} />
         <meshBasicMaterial
           color={boundaryColor}
           opacity={0.35}
@@ -655,10 +666,14 @@ function SceneContents({
   organisms,
   neuralStats,
   worldType,
+  arenaRadius,
+  food,
 }: {
   organisms: MassiveOrganism[];
   neuralStats: MassiveNeuralStats | null;
   worldType: string;
+  arenaRadius: number;
+  food?: FoodPosition[];
 }) {
   const isEmpty = organisms.length === 0;
 
@@ -682,7 +697,7 @@ function SceneContents({
       />
 
       {/* Environment */}
-      <Arena worldType={worldType} />
+      <Arena worldType={worldType} arenaRadius={arenaRadius} />
 
       {isEmpty ? (
         <EmptyFallback />
@@ -692,7 +707,7 @@ function SceneContents({
             organisms={organisms}
             neuralStats={neuralStats}
           />
-          <FoodInstances organismCount={organisms.length} />
+          <FoodInstances organismCount={organisms.length} arenaRadius={arenaRadius} food={food} />
         </>
       )}
 
@@ -735,6 +750,7 @@ export function EcosystemView3D({
   godNarratives,
   populationStats,
   sendEcoCommand,
+  food,
 }: EcosystemView3DProps) {
   const organisms = massiveOrganisms ?? [];
   const stats = massiveNeuralStats ?? null;
@@ -779,8 +795,16 @@ export function EcosystemView3D({
     return () => clearInterval(interval);
   }, []);
 
+  // Compute arena radius dynamically from organism positions
+  const arenaRadius = useMemo(() => {
+    if (organisms.length === 0) return DEFAULT_ARENA_RADIUS;
+    const maxCoord = organisms.reduce((max, o) =>
+      Math.max(max, Math.abs(o.x), Math.abs(o.y)), 0);
+    return Math.max(DEFAULT_ARENA_RADIUS, Math.ceil(maxCoord * 1.3));
+  }, [organisms.length]);
+
   // Frustum size for orthographic camera (~arena fits on screen)
-  const frustum = ARENA_RADIUS * 1.3;
+  const frustum = arenaRadius * 1.3;
 
   // -------------------------------------------------------------------------
   // Narrative overlay state
@@ -927,6 +951,8 @@ export function EcosystemView3D({
           organisms={organisms}
           neuralStats={stats}
           worldType={wt}
+          arenaRadius={arenaRadius}
+          food={food}
         />
       </Canvas>
 

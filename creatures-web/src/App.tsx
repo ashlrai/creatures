@@ -250,6 +250,7 @@ export default function App() {
   const [massivePopulation, setMassivePopulation] = useState(0);
   const [massiveNarratives, setMassiveNarratives] = useState<any[]>([]);
   const [massivePopStats, setMassivePopStats] = useState<any>(null);
+  const [massiveFood, setMassiveFood] = useState<any[]>([]);
   const massiveWsRef = useRef<WebSocket | null>(null);
   const massiveStepRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [sidebarTab, setSidebarTab] = useState<'brain' | 'tools' | 'science'>('brain');
@@ -527,6 +528,7 @@ export default function App() {
           if (msg.events) setMassiveEmergent(msg.events);
           if (msg.narratives) setMassiveNarratives(msg.narratives);
           if (msg.population_stats) setMassivePopStats(msg.population_stats);
+          if (msg.food) setMassiveFood(msg.food);
 
           // Dispatch evolution data for the EvolutionTimeline graph
           window.dispatchEvent(new CustomEvent('neurevo-evo-data', {
@@ -1219,6 +1221,7 @@ export default function App() {
                   godNarratives={massiveNarratives}
                   populationStats={massivePopStats}
                   sendEcoCommand={sendEcoCommand}
+                  food={massiveFood}
                 />
               ) : (
                 <WorldCreator
