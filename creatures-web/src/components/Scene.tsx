@@ -103,7 +103,7 @@ export function Scene({ worldType }: SceneProps) {
       dpr={[1, 1.5]}
       flat={false}
       style={{
-        background: 'linear-gradient(180deg, #1a2a3a 0%, #0d1a2a 40%, #0a1520 100%)',
+        background: 'linear-gradient(180deg, #0e1520 0%, #0a1018 40%, #080c12 100%)',
       }}
     >
       {/* Natural 3-point lighting rig */}
@@ -123,15 +123,15 @@ export function Scene({ worldType }: SceneProps) {
 
       <ContactShadows
         position={[0.4, -0.01, 0]}
-        opacity={0.4}
+        opacity={0.2}
         scale={2}
         blur={2}
         far={1}
-        color="#102030"
+        color="#080e14"
       />
 
-      {/* Atmospheric fog for depth */}
-      <fog attach="fog" args={['#0a1520', 0.5, 4]} />
+      {/* Atmospheric fog for depth — matches background to avoid bright horizon bands */}
+      <fog attach="fog" args={['#080c12', 1.5, 6]} />
 
       {/* Environment: background color, fog, lighting, ground, particles */}
       <EnvironmentBackground worldType={worldType} />

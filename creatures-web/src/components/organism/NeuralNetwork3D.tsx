@@ -46,6 +46,27 @@ const HARDCODED_GENES: Record<string, string[]> = {
   ADER: ['dat-1', 'cat-2'],
 };
 
+/** Procedural soft-circle texture for neuron points (avoids square artifacts). */
+function makeCircleTexture(): THREE.Texture {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const half = size / 2;
+  const gradient = ctx.createRadialGradient(half, half, 0, half, half, half);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.4, 'rgba(255,255,255,0.6)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+const circleTexture = makeCircleTexture();
+
 const TYPE_COLORS: Record<string, THREE.Color> = {
   sensory: new THREE.Color(0.1, 0.8, 0.4),  // green
   inter: new THREE.Color(0.2, 0.5, 1.0),    // blue
@@ -378,6 +399,8 @@ export function NeuralNetwork3D() {
           opacity={0.9}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
+          map={circleTexture}
+          alphaMap={circleTexture}
         />
       </points>
 
@@ -406,6 +429,8 @@ export function NeuralNetwork3D() {
             opacity={0.3}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
+            map={circleTexture}
+            alphaMap={circleTexture}
           />
         </points>
       )}
