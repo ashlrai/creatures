@@ -32,24 +32,27 @@ function SmoothCamera() {
       targetRef.current.copy(desired);
       controlsRef.current.target.copy(desired);
 
-      // Per-organism camera offsets (zebrafish is ~4x bigger)
+      // Per-organism camera framing — close enough to see detail
       const organism = experiment?.organism ?? 'c_elegans';
-      let yOff = 0.025;
-      let zOff = 0.2;
-      if (organism === 'zebrafish') {
-        yOff = 0.04;
-        zOff = 0.35;
+      let yOff = 0.06;   // higher up for a 3/4 view
+      let zOff = 0.12;   // closer than before
+      if (organism === 'drosophila') {
+        yOff = 0.06;
+        zOff = 0.12;
+      } else if (organism === 'zebrafish') {
+        yOff = 0.08;
+        zOff = 0.25;
       }
 
       camera.position.set(
-        desired.x,
+        desired.x - 0.02,  // slight offset for 3/4 angle
         desired.y + yOff,
         desired.z + zOff,
       );
       hasSnapped.current = true;
     } else {
       // Safety valve: reject outlier frames to prevent camera shake
-      if (desired.distanceTo(targetRef.current) > 0.005) return;
+      if (desired.distanceTo(targetRef.current) > 0.01) return;
       targetRef.current.lerp(desired, 0.05);
       controlsRef.current.target.copy(targetRef.current);
     }
