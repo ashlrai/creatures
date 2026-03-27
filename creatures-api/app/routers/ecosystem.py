@@ -777,9 +777,6 @@ async def _massive_run_loop(bw_id: str) -> None:
                 if step_count % 500 == 0:
                     eco = bw.ecosystem
                     n_alive = int(eco.alive.sum())
-                    mean_energy = (
-                        float(eco.energy[eco.alive].mean()) if n_alive > 0 else 0.0
-                    )
 
                     # Get rich population stats
                     pop_stats = bw.get_population_stats() if hasattr(bw, 'get_population_stats') else {}

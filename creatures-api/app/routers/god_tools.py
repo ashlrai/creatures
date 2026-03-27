@@ -72,8 +72,8 @@ Answer concisely and scientifically. Reference specific data points. If you can 
     try:
         response = await god._call_llm(prompt)
         return {"question": req.question, "answer": response, "context": ctx}
-    except Exception as e:
-        return {"question": req.question, "answer": f"AI unavailable: {e}. Based on data: {ctx['alive']} organisms alive, generation {ctx['max_generation']}, {ctx['n_lineages']} lineages.", "context": ctx}
+    except Exception as exc:
+        return {"question": req.question, "answer": f"AI unavailable: {exc}. Based on data: {ctx['alive']} organisms alive, generation {ctx['max_generation']}, {ctx['n_lineages']} lineages.", "context": ctx}
 
 
 class ExperimentRequest(BaseModel):
@@ -98,7 +98,7 @@ Respond in JSON: {{"hypothesis": "...", "experiment": "...", "intervention": "fo
     try:
         response = await god._call_llm(prompt)
         return {"proposal": response, "context": ctx}
-    except Exception as e:
+    except Exception:
         return {"proposal": f"Suggest: trigger food_scarcity to test if evolved lineages (gen {ctx['max_generation']}) are more resilient than random organisms.", "context": ctx}
 
 
@@ -123,7 +123,7 @@ Be specific and reference numbers."""
     try:
         response = await god._call_llm(prompt)
         return {"anomalies": response, "context": ctx}
-    except Exception as e:
+    except Exception:
         return {"anomalies": f"Data summary: {ctx['alive']} alive from {ctx['births']} births and {ctx['deaths']} deaths. {ctx['n_lineages']} lineages competing.", "context": ctx}
 
 
@@ -151,7 +151,7 @@ Write as a scientific narrative, not bullet points."""
     try:
         response = await god._call_llm(prompt)
         return {"story": response, "context": ctx}
-    except Exception as e:
+    except Exception:
         return {"story": f"This ecosystem began with {ctx['births'] + ctx['deaths']} total organisms. Through {ctx['deaths']} deaths and {ctx['births']} births, {ctx['n_lineages']} lineages now compete across {ctx['max_generation']} generations.", "context": ctx}
 
 
@@ -187,5 +187,5 @@ Be specific with numbers."""
     try:
         response = await god._call_llm(prompt)
         return {"suggestions": response, "goal": req.goal, "context": ctx}
-    except Exception as e:
+    except Exception:
         return {"suggestions": f"To {req.goal}: consider increasing mutation_sigma to 0.08 for faster exploration, or reducing food by 30% for stronger selection pressure.", "goal": req.goal, "context": ctx}
