@@ -185,9 +185,10 @@ class TestMassiveEcosystem:
 
     def test_init(self):
         eco = MassiveEcosystem(n_organisms=1000, arena_size=50.0, seed=42)
-        assert eco.n == 1000
-        assert len(eco.x) == 1000
-        assert np.all(eco.alive)
+        # n includes 20% overcapacity for reproduction
+        assert eco.n >= 1000
+        assert len(eco.x) == eco.n
+        assert int(eco.alive.sum()) == 1000  # only original organisms alive
 
     def test_step_returns_stats(self):
         eco = MassiveEcosystem(n_organisms=500, seed=42)
@@ -211,7 +212,7 @@ class TestMassiveEcosystem:
         # after 10K steps. At 1000 steps only 10 energy gone, so also
         # test with a bigger dt to force deaths within 1000 steps.
         # Actually, use dt=1.0 * 20 to drain faster.
-        assert alive == eco.n  # at 0.01/step * 1000 = 10 loss, nobody dies yet
+        assert alive == 10_000  # at 0.01/step * 1000 = 10 loss, nobody dies yet (overcapacity slots stay dead)
 
         # Now run with large dt to force starvation
         eco2 = MassiveEcosystem(
@@ -234,9 +235,10 @@ class TestMassiveEcosystem:
 
     def test_species_assignment(self):
         eco = MassiveEcosystem(n_organisms=10_000, seed=42)
-        n_celegans = int(np.sum(eco.species == 0))
-        n_drosophila = int(np.sum(eco.species == 1))
-        assert n_celegans + n_drosophila == 10_000
+        alive = eco.alive
+        n_celegans = int(np.sum((eco.species == 0) & alive))
+        n_drosophila = int(np.sum((eco.species == 1) & alive))
+        assert n_celegans + n_drosophila == 10_000  # only count alive organisms
         # Should have a mix (roughly 70/30)
         assert n_celegans > 5000
         assert n_drosophila > 1000
