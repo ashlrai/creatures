@@ -22,6 +22,17 @@ interface TimelinePoint {
   emergent_behaviors: string[];
 }
 
+interface Discovery {
+  title: string;
+  description: string;
+  category: string;
+  evidence: Record<string, unknown>;
+  effect_size: number;
+  p_value: number;
+  confidence: number;
+  generation: number;
+}
+
 export function DeepEvolutionPanel() {
   // Setup state
   const [population, setPopulation] = useState(5000);
@@ -33,6 +44,7 @@ export function DeepEvolutionPanel() {
   const [runId, setRunId] = useState<string | null>(null);
   const [status, setStatus] = useState<RunStatus | null>(null);
   const [timeline, setTimeline] = useState<TimelinePoint[]>([]);
+  const [discoveries, setDiscoveries] = useState<Discovery[]>([]);
   const [phase, setPhase] = useState<'setup' | 'running' | 'complete'>('setup');
   const [loading, setLoading] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -84,6 +96,15 @@ export function DeepEvolutionPanel() {
             if (tlRes.ok) {
               const tlData = await tlRes.json();
               setTimeline(tlData.timeline ?? []);
+            }
+            // Fetch discoveries
+            const discRes = await fetch(`${API_BASE}/api/deep-evolution/${runId}/discoveries`);
+            if (discRes.ok) {
+              const discData = await discRes.json();
+              const sorted = (discData.discoveries ?? []).sort(
+                (a: Discovery, b: Discovery) => b.confidence - a.confidence
+              );
+              setDiscoveries(sorted);
             }
           }
         }
@@ -272,7 +293,50 @@ export function DeepEvolutionPanel() {
         </div>
       )}
 
-      <button onClick={() => { setPhase('setup'); setRunId(null); setStatus(null); setTimeline([]); }} style={{
+      {/* Discoveries */}
+      {discoveries.length > 0 && (
+        <div style={{ width: '100%', maxWidth: 700, marginBottom: 20 }}>
+          <h3 style={{ fontSize: 14, color: '#ffcc88', marginBottom: 8 }}>
+            Discoveries ({discoveries.length})
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {discoveries.map((d, i) => (
+              <div key={i} style={{
+                padding: '10px 12px', borderRadius: 8,
+                background: 'rgba(10,14,28,0.6)',
+                border: `1px solid ${d.p_value < 0.001 ? 'rgba(0,255,136,0.3)' : d.p_value < 0.01 ? 'rgba(255,204,136,0.3)' : 'rgba(80,130,200,0.15)'}`,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#dce4ec' }}>{d.title}</span>
+                  <span style={{
+                    fontSize: 9, fontFamily: 'var(--font-mono)', padding: '2px 6px', borderRadius: 4,
+                    background: d.confidence > 0.7 ? 'rgba(0,255,136,0.12)' : d.confidence > 0.4 ? 'rgba(255,204,136,0.12)' : 'rgba(80,130,200,0.1)',
+                    color: d.confidence > 0.7 ? '#00ff88' : d.confidence > 0.4 ? '#ffcc88' : 'rgba(180,200,220,0.5)',
+                  }}>
+                    conf {(d.confidence * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: 'rgba(180,200,220,0.5)', lineHeight: 1.4, marginBottom: 4 }}>
+                  {d.description}
+                </div>
+                <div style={{ display: 'flex', gap: 12, fontSize: 10, fontFamily: 'var(--font-mono)', color: 'rgba(140,170,200,0.4)' }}>
+                  <span>p={d.p_value < 0.001 ? '<0.001' : d.p_value.toFixed(4)}</span>
+                  <span>d={d.effect_size.toFixed(2)}</span>
+                  <span>gen {d.generation}</span>
+                  <span style={{
+                    padding: '1px 5px', borderRadius: 3,
+                    background: 'rgba(80,130,200,0.08)', color: 'rgba(140,170,200,0.5)',
+                  }}>
+                    {d.category}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <button onClick={() => { setPhase('setup'); setRunId(null); setStatus(null); setTimeline([]); setDiscoveries([]); }} style={{
         padding: '8px 24px', fontSize: 12, background: 'rgba(0,180,255,0.15)',
         border: '1px solid rgba(0,180,255,0.3)', borderRadius: 8,
         color: '#00d4ff', cursor: 'pointer', fontFamily: 'var(--font-mono)',

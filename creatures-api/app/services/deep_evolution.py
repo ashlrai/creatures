@@ -66,6 +66,7 @@ class DeepEvolutionRunner:
         run_dir.mkdir(parents=True, exist_ok=True)
         (run_dir / "snapshots").mkdir(exist_ok=True)
         (run_dir / "narratives").mkdir(exist_ok=True)
+        (run_dir / "discoveries").mkdir(exist_ok=True)
 
         with open(run_dir / "config.json", "w") as f:
             json.dump(config, f, indent=2)
@@ -103,6 +104,8 @@ class DeepEvolutionRunner:
         step = 0
         last_max_gen = 0
         narratives = []
+        snapshot_count = 0
+        discovery_engine = None
 
         try:
             # Take initial snapshot
@@ -167,6 +170,31 @@ class DeepEvolutionRunner:
                         narrative = None
 
                     self._save_snapshot(run, bw, step, current_max_gen, event_names, god, run_dir)
+                    snapshot_count += 1
+
+                    # Run discovery analysis every other snapshot
+                    if snapshot_count % 2 == 0:
+                        try:
+                            genomes, fitnesses = self._extract_genomes(bw)
+                            if genomes:
+                                if discovery_engine is None:
+                                    from creatures.discovery.evolved_discovery import EvolvedDiscoveryEngine
+                                    discovery_engine = EvolvedDiscoveryEngine(genomes[0])
+                                new_disc = discovery_engine.analyze_population(
+                                    genomes, fitnesses, current_max_gen
+                                )
+                                if new_disc:
+                                    disc_file = run_dir / "discoveries" / f"gen_{current_max_gen:06d}.json"
+                                    disc_data = [d.to_dict() for d in new_disc]
+                                    with open(disc_file, "w") as f:
+                                        json.dump(disc_data, f, indent=2, default=str)
+                                    logger.info(
+                                        "[%s] Gen %d: %d new discoveries",
+                                        run_id, current_max_gen, len(new_disc),
+                                    )
+                        except Exception as e:
+                            logger.warning("Discovery analysis error at gen %d: %s", current_max_gen, e)
+
                     last_max_gen = current_max_gen
 
                     logger.info(f"[{run_id}] Generation {current_max_gen}/{target_gen} — {pop_stats.get('alive', 0)} alive, {pop_stats.get('n_lineages', 0)} lineages")
@@ -188,6 +216,11 @@ class DeepEvolutionRunner:
         # Save final summary
         run["finished_at"] = time.time()
         elapsed = run["finished_at"] - run["started_at"]
+        # Collect all discoveries
+        all_discoveries = []
+        if discovery_engine is not None:
+            all_discoveries = [d.to_dict() for d in discovery_engine.discoveries]
+
         summary = {
             "run_id": run_id,
             "status": run["status"],
@@ -196,11 +229,78 @@ class DeepEvolutionRunner:
             "elapsed_seconds": elapsed,
             "snapshots_saved": len(run["snapshots"]),
             "narratives": narratives[-20:],  # last 20
+            "discoveries": all_discoveries,
         }
         with open(run_dir / "summary.json", "w") as f:
             json.dump(summary, f, indent=2, default=str)
 
         logger.info(f"Deep evolution {run_id} finished: {run['status']}, gen={run['current_generation']}, elapsed={elapsed:.1f}s")
+
+    def _extract_genomes(self, bw) -> tuple[list, list[float]]:
+        """Build Genome objects from BrainWorld organisms.
+
+        Returns (genomes, fitnesses) for all alive organisms.
+        """
+        from creatures.evolution.genome import Genome
+
+        eco = bw.ecosystem
+        engine = bw.engine
+        alive_mask = eco.alive
+        alive_idx = alive_mask.nonzero()[0]
+
+        if len(alive_idx) == 0:
+            return [], []
+
+        xp = engine.xp
+        n_per = engine.n_per if hasattr(engine, "n_per") else engine.n_total // max(engine.n_organisms, 1)
+        # Build a generic neuron ID list for the per-organism topology
+        neuron_ids = [f"n{i}" for i in range(n_per)]
+        neuron_types_map: dict = {}
+        neuron_nts_map: dict = {}
+        from creatures.connectome.types import NeuronType
+        for i, nid in enumerate(neuron_ids):
+            neuron_types_map[nid] = NeuronType.UNKNOWN
+            neuron_nts_map[nid] = None
+
+        # Get the template pre/post indices (same for all organisms)
+        synapses_per_org = engine.n_synapses // max(engine.n_organisms, 1)
+        # Template indices come from the first organism
+        syn_pre_all = np.asarray(engine.syn_pre if not hasattr(engine.syn_pre, 'tolist') else engine.syn_pre)
+        syn_post_all = np.asarray(engine.syn_post if not hasattr(engine.syn_post, 'tolist') else engine.syn_post)
+        syn_w_all = np.asarray(engine.syn_w if not hasattr(engine.syn_w, 'tolist') else engine.syn_w)
+
+        # Template topology: indices within organism (modulo n_per)
+        template_pre = syn_pre_all[:synapses_per_org] % n_per
+        template_post = syn_post_all[:synapses_per_org] % n_per
+
+        genomes = []
+        fitnesses = []
+
+        for idx in alive_idx:
+            idx = int(idx)
+            w_start = idx * synapses_per_org
+            w_end = w_start + synapses_per_org
+            weights = np.array(syn_w_all[w_start:w_end], dtype=np.float64)
+
+            fitness = float(eco.lifetime_food[idx])
+
+            g = Genome(
+                id=f"org_{idx}",
+                parent_ids=(),
+                generation=int(eco.generation[idx]),
+                neuron_ids=list(neuron_ids),
+                neuron_types=dict(neuron_types_map),
+                neuron_nts=dict(neuron_nts_map),
+                pre_indices=np.array(template_pre, dtype=np.int32),
+                post_indices=np.array(template_post, dtype=np.int32),
+                weights=weights,
+                synapse_types=np.zeros(len(weights), dtype=np.int8),
+                fitness=fitness,
+            )
+            genomes.append(g)
+            fitnesses.append(fitness)
+
+        return genomes, fitnesses
 
     def _save_snapshot(self, run: dict, bw, step: int, generation: int, events: list, god, run_dir: Path):
         """Save a generation snapshot to disk."""
@@ -292,6 +392,24 @@ class DeepEvolutionRunner:
         if task and not task.done():
             task.cancel()
         return True
+
+    def get_discoveries(self, run_id: str) -> list[dict]:
+        """Load all discoveries for a run."""
+        run = self._runs.get(run_id)
+        if not run:
+            return []
+        run_dir = run["run_dir"]
+        disc_dir = run_dir / "discoveries"
+        discoveries = []
+        if disc_dir.exists():
+            for f in sorted(disc_dir.glob("gen_*.json")):
+                with open(f) as fh:
+                    data = json.load(fh)
+                    if isinstance(data, list):
+                        discoveries.extend(data)
+                    else:
+                        discoveries.append(data)
+        return discoveries
 
     def list_runs(self) -> list[dict]:
         """List all runs with their status."""

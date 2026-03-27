@@ -69,6 +69,14 @@ async def get_snapshots(run_id: str):
     return {"run_id": run_id, "snapshots": snapshots}
 
 
+@router.get("/{run_id}/discoveries")
+async def get_discoveries(run_id: str):
+    """Get all discoveries from a deep evolution run."""
+    runner = _get_runner()
+    discoveries = runner.get_discoveries(run_id)
+    return {"run_id": run_id, "discoveries": discoveries}
+
+
 @router.get("/{run_id}/timeline")
 async def get_timeline(run_id: str):
     """Get evolution timeline data for graphing."""
