@@ -441,22 +441,18 @@ class EvolutionManager:
             if run.population is not None and run.population.genomes:
                 best = max(run.population.genomes, key=lambda g: g.fitness)
                 genome_data = {
-                    "neurons": [
-                        {"id": n.id, "bias": n.bias, "tau": n.tau, "type": n.type}
-                        for n in best.neurons
-                    ],
-                    "synapses": [
-                        {"pre": s.pre, "post": s.post, "weight": s.weight, "delay": s.delay}
-                        for s in best.synapses
-                    ],
+                    "neuron_ids": best.neuron_ids,
+                    "pre_indices": best.pre_indices.tolist(),
+                    "post_indices": best.post_indices.tolist(),
+                    "weights": best.weights.tolist(),
                 }
                 self.store.save_genome(
                     genome_id=f"{run.id}-best",
                     run_id=run.id,
                     generation=run.generation,
                     fitness=best.fitness,
-                    n_neurons=len(best.neurons),
-                    n_synapses=len(best.synapses),
+                    n_neurons=best.n_neurons,
+                    n_synapses=best.n_synapses,
                     data=genome_data,
                 )
             logger.info(f"Persisted evolution run {run.id} to store")
