@@ -50,19 +50,17 @@ export function SpeciesDiversityChart({ width = 220, height = 100 }: Props) {
     }
 
     // Data
-    const data = speciesHistory;
-    const maxVal = Math.max(1, ...data) + 1;
+    const maxVal = Math.max(1, ...speciesHistory) + 1;
 
     // Area fill
     ctx.beginPath();
     ctx.moveTo(pad.left, pad.top + plotH);
-    for (let i = 0; i < data.length; i++) {
-      const x = pad.left + (i / Math.max(1, data.length - 1)) * plotW;
-      const y = pad.top + plotH - (data[i] / maxVal) * plotH;
-      if (i === 0) ctx.lineTo(x, y);
-      else ctx.lineTo(x, y);
+    for (let i = 0; i < speciesHistory.length; i++) {
+      const x = pad.left + (i / Math.max(1, speciesHistory.length - 1)) * plotW;
+      const y = pad.top + plotH - (speciesHistory[i] / maxVal) * plotH;
+      ctx.lineTo(x, y);
     }
-    ctx.lineTo(pad.left + ((data.length - 1) / Math.max(1, data.length - 1)) * plotW, pad.top + plotH);
+    ctx.lineTo(pad.left + ((speciesHistory.length - 1) / Math.max(1, speciesHistory.length - 1)) * plotW, pad.top + plotH);
     ctx.closePath();
     const areaGrad = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
     areaGrad.addColorStop(0, 'rgba(255, 170, 34, 0.15)');
@@ -72,9 +70,9 @@ export function SpeciesDiversityChart({ width = 220, height = 100 }: Props) {
 
     // Line
     ctx.beginPath();
-    for (let i = 0; i < data.length; i++) {
-      const x = pad.left + (i / Math.max(1, data.length - 1)) * plotW;
-      const y = pad.top + plotH - (data[i] / maxVal) * plotH;
+    for (let i = 0; i < speciesHistory.length; i++) {
+      const x = pad.left + (i / Math.max(1, speciesHistory.length - 1)) * plotW;
+      const y = pad.top + plotH - (speciesHistory[i] / maxVal) * plotH;
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
@@ -83,9 +81,9 @@ export function SpeciesDiversityChart({ width = 220, height = 100 }: Props) {
     ctx.stroke();
 
     // Single dot if only 1 point
-    if (data.length === 1) {
+    if (speciesHistory.length === 1) {
       const x = pad.left;
-      const y = pad.top + plotH - (data[0] / maxVal) * plotH;
+      const y = pad.top + plotH - (speciesHistory[0] / maxVal) * plotH;
       ctx.beginPath();
       ctx.arc(x, y, 3, 0, Math.PI * 2);
       ctx.fillStyle = '#ffaa22';

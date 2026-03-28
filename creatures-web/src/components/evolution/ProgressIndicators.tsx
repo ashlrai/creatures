@@ -1,16 +1,17 @@
+import type { CSSProperties } from 'react';
 import { useEvolutionProgress } from '../../hooks/useEvolutionProgress';
 
-const cellStyle: React.CSSProperties = {
+const cellStyle: CSSProperties = {
   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
   padding: '4px 0',
 };
 
-const labelStyle: React.CSSProperties = {
+const labelStyle: CSSProperties = {
   fontSize: 8, fontFamily: 'monospace', textTransform: 'uppercase',
   letterSpacing: '0.5px', color: 'rgba(140, 170, 200, 0.4)',
 };
 
-const valueStyle: React.CSSProperties = {
+const valueStyle: CSSProperties = {
   fontSize: 14, fontFamily: 'monospace', fontWeight: 600,
   color: 'rgba(200, 215, 240, 0.9)',
 };

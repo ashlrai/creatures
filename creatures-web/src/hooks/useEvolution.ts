@@ -1,10 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEvolutionStore } from '../stores/evolutionStore';
-import type { EvolutionRun, EvolutionWsMessage, GenerationStats, GodReport } from '../types/evolution';
+import type { EvolutionEvent, EvolutionRun, EvolutionWsMessage, GenerationStats, GodReport } from '../types/evolution';
 import { detectEvents } from '../utils/evolutionEventDetector';
 
 import { API_BASE, WS_BASE } from '../config';
 import { getChallengeById } from '../data/challengePresets';
+
+/** Build a GodReport from an intervention message. */
+function makeGodReport(analysis: string, interventions: GodReport['interventions']): GodReport {
+  return {
+    analysis,
+    fitness_trend: 'intervening',
+    interventions,
+    hypothesis: '',
+    report: '',
+  };
+}
+
+/** Build an EvolutionEvent for a God Agent intervention. */
+function makeGodEvent(generation: number, description: string): EvolutionEvent {
+  return {
+    id: `evt_${generation}_god_intervention`,
+    generation,
+    timestamp: Date.now(),
+    type: 'god_intervention',
+    severity: 'info',
+    title: 'God Agent intervened',
+    description,
+    icon: '\uD83E\uDDE0',
+  };
+}
 
 /**
  * Hook that drives evolution via the real backend API and WebSocket stream.
@@ -128,23 +153,14 @@ export function useEvolution() {
             // Capture God Agent interventions from the WS stream
             if (msg.god_intervention) {
               const { addGodReport, addEvent: addEvt } = useEvolutionStore.getState();
-              addGodReport({
-                analysis: msg.god_intervention.analysis ?? '',
-                fitness_trend: 'intervening',
-                interventions: msg.god_intervention.interventions ?? [],
-                hypothesis: '',
-                report: '',
-              });
-              addEvt({
-                id: `evt_${msg.generation}_god_intervention`,
-                generation: msg.generation,
-                timestamp: Date.now(),
-                type: 'god_intervention',
-                severity: 'info',
-                title: 'God Agent intervened',
-                description: msg.god_intervention.analysis?.slice(0, 120) ?? 'Intervention applied',
-                icon: '\uD83E\uDDE0',
-              });
+              addGodReport(makeGodReport(
+                msg.god_intervention.analysis ?? '',
+                msg.god_intervention.interventions ?? [],
+              ));
+              addEvt(makeGodEvent(
+                msg.generation,
+                msg.god_intervention.analysis?.slice(0, 120) ?? 'Intervention applied',
+              ));
             }
           } else if (msg.type === 'run_complete') {
             const run = useEvolutionStore.getState().currentRun;
@@ -163,13 +179,7 @@ export function useEvolution() {
             }
           } else if (msg.type === 'god_intervention') {
             const { addGodReport } = useEvolutionStore.getState();
-            addGodReport({
-              analysis: msg.analysis ?? '',
-              fitness_trend: 'intervening',
-              interventions: msg.interventions ?? [],
-              hypothesis: '',
-              report: '',
-            });
+            addGodReport(makeGodReport(msg.analysis ?? '', msg.interventions ?? []));
           } else if (msg.type === 'error') {
             console.error('Evolution error:', msg.message);
           }
@@ -200,21 +210,12 @@ export function useEvolution() {
     const maxFitness = opts?.maxFitness ?? 92.0;
 
     // Difficulty-tuned improvement parameters
-    const earlyGainBase = difficulty === 'beginner' ? 0.25
-      : difficulty === 'intermediate' ? 0.18
-      : 0.10;
-    const earlyGainNoise = difficulty === 'beginner' ? 0.15
-      : difficulty === 'intermediate' ? 0.10
-      : 0.06;
-    const driftBias = difficulty === 'beginner' ? -0.35
-      : difficulty === 'intermediate' ? -0.40
-      : -0.45;
-    const breakthroughGain = difficulty === 'beginner' ? 1.2
-      : difficulty === 'intermediate' ? 0.8
-      : 0.5;
-    const midBoostGain = difficulty === 'beginner' ? 0.6
-      : difficulty === 'intermediate' ? 0.4
-      : 0.2;
+    const difficultyParams = {
+      beginner:      { earlyGainBase: 0.25, earlyGainNoise: 0.15, driftBias: -0.35, breakthroughGain: 1.2, midBoostGain: 0.6 },
+      intermediate:  { earlyGainBase: 0.18, earlyGainNoise: 0.10, driftBias: -0.40, breakthroughGain: 0.8, midBoostGain: 0.4 },
+      advanced:      { earlyGainBase: 0.10, earlyGainNoise: 0.06, driftBias: -0.45, breakthroughGain: 0.5, midBoostGain: 0.2 },
+    };
+    const { earlyGainBase, earlyGainNoise, driftBias, breakthroughGain, midBoostGain } = difficultyParams[difficulty];
     // Advanced difficulty introduces extra plateau regions
     const plateauZones = difficulty === 'advanced'
       ? [{ from: 25, to: 45 }, { from: 65, to: 80 }]
@@ -311,17 +312,15 @@ export function useEvolution() {
     const preset = selectedChallenge ? getChallengeById(selectedChallenge) : undefined;
     const difficulty = preset?.difficulty ?? 'beginner';
 
-    const curveParams: Parameters<typeof generateMockCurve>[0] = (() => {
-      switch (difficulty) {
-        case 'intermediate':
-          return { startFitness: 75, maxFitness: 88, difficulty: 'intermediate' as const };
-        case 'advanced':
-          return { startFitness: 60, maxFitness: 80, difficulty: 'advanced' as const };
-        case 'beginner':
-        default:
-          return { startFitness: 83, maxFitness: 92, difficulty: 'beginner' as const };
-      }
-    })();
+    const curveDefaults: Record<string, { startFitness: number; maxFitness: number }> = {
+      beginner: { startFitness: 83, maxFitness: 92 },
+      intermediate: { startFitness: 75, maxFitness: 88 },
+      advanced: { startFitness: 60, maxFitness: 80 },
+    };
+    const curveParams: Parameters<typeof generateMockCurve>[0] = {
+      ...curveDefaults[difficulty] ?? curveDefaults.beginner,
+      difficulty,
+    };
 
     // Use preset's recommended values if available
     const nGenerations = preset?.recommendedGenerations ?? 100;
@@ -373,22 +372,7 @@ export function useEvolution() {
 
       const stats = curve[genIndex];
       state.addGeneration(stats);
-
-      // Run event detection after adding generation
-      const updated = useEvolutionStore.getState();
-      const idx = updated.fitnessHistory.generations.length - 1;
-      if (idx >= 0) {
-        const events = detectEvents({
-          generations: updated.fitnessHistory.generations,
-          best: updated.fitnessHistory.best,
-          mean: updated.fitnessHistory.mean,
-          speciesHistory: updated.speciesHistory,
-          currentIndex: idx,
-        });
-        for (const evt of events) {
-          updated.addEvent(evt);
-        }
-      }
+      runEventDetection();
 
       // Fire God Agent interventions at key generations
       const gen = stats.generation;
@@ -402,21 +386,12 @@ export function useEvolution() {
           fitness_trend: gen <= 20 ? 'improving' : gen <= 60 ? 'plateau' : 'breakthrough',
         };
         state.addGodReport(report);
-        state.addEvent({
-          id: `evt_${gen}_god_intervention`,
-          generation: gen,
-          timestamp: Date.now(),
-          type: 'god_intervention',
-          severity: 'info',
-          title: 'God Agent intervened',
-          description: intervention.analysis.slice(0, 120),
-          icon: '\uD83E\uDDE0',
-        });
+        state.addEvent(makeGodEvent(gen, intervention.analysis.slice(0, 120)));
       }
 
       genIndex++;
     }, 500);
-  }, [reset, setRun, setRunStartTime, generateMockCurve]);
+  }, [reset, setRun, setRunStartTime, generateMockCurve, runEventDetection]);
 
   const stopMock = useCallback(() => {
     if (mockIntervalRef.current) {

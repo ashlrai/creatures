@@ -126,6 +126,10 @@ class BatchVectorizedFitness:
                             if abs(stim[si]) > 0.1:
                                 engine.inject_stimulus([0], [offset + s_idx], float(stim[si]))
 
+            # Clear environment stimulus after window ends
+            elif step_i == int(400.0 / engine.dt):
+                engine.clear_input()
+
             # Background noise every 20 steps
             if step_i % 20 == 0:
                 for org_i in range(n_organisms):
@@ -306,14 +310,15 @@ class BatchVectorizedFitness:
             # Load Izhikevich params from genome if available
             if (engine._neuron_model == NeuronModel.IZHIKEVICH
                     and genome.iz_a is not None):
-                engine.iz_a[offset:offset + n_per] = xp.array(
-                    genome.iz_a[:n_per].astype(np_fdtype))
-                engine.iz_b[offset:offset + n_per] = xp.array(
-                    genome.iz_b[:n_per].astype(np_fdtype))
-                engine.iz_c[offset:offset + n_per] = xp.array(
-                    genome.iz_c[:n_per].astype(np_fdtype))
-                engine.iz_d[offset:offset + n_per] = xp.array(
-                    genome.iz_d[:n_per].astype(np_fdtype))
+                iz_len = min(len(genome.iz_a), n_per)
+                engine.iz_a[offset:offset + iz_len] = xp.array(
+                    genome.iz_a[:iz_len].astype(np_fdtype))
+                engine.iz_b[offset:offset + iz_len] = xp.array(
+                    genome.iz_b[:iz_len].astype(np_fdtype))
+                engine.iz_c[offset:offset + iz_len] = xp.array(
+                    genome.iz_c[:iz_len].astype(np_fdtype))
+                engine.iz_d[offset:offset + iz_len] = xp.array(
+                    genome.iz_d[:iz_len].astype(np_fdtype))
 
         engine.syn_pre = xp.array(np.concatenate(all_pre))
         engine.syn_post = xp.array(np.concatenate(all_post))

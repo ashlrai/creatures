@@ -230,6 +230,8 @@ class EvolutionManager:
             except Exception as e:
                 logger.warning(f"Failed to create batch evaluator: {e}, falling back to fast mode")
 
+        import numpy as _np
+
         t_start = time.time()
 
         try:
@@ -273,7 +275,6 @@ class EvolutionManager:
 
                 # Collect rich genome/population stats
                 best_genome = max(population.genomes, key=lambda g: g.fitness)
-                import numpy as _np
                 all_fitnesses = [g.fitness for g in population.genomes]
 
                 stats_dict: dict[str, Any] = {
@@ -326,7 +327,6 @@ class EvolutionManager:
                 if god is not None:
                     # Collect consciousness metrics from best genome if available
                     consciousness_data = None
-                    best_genome = max(population.genomes, key=lambda g: g.fitness)
                     breakdown = best_genome.metadata.get("fitness_breakdown", {})
                     if "phi" in breakdown:
                         phis = [g.metadata.get("fitness_breakdown", {}).get("phi", 0)
@@ -350,9 +350,8 @@ class EvolutionManager:
                         consciousness_metrics=consciousness_data,
                     )
                     if stats.generation > 0 and stats.generation % god.config.intervention_interval == 0:
-                        import asyncio as _asyncio
                         # Run async analyze in a new event loop (we're in a thread)
-                        loop = _asyncio.new_event_loop()
+                        loop = asyncio.new_event_loop()
                         try:
                             intervention = loop.run_until_complete(god.analyze_and_intervene())
                         finally:

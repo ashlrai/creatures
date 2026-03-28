@@ -4,6 +4,18 @@ import { useEvolution } from '../../hooks/useEvolution';
 import { getChallengeById } from '../../data/challengePresets';
 import type { GodReport } from '../../types/evolution';
 
+const DIFFICULTY_BADGE: Record<string, { bg: string; color: string }> = {
+  beginner: { bg: 'rgba(0,230,118,0.12)', color: 'var(--accent-green)' },
+  intermediate: { bg: 'rgba(255,180,50,0.12)', color: 'var(--accent-amber)' },
+  advanced: { bg: 'rgba(255,50,80,0.12)', color: 'var(--accent-magenta)' },
+};
+
+const STATUS_COLOR: Record<string, string> = {
+  running: 'var(--accent-green)',
+  paused: 'var(--accent-amber)',
+  completed: 'var(--accent-cyan)',
+};
+
 interface EvolutionDashboardProps {
   showConnectomeComparison?: boolean;
   onToggleConnectomeComparison?: () => void;
@@ -79,8 +91,9 @@ export function EvolutionDashboard({ showConnectomeComparison, onToggleConnectom
       } else {
         // Demo mode: fetch sample report from API, or generate locally
         // Capture store state NOW before async operations
-        const storeHistory = useEvolutionStore.getState().fitnessHistory;
-        const storeRun = useEvolutionStore.getState().currentRun;
+        const storeState = useEvolutionStore.getState();
+        const storeHistory = storeState.fitnessHistory;
+        const storeRun = storeState.currentRun;
         try {
           const res = await fetch('/api/export/demo/report');
           if (res.ok) {
@@ -185,12 +198,8 @@ export function EvolutionDashboard({ showConnectomeComparison, onToggleConnectom
               textTransform: 'uppercase',
               letterSpacing: '0.5px',
               fontWeight: 600,
-              background: activeChallenge.difficulty === 'beginner' ? 'rgba(0,230,118,0.12)'
-                : activeChallenge.difficulty === 'intermediate' ? 'rgba(255,180,50,0.12)'
-                : 'rgba(255,50,80,0.12)',
-              color: activeChallenge.difficulty === 'beginner' ? 'var(--accent-green)'
-                : activeChallenge.difficulty === 'intermediate' ? 'var(--accent-amber)'
-                : 'var(--accent-magenta)',
+              background: DIFFICULTY_BADGE[activeChallenge.difficulty]?.bg ?? 'rgba(255,50,80,0.12)',
+              color: DIFFICULTY_BADGE[activeChallenge.difficulty]?.color ?? 'var(--accent-magenta)',
             }}>
               {activeChallenge.difficulty}
             </span>
@@ -294,10 +303,7 @@ export function EvolutionDashboard({ showConnectomeComparison, onToggleConnectom
           <span className="stat-label">Status</span>
           <span className="stat-value" style={{
             fontSize: 11,
-            color: status === 'running' ? 'var(--accent-green)'
-              : status === 'paused' ? 'var(--accent-amber)'
-              : status === 'completed' ? 'var(--accent-cyan)'
-              : 'var(--text-label)',
+            color: STATUS_COLOR[status] ?? 'var(--text-label)',
           }}>
             {status.toUpperCase()}
           </span>
