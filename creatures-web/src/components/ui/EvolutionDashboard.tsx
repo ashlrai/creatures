@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useEvolutionStore } from '../../stores/evolutionStore';
 import { useEvolution } from '../../hooks/useEvolution';
-import { FitnessGraph } from './FitnessGraph';
+import { getChallengeById } from '../../data/challengePresets';
 import type { GodReport } from '../../types/evolution';
 
 interface EvolutionDashboardProps {
@@ -11,8 +11,8 @@ interface EvolutionDashboardProps {
 
 export function EvolutionDashboard({ showConnectomeComparison, onToggleConnectomeComparison }: EvolutionDashboardProps) {
   const currentRun = useEvolutionStore((s) => s.currentRun);
-  const fitnessHistory = useEvolutionStore((s) => s.fitnessHistory);
   const latestStats = useEvolutionStore((s) => s.latestStats);
+  const selectedChallengeId = useEvolutionStore((s) => s.selectedChallenge);
   const godReports = useEvolutionStore((s) => s.godReports);
   const { start, pause, resume, backendAvailable } = useEvolution();
 
@@ -53,6 +53,11 @@ export function EvolutionDashboard({ showConnectomeComparison, onToggleConnectom
       interventions: allInterventions.slice(-5),
     };
   }, [godReports, currentRun]);
+
+  const activeChallenge = useMemo(() => {
+    if (!selectedChallengeId) return null;
+    return getChallengeById(selectedChallengeId) ?? null;
+  }, [selectedChallengeId]);
 
   const status = currentRun?.status ?? 'idle';
   const generation = currentRun?.generation ?? 0;
@@ -160,6 +165,36 @@ export function EvolutionDashboard({ showConnectomeComparison, onToggleConnectom
       {backendAvailable === false && status !== 'idle' && (
         <div className="glass" style={{ padding: '6px 10px', fontSize: 10, color: 'var(--accent-amber)', textAlign: 'center' }}>
           No backend — running local simulation
+        </div>
+      )}
+
+      {/* Active challenge */}
+      {activeChallenge && status !== 'idle' && (
+        <div className="glass" style={{ padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 18, lineHeight: 1 }}>{activeChallenge.icon}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.2 }}>
+              {activeChallenge.name}
+            </div>
+            <span style={{
+              display: 'inline-block',
+              marginTop: 2,
+              fontSize: 8,
+              padding: '1px 5px',
+              borderRadius: 3,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              fontWeight: 600,
+              background: activeChallenge.difficulty === 'beginner' ? 'rgba(0,230,118,0.12)'
+                : activeChallenge.difficulty === 'intermediate' ? 'rgba(255,180,50,0.12)'
+                : 'rgba(255,50,80,0.12)',
+              color: activeChallenge.difficulty === 'beginner' ? 'var(--accent-green)'
+                : activeChallenge.difficulty === 'intermediate' ? 'var(--accent-amber)'
+                : 'var(--accent-magenta)',
+            }}>
+              {activeChallenge.difficulty}
+            </span>
+          </div>
         </div>
       )}
 
@@ -363,12 +398,6 @@ export function EvolutionDashboard({ showConnectomeComparison, onToggleConnectom
           </button>
         </div>
       )}
-
-      {/* Mini fitness graph */}
-      <div className="glass" style={{ padding: 8 }}>
-        <div className="glass-label">Fitness Curve</div>
-        <FitnessGraph history={fitnessHistory} width={196} height={120} />
-      </div>
 
       {/* God Agent section — always visible when evolution has started */}
       {generation > 0 && (

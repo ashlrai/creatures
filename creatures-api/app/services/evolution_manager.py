@@ -204,6 +204,32 @@ class EvolutionManager:
             organism=run.config.get("organism", "c_elegans"),
             w_consciousness=run.config.get("w_consciousness", 0.0),
         )
+
+        # Load environment config if a challenge preset was specified
+        env_config = None
+        env_preset = run.config.get("environment_preset")
+        if env_preset:
+            try:
+                from creatures.evolution.environment_config import EnvironmentConfig
+                env_config = EnvironmentConfig.from_preset(env_preset)
+                logger.info(f"Loaded environment preset '{env_preset}' for run {run_id}")
+            except Exception as e:
+                logger.warning(f"Failed to load env preset '{env_preset}': {e}")
+
+        # Create batch evaluator for vectorized mode
+        batch_evaluator = None
+        fitness_mode = run.config.get("fitness_mode", "fast")
+        if fitness_mode == "vectorized":
+            try:
+                from creatures.evolution.fitness_vectorized import BatchVectorizedFitness
+                batch_evaluator = BatchVectorizedFitness(
+                    env_config=env_config,
+                    use_gpu=True,
+                    sim_ms=min(500.0, run.config.get("lifetime_ms", 500.0)),
+                )
+            except Exception as e:
+                logger.warning(f"Failed to create batch evaluator: {e}, falling back to fast mode")
+
         t_start = time.time()
 
         try:
@@ -215,8 +241,17 @@ class EvolutionManager:
                     return
 
                 # Evaluate all genomes
-                fitness_mode = run.config.get("fitness_mode", "fast")
-                if fitness_mode == "vectorized":
+                if batch_evaluator is not None:
+                    try:
+                        results = batch_evaluator.evaluate_batch(
+                            population.genomes, neuron_model="izhikevich"
+                        )
+                        for genome in population.genomes:
+                            genome.fitness = results.get(genome.id, 0.0)
+                    except Exception as e:
+                        logger.warning(f"Batch eval failed: {e}, falling back")
+                        population.evaluate(lambda g: evaluate_genome_fast(g, fitness_config))
+                elif fitness_mode == "vectorized":
                     from creatures.evolution.fitness import evaluate_genome_vectorized
                     population.evaluate(
                         lambda g: evaluate_genome_vectorized(
@@ -236,6 +271,11 @@ class EvolutionManager:
                 run.mean_fitness = stats.mean_fitness
                 run.elapsed_seconds = time.time() - t_start
 
+                # Collect rich genome/population stats
+                best_genome = max(population.genomes, key=lambda g: g.fitness)
+                import numpy as _np
+                all_fitnesses = [g.fitness for g in population.genomes]
+
                 stats_dict: dict[str, Any] = {
                     "type": "generation_complete",
                     "generation": stats.generation,
@@ -245,6 +285,19 @@ class EvolutionManager:
                     "n_species": stats.n_species,
                     "best_genome_id": stats.best_genome_id,
                     "elapsed_seconds": run.elapsed_seconds,
+                    # Rich data
+                    "best_genome": {
+                        "n_neurons": best_genome.n_neurons,
+                        "n_synapses": best_genome.n_synapses,
+                        "mean_weight": float(_np.mean(_np.abs(best_genome.weights))) if best_genome.n_synapses > 0 else 0,
+                        "fitness_breakdown": best_genome.metadata.get("fitness_breakdown", {}),
+                    },
+                    "population_stats": {
+                        "min_fitness": float(min(all_fitnesses)) if all_fitnesses else 0,
+                        "median_fitness": float(_np.median(all_fitnesses)) if all_fitnesses else 0,
+                        "mean_n_synapses": float(_np.mean([g.n_synapses for g in population.genomes])),
+                        "mean_n_neurons": float(_np.mean([g.n_neurons for g in population.genomes])),
+                    },
                 }
 
                 # Narrate this generation

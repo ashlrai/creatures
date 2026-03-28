@@ -7,11 +7,12 @@ import { DrugTestingPanel } from './components/ui/DrugTestingPanel';
 import { TransportControls } from './components/ui/TransportControls';
 import { useTransportStore } from './stores/transportStore';
 import { EvolutionDashboard } from './components/ui/EvolutionDashboard';
-import { FitnessGraph } from './components/ui/FitnessGraph';
 import { GodAgentPanel } from './components/ui/GodAgentPanel';
 import { ArenaView } from './components/evolution/ArenaView';
 import { ConnectomeComparison } from './components/evolution/ConnectomeComparison';
 import { GenerationTimeline } from './components/evolution/GenerationTimeline';
+import { EvolutionSidebar } from './components/evolution/EvolutionSidebar';
+import { ChallengeSelector } from './components/evolution/ChallengeSelector';
 import { EcosystemView, type MassiveOrganism, type MassiveNeuralStats, type EmergentEvent } from './components/ecosystem/EcosystemView';
 import { EcosystemView3D } from './components/ecosystem/EcosystemView3D';
 import { SpeciesComparison } from './components/ui/SpeciesComparison';
@@ -216,7 +217,6 @@ export default function App() {
   const { startDemo, isDemo } = useDemoMode();
   const isEvolutionMode = useEvolutionStore((s) => s.isEvolutionMode);
   const toggleEvolutionMode = useEvolutionStore((s) => s.toggleEvolutionMode);
-  const fitnessHistory = useEvolutionStore((s) => s.fitnessHistory);
   const frame = useSimulationStore((s) => s.frame);
   const history = useSimulationStore((s) => s.frameHistory);
   const connectionStatus = useSimulationStore((s) => s.connectionStatus);
@@ -258,6 +258,9 @@ export default function App() {
   const [splitView, setSplitView] = useState(false);
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
+  const [leftWidth, setLeftWidth] = useState(220);
+  const [rightWidth, setRightWidth] = useState(280);
+  const resizingRef = useRef<'left' | 'right' | null>(null);
   const [showWelcome, setShowWelcome] = useLocalStorage('neurevo:welcomed', true);
   const [showTutorial, setShowTutorial] = useState(() => !Tutorial.isComplete());
   const autoStarted = useRef(false);
@@ -266,6 +269,44 @@ export default function App() {
   const [savedOrganism, setSavedOrganism] = useLocalStorage<string>('neurevo:organism', 'c_elegans');
   const [savedMode, setSavedMode] = useLocalStorage<'sim' | 'evo'>('neurevo:mode', 'sim');
   const [drugPanelExpanded, setDrugPanelExpanded] = useLocalStorage<boolean>('neurevo:drugPanelExpanded', false);
+
+  // Sidebar resize handlers
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizingRef.current) return;
+      e.preventDefault();
+      if (resizingRef.current === 'left') {
+        setLeftWidth(Math.max(180, Math.min(500, e.clientX)));
+      } else {
+        setRightWidth(Math.max(200, Math.min(600, window.innerWidth - e.clientX)));
+      }
+    };
+    const handleMouseUp = () => {
+      if (resizingRef.current) {
+        resizingRef.current = null;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
+  const startResizeLeft = useCallback(() => {
+    resizingRef.current = 'left';
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  const startResizeRight = useCallback(() => {
+    resizingRef.current = 'right';
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
 
   // Sync appMode with evolution store for backward compatibility
   useEffect(() => {
@@ -834,7 +875,8 @@ export default function App() {
       {/* Main content */}
       <div className="app-content">
         {/* Left sidebar */}
-        <div className={`sidebar${leftOpen ? '' : ' collapsed'}`}>
+        <div className={`sidebar${leftOpen ? '' : ' collapsed'}`} style={leftOpen ? { width: leftWidth } : undefined}>
+          {leftOpen && <div className="sidebar-resize-handle sidebar-resize-handle-left" onMouseDown={startResizeLeft} />}
           {leftOpen && (appMode === 'eco' ? (
             <>
               {/* Scale selector */}
@@ -1183,14 +1225,14 @@ export default function App() {
           <button
             className="sidebar-toggle sidebar-toggle-left"
             onClick={() => setLeftOpen(!leftOpen)}
-            style={{ left: leftOpen ? 220 : 0 }}
+            style={{ left: leftOpen ? leftWidth : 0 }}
           >
             {leftOpen ? '\u2039' : '\u203A'}
           </button>
           <button
             className="sidebar-toggle sidebar-toggle-right"
             onClick={() => setRightOpen(!rightOpen)}
-            style={{ right: rightOpen ? 280 : 0 }}
+            style={{ right: rightOpen ? rightWidth : 0 }}
           >
             {rightOpen ? '\u203A' : '\u2039'}
           </button>
@@ -1233,6 +1275,7 @@ export default function App() {
             )
           ) : appMode === 'evo' ? (
             <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <ChallengeSelector />
               <div style={{ flex: 1, minHeight: 0 }}>
                 {showConnectomeComparison ? (
                   <ConnectomeComparison onClose={() => setShowConnectomeComparison(false)} />
@@ -1253,7 +1296,8 @@ export default function App() {
         </div>
 
         {/* Right sidebar */}
-        <div className={`sidebar sidebar-right${rightOpen ? '' : ' collapsed'}`}>
+        <div className={`sidebar sidebar-right${rightOpen ? '' : ' collapsed'}`} style={rightOpen ? { width: rightWidth } : undefined}>
+          {rightOpen && <div className="sidebar-resize-handle sidebar-resize-handle-right" onMouseDown={startResizeRight} />}
           {rightOpen && (appMode === 'eco' ? (
             <div className="glass" style={{ padding: 8, flex: 1, display: 'flex', flexDirection: 'column' }}>
               <div className="glass-label">{ecoScale === 'massive' ? 'Brain-World Info' : 'Ecosystem Info'}</div>
@@ -1280,12 +1324,7 @@ export default function App() {
               </div>
             </div>
           ) : appMode === 'evo' ? (
-            <div className="glass" style={{ padding: 8, flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <div className="glass-label">Fitness Over Generations</div>
-              <div style={{ flex: 1, minHeight: 300 }}>
-                <FitnessGraph history={fitnessHistory} width={220} height={420} />
-              </div>
-            </div>
+            <EvolutionSidebar />
           ) : (
             experiment ? (
               <>

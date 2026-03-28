@@ -31,8 +31,9 @@ class EvolutionCreateRequest(BaseModel):
     lifetime_ms: float = 5000.0
     n_workers: int = 4
     seed: int = 42
-    fitness_mode: str = "fast"  # "fast", "medium", "full", or "vectorized"
+    fitness_mode: str = "vectorized"  # "fast", "medium", "full", or "vectorized"
     w_consciousness: float = 0.0  # Φ weight in fitness (0 = disabled, 1.0 = full)
+    environment_preset: str | None = None  # Challenge preset ID (e.g. "gauntlet", "toxic-minefield")
 
 
 class EvolutionRunInfo(BaseModel):
@@ -133,3 +134,10 @@ async def evolution_ws(websocket: WebSocket, run_id: str):
         pass
     finally:
         mgr.unsubscribe(run_id, queue)
+
+
+@router.get("/challenges")
+async def list_challenges():
+    """Return available challenge environment presets."""
+    from creatures.evolution.environment_config import PRESET_LIST
+    return PRESET_LIST

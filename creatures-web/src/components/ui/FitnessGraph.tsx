@@ -51,12 +51,28 @@ export function FitnessGraph({ history, width, height }: FitnessGraphProps) {
     ctx.lineWidth = 1;
     ctx.strokeRect(pad.left, pad.top, plotW, plotH);
 
-    if (history.generations.length < 2) {
-      // Placeholder text
-      ctx.fillStyle = 'rgba(140, 170, 200, 0.3)';
-      ctx.font = '11px monospace';
+    if (history.generations.length < 1) {
+      ctx.fillStyle = 'rgba(140, 170, 200, 0.2)';
+      ctx.font = '10px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('Awaiting evolution data...', w / 2, h / 2);
+      ctx.fillText('Waiting for first generation...', w / 2, h / 2);
+      ctx.textAlign = 'start';
+      return;
+    }
+
+    // Single data point — draw a dot
+    if (history.generations.length === 1) {
+      const x = pad.left + plotW / 2;
+      const yBest = pad.top + plotH * 0.3;
+      const yMean = pad.top + plotH * 0.5;
+      ctx.beginPath(); ctx.arc(x, yBest, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#00ccff'; ctx.fill();
+      ctx.beginPath(); ctx.arc(x, yMean, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#00cc66'; ctx.fill();
+      ctx.fillStyle = 'rgba(140, 170, 200, 0.3)';
+      ctx.font = '9px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(`Best: ${history.best[0].toFixed(1)}`, x, yBest - 8);
+      ctx.fillText(`Mean: ${history.mean[0].toFixed(1)}`, x, yMean + 14);
       ctx.textAlign = 'start';
       return;
     }

@@ -96,6 +96,28 @@ body {
   visibility: hidden;
 }
 
+/* Resize handles for draggable sidebar widths */
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 20;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle.active {
+  background: rgba(0, 180, 255, 0.25);
+}
+.sidebar-resize-handle-left {
+  right: -3px;
+}
+.sidebar-resize-handle-right {
+  left: -3px;
+}
+
 .bottom-bar {
   background: var(--bg-panel);
   border-top: 1px solid var(--border-subtle);
@@ -250,6 +272,12 @@ body {
 .stat-magenta { color: var(--accent-magenta); }
 .stat-green { color: var(--accent-green); }
 .stat-amber { color: var(--accent-amber); }
+
+/* Generic fade in */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
 /* Loading spinner */
 @keyframes spin { to { transform: rotate(360deg); } }
