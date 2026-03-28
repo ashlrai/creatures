@@ -599,10 +599,11 @@ async def create_massive(req: MassiveCreateRequest):
     """Create a massive brain-world: every organism has a spiking neural brain."""
     bw_id = f"bw_{uuid.uuid4().hex[:8]}"
 
-    if req.n_organisms < 1 or req.n_organisms > 500_000:
-        raise HTTPException(400, "n_organisms must be between 1 and 500,000")
-    if req.neurons_per < 10 or req.neurons_per > 1000:
-        raise HTTPException(400, "neurons_per must be between 10 and 1,000")
+    # Conservative limits for public deployment (Railway CPU, no GPU)
+    if req.n_organisms < 1 or req.n_organisms > 10_000:
+        raise HTTPException(400, "n_organisms must be between 1 and 10,000")
+    if req.neurons_per < 10 or req.neurons_per > 200:
+        raise HTTPException(400, "neurons_per must be between 10 and 200")
 
     try:
         bw = BrainWorld(

@@ -97,6 +97,12 @@ def restore_checkpoint(bw_id: str):
         saved_w = np.load(syn_w_path)
         engine = bw.engine
         n = min(len(saved_w), engine.n_synapses)
+        if len(saved_w) != engine.n_synapses:
+            logger.warning(
+                "Checkpoint weight shape mismatch: saved %d, engine %d. "
+                "Partial restore — weights beyond index %d retain random init.",
+                len(saved_w), engine.n_synapses, n,
+            )
         if engine._backend == 'mlx':
             import mlx.core as mx
             engine.syn_w = mx.array(saved_w[:n])
