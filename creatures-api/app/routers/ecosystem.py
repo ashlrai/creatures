@@ -53,6 +53,9 @@ _brain_world_subscribers: dict[str, dict[str, WebSocket]] = {}
 # Speed multiplier per brain-world (1.0 = real-time)
 _brain_world_speed: dict[str, float] = {}
 
+# World type per brain-world (for checkpoint metadata)
+_brain_world_world_types: dict[str, str] = {}
+
 # Timeline history: eco_id -> list of {step, time_ms, populations}
 _timeline_history: dict[str, list[dict]] = {}
 
@@ -618,6 +621,7 @@ async def create_massive(req: MassiveCreateRequest):
         raise HTTPException(500, f"Failed to create brain-world: {str(e)[:200]}")
 
     _brain_worlds[bw_id] = bw
+    _brain_world_world_types[bw_id] = req.world_type
     arena_area = req.arena_size * req.arena_size
     _brain_world_detectors[bw_id] = EmergentBehaviorDetector(
         history_window=500, arena_area=arena_area
@@ -740,6 +744,14 @@ async def _massive_run_loop(bw_id: str) -> None:
                 # Step the brain-world
                 bw.step(dt=1.0)
                 step_count += 1
+
+                # Every 1000 steps: auto-checkpoint
+                if step_count % 1000 == 0 and step_count > 0:
+                    try:
+                        from app.services.ecosystem_persistence import save_checkpoint
+                        save_checkpoint(bw_id, bw, config={"world_type": _brain_world_world_types.get(bw_id, "pond")})
+                    except Exception as exc:
+                        logger.warning(f"Checkpoint failed: {exc}")
 
                 # --- Emergent detection every 100 steps ---
                 if detector and step_count % 100 == 0:
@@ -968,3 +980,26 @@ async def massive_ecosystem_ws(websocket: WebSocket, bw_id: str):
         if not subs:
             # Last subscriber gone — loop will stop itself on next broadcast check
             _brain_world_subscribers.pop(bw_id, None)
+
+
+# ======================================================================
+# Checkpoint persistence endpoints
+# ======================================================================
+
+
+@router.get("/checkpoints")
+async def list_saved_worlds():
+    """List all saved ecosystem checkpoints."""
+    from app.services.ecosystem_persistence import list_checkpoints
+    return {"checkpoints": list_checkpoints()}
+
+
+@router.post("/restore/{bw_id}")
+async def restore_world(bw_id: str):
+    """Restore a brain-world from a saved checkpoint."""
+    from app.services.ecosystem_persistence import restore_checkpoint
+    bw, meta = restore_checkpoint(bw_id)
+    if not bw:
+        raise HTTPException(404, f"No checkpoint for {bw_id}")
+    _brain_worlds[bw_id] = bw
+    return {"restored": True, "meta": meta}

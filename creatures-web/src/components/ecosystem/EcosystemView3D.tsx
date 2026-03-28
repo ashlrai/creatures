@@ -54,6 +54,15 @@ interface EcosystemView3DProps {
 // Instanced Organisms
 // ---------------------------------------------------------------------------
 
+/** Hash a string to a numeric value for lineage coloring */
+function hashStringToNumber(s: string): number {
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) {
+    hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
 /** Shared temp objects to avoid per-frame allocation */
 const _obj = new THREE.Object3D();
 const _color = new THREE.Color();
@@ -62,10 +71,12 @@ function OrganismInstances({
   organisms,
   neuralStats,
   onSelectOrganism,
+  colorMode,
 }: {
   organisms: MassiveOrganism[];
   neuralStats: MassiveNeuralStats | null;
   onSelectOrganism?: (org: MassiveOrganism | null) => void;
+  colorMode: 'energy' | 'lineage';
 }) {
   const elegansRef = useRef<THREE.InstancedMesh>(null);
   const drosophilaRef = useRef<THREE.InstancedMesh>(null);
@@ -146,73 +157,66 @@ function OrganismInstances({
       _obj.rotation.set(0, 0, heading);
       _obj.updateMatrix();
 
-      // Energy-based color: red (dying) -> species color (mid) -> bright white/gold (thriving)
-      // e < 0.3: red/dark -> species color
-      // e 0.3-0.7: species color
-      // e > 0.7: species color -> bright white/gold
+      // Color calculation depends on colorMode
       const generation = org.generation ?? 0;
       const genFactor = Math.min(generation / 50, 1);
 
-      // Dying color (dark red)
-      const dyingR = 0.7, dyingG = 0.08, dyingB = 0.05;
-      // Thriving color (bright white-gold)
-      const thriveR = 1.4, thriveG = 1.3, thriveB = 0.9;
+      let r: number, g: number, b: number;
 
-      if (isCelegans) {
-        eMesh.setMatrixAt(eIdx, _obj.matrix);
-        // Species base: cyan (0.15, 0.75, 1.0)
-        let r: number, g: number, b: number;
+      if (colorMode === 'lineage') {
+        // Lineage-based coloring: hash lineage_id to a unique HSL hue
+        const lineageHash = hashStringToNumber(org.lineage_id ?? `${i}`);
+        const hue = (lineageHash * 137.508) % 360;
+        const saturation = 0.7;
+        const lightness = 0.5 + e * 0.2; // 50-70% based on energy
+        _color.setHSL(hue / 360, saturation, lightness);
+        r = _color.r;
+        g = _color.g;
+        b = _color.b;
+      } else {
+        // Energy-based color: red (dying) -> species color (mid) -> bright white/gold (thriving)
+        // e < 0.3: red/dark -> species color
+        // e 0.3-0.7: species color
+        // e > 0.7: species color -> bright white/gold
+        const dyingR = 0.7, dyingG = 0.08, dyingB = 0.05;
+        const thriveR = 1.4, thriveG = 1.3, thriveB = 0.9;
+
+        // Species base colors
+        const baseR = isCelegans ? 0.15 : 0.9;
+        const baseG = isCelegans ? 0.75 : 0.55;
+        const baseB = isCelegans ? 1.0 : 0.1;
+
         if (e < 0.3) {
-          // Dying -> species: blend from red to cyan
           const f = e / 0.3;
-          r = dyingR * (1 - f) + 0.15 * f;
-          g = dyingG * (1 - f) + 0.75 * f;
-          b = dyingB * (1 - f) + 1.0 * f;
+          r = dyingR * (1 - f) + baseR * f;
+          g = dyingG * (1 - f) + baseG * f;
+          b = dyingB * (1 - f) + baseB * f;
         } else if (e > 0.7) {
-          // Species -> thriving: blend from cyan to bright white-gold
           const f = (e - 0.7) / 0.3;
-          r = 0.15 * (1 - f) + thriveR * f;
-          g = 0.75 * (1 - f) + thriveG * f;
-          b = 1.0 * (1 - f) + thriveB * f;
+          r = baseR * (1 - f) + thriveR * f;
+          g = baseG * (1 - f) + thriveG * f;
+          b = baseB * (1 - f) + thriveB * f;
         } else {
-          // Mid range: species cyan
-          r = 0.15;
-          g = 0.75;
-          b = 1.0;
+          r = baseR;
+          g = baseG;
+          b = baseB;
         }
         // Mix species color with gold based on generation
         r = r * (1 - genFactor * 0.3) + 1.0 * genFactor * 0.3;
         g = g * (1 - genFactor * 0.3) + 0.85 * genFactor * 0.3;
         b = b * (1 - genFactor * 0.3) + 0.15 * genFactor * 0.3;
-        _color.setRGB(r, g, b);
+      }
+
+      _color.setRGB(r, g, b);
+
+      if (isCelegans) {
+        eMesh.setMatrixAt(eIdx, _obj.matrix);
         elegansColors[eIdx * 3] = _color.r;
         elegansColors[eIdx * 3 + 1] = _color.g;
         elegansColors[eIdx * 3 + 2] = _color.b;
         eIdx++;
       } else {
         dMesh.setMatrixAt(dIdx, _obj.matrix);
-        // Species base: amber (0.9, 0.55, 0.1)
-        let r: number, g: number, b: number;
-        if (e < 0.3) {
-          const f = e / 0.3;
-          r = dyingR * (1 - f) + 0.9 * f;
-          g = dyingG * (1 - f) + 0.55 * f;
-          b = dyingB * (1 - f) + 0.1 * f;
-        } else if (e > 0.7) {
-          const f = (e - 0.7) / 0.3;
-          r = 0.9 * (1 - f) + thriveR * f;
-          g = 0.55 * (1 - f) + thriveG * f;
-          b = 0.1 * (1 - f) + thriveB * f;
-        } else {
-          r = 0.9;
-          g = 0.55;
-          b = 0.1;
-        }
-        // Mix species color with gold based on generation
-        r = r * (1 - genFactor * 0.3) + 1.0 * genFactor * 0.3;
-        g = g * (1 - genFactor * 0.3) + 0.85 * genFactor * 0.3;
-        b = b * (1 - genFactor * 0.3) + 0.15 * genFactor * 0.3;
-        _color.setRGB(r, g, b);
         drosophilaColors[dIdx * 3] = _color.r;
         drosophilaColors[dIdx * 3 + 1] = _color.g;
         drosophilaColors[dIdx * 3 + 2] = _color.b;
@@ -630,6 +634,8 @@ function HudOverlay({
   deathCount,
   elapsedSeconds,
   godNarratives,
+  colorMode,
+  onToggleColorMode,
 }: {
   organisms: MassiveOrganism[];
   neuralStats: MassiveNeuralStats | null;
@@ -642,6 +648,8 @@ function HudOverlay({
   deathCount: number;
   elapsedSeconds: number;
   godNarratives?: any[];
+  colorMode: 'energy' | 'lineage';
+  onToggleColorMode: () => void;
 }) {
   const worldLabels: Record<string, string> = {
     soil: 'SOIL',
@@ -700,19 +708,22 @@ function HudOverlay({
         }}>
           {speed.toFixed(1)}x SPEED
         </div>
-        <div style={{ color: 'rgba(0,212,255,0.7)' }}>
+        <div style={{
+          color: populationTrend === 'down' ? '#ff4444' : 'rgba(0,212,255,0.7)',
+          transition: 'color 0.3s',
+        }}>
           Organisms: {organisms.length}
           {populationTrend === 'up' && (
             <span style={{ color: 'rgba(0,255,136,0.8)', marginLeft: 4 }}>{'\u2191'}</span>
           )}
           {populationTrend === 'down' && (
-            <span style={{ color: 'rgba(255,100,100,0.8)', marginLeft: 4 }}>{'\u2193'}</span>
+            <span style={{ color: '#ff4444', marginLeft: 4 }}>{'\u2193'}</span>
           )}
         </div>
         <div style={{ color: 'rgba(0,255,136,0.65)' }}>
           Births: {birthCount}
         </div>
-        <div style={{ color: 'rgba(255,100,100,0.65)' }}>
+        <div style={{ color: deathCount > 0 ? '#ff4444' : 'rgba(255,100,100,0.65)', fontWeight: deathCount > 0 ? 600 : 400 }}>
           Deaths: {deathCount}
         </div>
         <div style={{ color: 'rgba(160,160,200,0.5)', fontSize: 9 }}>
@@ -767,6 +778,14 @@ function HudOverlay({
           cursor: 'pointer', fontFamily: 'var(--font-mono)', marginTop: 4,
         }}>
           Download Data
+        </button>
+        <button onClick={onToggleColorMode} style={{
+          background: 'rgba(100, 130, 200, 0.1)', border: '1px solid rgba(100, 130, 200, 0.15)',
+          borderRadius: 4, padding: '3px 8px', fontSize: 9, color: '#88aacc',
+          cursor: 'pointer', fontFamily: 'var(--font-mono)', marginTop: 4,
+          display: 'block',
+        }}>
+          Color: {colorMode === 'energy' ? 'Energy' : 'Lineage'}
         </button>
       </div>
 
@@ -845,6 +864,7 @@ function SceneContents({
   arenaRadius,
   food,
   onSelectOrganism,
+  colorMode,
 }: {
   organisms: MassiveOrganism[];
   neuralStats: MassiveNeuralStats | null;
@@ -852,6 +872,7 @@ function SceneContents({
   arenaRadius: number;
   food?: FoodPosition[];
   onSelectOrganism?: (org: MassiveOrganism | null) => void;
+  colorMode: 'energy' | 'lineage';
 }) {
   const isEmpty = organisms.length === 0;
 
@@ -885,6 +906,7 @@ function SceneContents({
             organisms={organisms}
             neuralStats={neuralStats}
             onSelectOrganism={onSelectOrganism}
+            colorMode={colorMode}
           />
           <OrganismTrails organisms={organisms} />
           <FoodInstances organismCount={organisms.length} arenaRadius={arenaRadius} food={food} />
@@ -940,6 +962,9 @@ export function EcosystemView3D({
 
   // Selected organism for inspect panel
   const [selectedOrg, setSelectedOrg] = useState<MassiveOrganism | null>(null);
+
+  // Color mode toggle: energy-based or lineage-based coloring
+  const [colorMode, setColorMode] = useState<'energy' | 'lineage'>('energy');
 
   // Speed control state
   const [speed, setSpeed] = useState(1.0);
@@ -1138,6 +1163,7 @@ export function EcosystemView3D({
           arenaRadius={arenaRadius}
           food={food}
           onSelectOrganism={setSelectedOrg}
+          colorMode={colorMode}
         />
       </Canvas>
 
@@ -1154,6 +1180,8 @@ export function EcosystemView3D({
         deathCount={deathCount}
         elapsedSeconds={elapsedSeconds}
         godNarratives={godNarratives}
+        colorMode={colorMode}
+        onToggleColorMode={() => setColorMode(m => m === 'energy' ? 'lineage' : 'energy')}
       />
 
       {/* Organism inspect panel */}
