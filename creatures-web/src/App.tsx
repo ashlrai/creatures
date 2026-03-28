@@ -322,6 +322,14 @@ export default function App() {
     setSavedMode(appMode === 'evo' ? 'evo' : 'sim');
   }, [appMode, setSavedMode]);
 
+  // Auto-open both sidebars when entering Evolve mode
+  useEffect(() => {
+    if (appMode === 'evo') {
+      setLeftOpen(true);
+      setRightOpen(true);
+    }
+  }, [appMode]);
+
   // Restore mode from localStorage / hash on mount
   useEffect(() => {
     // Check hash first
