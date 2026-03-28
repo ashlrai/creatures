@@ -767,64 +767,59 @@ export default function App() {
 
       {/* Header */}
       <header className="app-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.3px',
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.3px',
             background: 'linear-gradient(135deg, #e0eaf0, #88ccff)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
             Neurevo
           </div>
-          <div className="organism-selector">
-            <button
-              className={`organism-pill${!experiment || (experiment.organism !== 'drosophila' && experiment.organism !== 'zebrafish') ? ' active' : ''}`}
-              onClick={() => handleSwitchOrganism('c_elegans')}
-            >
-              C. elegans
-            </button>
-            <button
-              className={`organism-pill${experiment?.organism === 'drosophila' ? ' active' : ''}`}
-              onClick={() => handleSwitchOrganism('drosophila')}
-            >
-              Drosophila
-            </button>
-            <button
-              className={`organism-pill${experiment?.organism === 'zebrafish' ? ' active' : ''}`}
-              onClick={() => handleSwitchOrganism('zebrafish')}
-            >
-              Zebrafish
-            </button>
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
           <div className="mode-switch">
             <button
               className={`mode-switch-btn${appMode === 'sim' ? ' active' : ''}`}
               onClick={() => setAppMode('sim')}
             >
-              Simulation
+              Simulate
             </button>
             <button
               className={`mode-switch-btn${appMode === 'evo' ? ' active' : ''}`}
               onClick={() => setAppMode('evo')}
             >
-              Evolution
+              Evolve
             </button>
             <button
               className={`mode-switch-btn${appMode === 'eco' ? ' active' : ''}`}
               onClick={() => setAppMode('eco')}
             >
-              Ecosystem
+              World
             </button>
           </div>
-          <button
-            className={`mode-switch-btn${researchMode ? ' active' : ''}`}
-            onClick={() => useUIPreferencesStore.getState().toggleResearchMode()}
-            title="Toggle Research Mode"
-            style={{ fontSize: 10, padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4 }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          </button>
+          {/* Organism selector — only relevant in sim/evo modes */}
+          {appMode !== 'eco' && (
+            <div className="organism-selector">
+              <button
+                className={`organism-pill${!experiment || (experiment.organism !== 'drosophila' && experiment.organism !== 'zebrafish') ? ' active' : ''}`}
+                onClick={() => handleSwitchOrganism('c_elegans')}
+              >
+                C. elegans
+              </button>
+              <button
+                className={`organism-pill${experiment?.organism === 'drosophila' ? ' active' : ''}`}
+                onClick={() => handleSwitchOrganism('drosophila')}
+              >
+                Drosophila
+              </button>
+              <button
+                className={`organism-pill${experiment?.organism === 'zebrafish' ? ' active' : ''}`}
+                onClick={() => handleSwitchOrganism('zebrafish')}
+              >
+                Zebrafish
+              </button>
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
           <ConnectionIndicator status={connectionStatus} connected={connected} attempts={reconnectAttempts} isDemo={isDemo} />
-          {frame && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-label)' }}>{frame.t_ms.toFixed(0)}ms</span>}
+          {appMode !== 'eco' && frame && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-label)' }}>{frame.t_ms.toFixed(0)}ms</span>}
           <button
             className="btn btn-ghost"
             style={{ fontSize: 11, padding: '3px 10px', position: 'relative' }}
@@ -1422,22 +1417,24 @@ export default function App() {
         </div>
       )}
 
-      {/* Bottom bar: waveform or generation timeline */}
-      <div className="bottom-bar">
-        {appMode === 'eco' ? (
-          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-label)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
-            {ecoScale === 'massive'
-              ? `BRAIN-WORLD LIVE — ${massivePopulation.toLocaleString()} organisms — ${massiveNeuralStats ? massiveNeuralStats.total_neurons.toLocaleString() + ' neurons' : 'initializing...'}`
-              : `ECOSYSTEM LIVE — ${(ecoStats?.c_elegans ?? 20) + (ecoStats?.drosophila ?? 5)} organisms`}
-          </div>
-        ) : appMode === 'evo' ? (
-          <GenerationTimeline />
-        ) : experiment ? (
-          <TransportControls />
-        ) : (
-          <WaveformSkeleton />
-        )}
-      </div>
+      {/* Bottom bar: waveform or generation timeline — hidden on eco creation screen */}
+      {!(appMode === 'eco' && ecoScale === 'massive' && !massiveId) && (
+        <div className="bottom-bar">
+          {appMode === 'eco' ? (
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-label)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+              {ecoScale === 'massive'
+                ? `BRAIN-WORLD LIVE — ${massivePopulation.toLocaleString()} organisms — ${massiveNeuralStats ? massiveNeuralStats.total_neurons.toLocaleString() + ' neurons' : 'initializing...'}`
+                : `ECOSYSTEM LIVE — ${(ecoStats?.c_elegans ?? 20) + (ecoStats?.drosophila ?? 5)} organisms`}
+            </div>
+          ) : appMode === 'evo' ? (
+            <GenerationTimeline />
+          ) : experiment ? (
+            <TransportControls />
+          ) : (
+            <WaveformSkeleton />
+          )}
+        </div>
+      )}
     </div>
   );
 }

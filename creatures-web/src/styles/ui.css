@@ -30,7 +30,7 @@ body {
 
 .app-root {
   display: grid;
-  grid-template-rows: 40px 1fr 36px;
+  grid-template-rows: 36px 1fr auto;
   width: 100vw;
   height: 100vh;
 }
@@ -401,15 +401,14 @@ body {
 .mode-switch {
   display: flex;
   background: rgba(0, 0, 0, 0.3);
-  border-radius: 8px;
+  border-radius: 7px;
   padding: 2px;
   gap: 2px;
-  margin-right: 16px;
 }
 .mode-switch-btn {
-  padding: 5px 14px;
-  border-radius: 6px;
-  font-size: 11px;
+  padding: 4px 16px;
+  border-radius: 5px;
+  font-size: 12px;
   font-weight: 600;
   border: none;
   cursor: pointer;
@@ -417,9 +416,11 @@ body {
   background: none;
   color: var(--text-label);
   font-family: var(--font-sans);
+  letter-spacing: 0.01em;
 }
 .mode-switch-btn:hover:not(.active) {
   color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.03);
 }
 .mode-switch-btn.active {
   background: rgba(0, 212, 255, 0.12);
