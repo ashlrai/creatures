@@ -10,7 +10,11 @@ router = APIRouter(prefix="/god", tags=["god-tools"])
 
 
 def _get_god_and_context(bw_id: str) -> tuple:
-    """Get God Agent and current context for a brain-world."""
+    """Get God Agent and current context for a brain-world.
+
+    Lazily creates a God Agent if one doesn't exist yet (handles the case
+    where /step was called manually without the background auto-run loop).
+    """
     from app.routers.ecosystem import _brain_world_god, _brain_worlds
 
     if bw_id not in _brain_worlds:
@@ -18,7 +22,9 @@ def _get_god_and_context(bw_id: str) -> tuple:
 
     god = _brain_world_god.get(bw_id)
     if not god:
-        raise HTTPException(404, f"No God Agent for {bw_id}")
+        from creatures.god.agent import GodAgent, GodConfig
+        god = GodAgent(config=GodConfig(provider="auto"), run_id=bw_id)
+        _brain_world_god[bw_id] = god
 
     bw = _brain_worlds[bw_id]
     eco = bw.ecosystem
@@ -51,23 +57,37 @@ async def ask_god(req: AskRequest):
     """Ask the God Agent a question about the current ecosystem."""
     god, ctx = _get_god_and_context(req.bw_id)
 
-    prompt = f"""You are an AI scientist observing a virtual ecosystem with evolving organisms that have real spiking neural networks.
+    prompt = f"""ROLE: You are a computational biologist analyzing a real-time artificial evolution experiment.
+
+CONTEXT: Organisms are virtual creatures with spiking neural networks (Izhikevich neurons). \
+They forage for food using neural-driven motor output. Neural weights are inherited from parents \
+with mutation. Each organism has sensory neurons that detect nearby food and obstacles, \
+interneurons that process information, and motor neurons that drive movement. Evolution occurs \
+through differential survival: organisms that eat more food gain energy, reproduce, and pass \
+their neural wiring to offspring with small random mutations.
 
 CURRENT STATE:
 - Organisms alive: {ctx['alive']}
-- Max generation: {ctx['max_generation']}
-- Surviving lineages: {ctx['n_lineages']}
-- Mean energy: {ctx['mean_energy']:.1f}
-- Mean lifetime food: {ctx['mean_lifetime_food']:.1f}
-- Total births: {ctx['births']}, deaths: {ctx['deaths']}
-- Food sources alive: {ctx['food_alive']}
+- Max generation reached: {ctx['max_generation']}
+- Surviving lineages (distinct evolutionary lines): {ctx['n_lineages']}
+- Mean energy across population: {ctx['mean_energy']:.1f}
+- Mean lifetime food consumed: {ctx['mean_lifetime_food']:.1f}
+- Total births: {ctx['births']}, total deaths: {ctx['deaths']}
+- Survival ratio: {ctx['alive']}/{ctx['births']} ({100*ctx['alive']/max(ctx['births'],1):.0f}%)
+- Food sources available: {ctx['food_alive']}
 
-RECENT HISTORY:
+RECENT OBSERVATIONS:
 {ctx['recent_observations']}
+
+PAST INTERVENTIONS:
+{ctx['intervention_history']}
 
 USER QUESTION: {req.question}
 
-Answer concisely and scientifically. Reference specific data points. If you can suggest an intervention, include it."""
+Answer concisely and scientifically. Reference specific data points from the state above. \
+Identify any evolutionary trends or emergent behaviors. If you can suggest a concrete \
+intervention (food_scarcity, predator_surge, mutation_burst, climate_shift), include it \
+with reasoning."""
 
     try:
         response = await god._call_llm(prompt)
@@ -87,13 +107,40 @@ async def propose_experiment(req: ExperimentRequest):
     god, ctx = _get_god_and_context(req.bw_id)
 
     topic_text = f"focusing on: {req.topic}" if req.topic else "based on what you observe"
-    prompt = f"""You are an AI scientist observing evolving organisms with real neural networks.
+    prompt = f"""ROLE: You are a computational biologist designing experiments for a real-time artificial evolution platform.
 
-STATE: {ctx['alive']} alive, gen {ctx['max_generation']}, {ctx['n_lineages']} lineages, {ctx['births']} births, {ctx['deaths']} deaths
+CONTEXT: Organisms are virtual creatures with spiking neural networks (Izhikevich neurons). \
+They forage for food using neural-driven motor output. Neural weights are inherited from parents \
+with mutation. Evolution is open-ended — there is no predetermined fitness function beyond survival.
 
-Propose one specific, testable experiment {topic_text}.
+CURRENT STATE:
+- Organisms alive: {ctx['alive']}, max generation: {ctx['max_generation']}
+- Surviving lineages: {ctx['n_lineages']}
+- Total births: {ctx['births']}, deaths: {ctx['deaths']}
+- Mean energy: {ctx['mean_energy']:.1f}, food sources: {ctx['food_alive']}
 
-Respond in JSON: {{"hypothesis": "...", "experiment": "...", "intervention": "food_scarcity|predator_surge|mutation_burst|climate_shift", "expected_outcome": "...", "why": "..."}}"""
+RECENT OBSERVATIONS:
+{ctx['recent_observations']}
+
+AVAILABLE INTERVENTIONS (these are the only ones the system can execute):
+- food_scarcity: Remove 50-80% of food sources, forcing competition
+- predator_surge: Introduce predator organisms that hunt based on proximity
+- mutation_burst: Temporarily 10x mutation rate, creating rapid neural variation
+- climate_shift: Change world temperature/toxicity, altering metabolic costs
+
+Propose one specific, testable experiment {topic_text}. Choose an intervention that \
+will produce observable, measurable results within 50-200 generations.
+
+Respond in JSON:
+{{
+    "hypothesis": "A falsifiable scientific hypothesis",
+    "experiment": "Step-by-step protocol: what to measure before, what to change, what to measure after",
+    "intervention": "food_scarcity|predator_surge|mutation_burst|climate_shift",
+    "intervention_params": {{"severity": 0.0-1.0, "duration_steps": 100-1000}},
+    "expected_outcome": "Specific, measurable prediction",
+    "null_hypothesis": "What would disprove this",
+    "why": "Scientific reasoning grounded in evolutionary biology or neuroscience"
+}}"""
 
     try:
         response = await god._call_llm(prompt)
@@ -107,18 +154,33 @@ async def detect_anomalies(req: AskRequest):
     """Ask the God Agent to identify unusual patterns."""
     god, ctx = _get_god_and_context(req.bw_id)
 
-    prompt = f"""You are monitoring a virtual ecosystem for anomalies and surprising patterns.
+    prompt = f"""ROLE: You are a computational biologist monitoring a real-time artificial evolution experiment for anomalies.
 
-STATE: {ctx['alive']} alive, gen {ctx['max_generation']}, {ctx['n_lineages']} lineages
-HISTORY: {ctx['recent_observations']}
-INTERVENTIONS: {ctx['intervention_history']}
+CONTEXT: Organisms are virtual creatures with spiking neural networks (Izhikevich neurons) \
+that forage for food. Neural weights are inherited with mutation. You are looking for deviations \
+from expected evolutionary dynamics — things that would surprise a biologist.
 
-Identify the 2-3 most unusual or surprising things happening. For each:
-1. What's unusual
-2. Why it matters
-3. What to investigate next
+CURRENT STATE:
+- Organisms alive: {ctx['alive']}, max generation: {ctx['max_generation']}
+- Surviving lineages: {ctx['n_lineages']}
+- Total births: {ctx['births']}, deaths: {ctx['deaths']}
+- Death rate: {ctx['deaths']/max(ctx['births'],1)*100:.0f}%
+- Mean energy: {ctx['mean_energy']:.1f}, food sources: {ctx['food_alive']}
 
-Be specific and reference numbers."""
+RECENT OBSERVATIONS:
+{ctx['recent_observations']}
+
+PAST INTERVENTIONS:
+{ctx['intervention_history']}
+
+Identify the 2-3 most anomalous or scientifically surprising patterns. For each anomaly:
+1. OBSERVATION: What specific data point or trend is unusual (cite numbers)
+2. EXPECTED: What you would normally expect based on evolutionary theory
+3. SIGNIFICANCE: Why this deviation matters (link to real biology concepts)
+4. INVESTIGATION: A concrete next step to understand the anomaly
+
+Prioritize anomalies that suggest emergent complexity, unexpected cooperation, \
+neural circuit innovation, or evolutionary dead ends."""
 
     try:
         response = await god._call_llm(prompt)
@@ -133,20 +195,43 @@ async def tell_story(req: AskRequest):
     god, ctx = _get_god_and_context(req.bw_id)
 
     all_obs = god.observations[-20:]  # Last 20 observations for narrative arc
-    prompt = f"""You are a scientific narrator documenting the story of artificial evolution.
+    prompt = f"""ROLE: You are a science writer documenting a real artificial evolution experiment for a Nature-style narrative.
 
-FULL HISTORY ({len(all_obs)} observations):
+CONTEXT: This is a virtual ecosystem where organisms with spiking neural networks (Izhikevich neurons) \
+evolve through natural selection. There is no predetermined goal — organisms must forage for food \
+to gain energy, survive, and reproduce. Their neural wiring is inherited with mutation. What you \
+are narrating is genuinely open-ended evolution of neural circuits.
+
+FULL OBSERVATION HISTORY ({len(all_obs)} data points):
 {all_obs}
 
-CURRENT: {ctx['alive']} alive, gen {ctx['max_generation']}, {ctx['n_lineages']} lineages, {ctx['births']} births, {ctx['deaths']} deaths
+CURRENT STATE:
+- Organisms alive: {ctx['alive']}, max generation: {ctx['max_generation']}
+- Surviving lineages: {ctx['n_lineages']}
+- Total births: {ctx['births']}, deaths: {ctx['deaths']}
+- Mean energy: {ctx['mean_energy']:.1f}, food sources: {ctx['food_alive']}
 
-Tell the story of this evolution in 3-4 paragraphs. Include:
-- How it began
-- Key turning points (when lineages emerged or died)
-- What behaviors evolved
-- Where it's heading
+PAST INTERVENTIONS:
+{ctx['intervention_history']}
 
-Write as a scientific narrative, not bullet points."""
+Write a compelling 3-4 paragraph scientific narrative with a clear ARC structure:
+
+PARAGRAPH 1 — GENESIS: How the ecosystem began. What was the initial state? Were organisms \
+mostly random wanderers, or did some show early promise?
+
+PARAGRAPH 2 — CONFLICT: The key turning points. When did lineages diverge? Were there \
+extinction events, population crashes, or competitive exclusions? Name specific generations \
+where things changed and why.
+
+PARAGRAPH 3 — ADAPTATION: What neural/behavioral innovations emerged? Did organisms evolve \
+food-seeking, obstacle avoidance, energy conservation, or surprising strategies? Be specific \
+about what the neural circuits might be doing.
+
+PARAGRAPH 4 — HORIZON: Where is this evolution heading? What pressures are shaping the \
+next phase? What would you predict for the next 100 generations?
+
+Write in vivid, precise scientific prose. Use specific numbers from the data. \
+Treat these organisms as real subjects of scientific inquiry."""
 
     try:
         response = await god._call_llm(prompt)
@@ -165,24 +250,38 @@ async def suggest_tuning(req: TuningRequest):
     """Ask the God Agent to suggest parameter changes."""
     god, ctx = _get_god_and_context(req.bw_id)
 
-    prompt = f"""You are tuning a virtual ecosystem simulation.
+    prompt = f"""ROLE: You are a computational biologist tuning parameters for an artificial evolution experiment.
 
-STATE: {ctx['alive']} alive, gen {ctx['max_generation']}, {ctx['n_lineages']} lineages
-GOAL: {req.goal}
+CONTEXT: Organisms are virtual creatures with spiking neural networks (Izhikevich neurons). \
+They forage for food using neural-driven motor output. Neural weights are inherited from parents \
+with mutation. The simulation has tunable parameters that control evolutionary dynamics.
 
-Current parameters (approximate):
-- Mutation sigma: 0.02-0.05
-- Metabolic rate: 0.5/step
-- Food: {ctx['food_alive']} sources
-- Reproduction threshold: energy > 150
+CURRENT STATE:
+- Organisms alive: {ctx['alive']}, max generation: {ctx['max_generation']}
+- Surviving lineages: {ctx['n_lineages']}
+- Total births: {ctx['births']}, deaths: {ctx['deaths']}
+- Mean energy: {ctx['mean_energy']:.1f}, food sources: {ctx['food_alive']}
 
-Suggest 2-3 specific parameter changes to achieve the goal. For each:
-1. Parameter to change
-2. Current vs suggested value
-3. Expected effect
-4. Risk
+TUNING GOAL: {req.goal}
 
-Be specific with numbers."""
+TUNABLE PARAMETERS (with current approximate values):
+- mutation_sigma: 0.02-0.05 (controls magnitude of weight changes per generation)
+- metabolic_rate: 0.5/step (energy cost of being alive — higher = more pressure to eat)
+- food_count: {ctx['food_alive']} sources (more food = easier survival = weaker selection)
+- reproduction_threshold: energy > 150 (lower = faster reproduction = larger populations)
+- neuron_noise: 0.01 (stochastic input to neurons — higher = more exploration)
+
+Suggest 2-3 specific parameter changes to achieve the goal. For each, respond in this format:
+
+1. **Parameter**: exact parameter name
+   - Current: value
+   - Suggested: value
+   - Effect: what this change will do to evolutionary dynamics (cite real biology parallels)
+   - Risk: what could go wrong (e.g., population collapse, convergence to trivial solutions)
+   - Confidence: low/medium/high
+
+Ground your suggestions in evolutionary theory. Consider tradeoffs between exploration \
+and exploitation, selection pressure and genetic drift, population size and diversity."""
 
     try:
         response = await god._call_llm(prompt)

@@ -145,17 +145,34 @@ You can also:
    or propose experiments testing consciousness hypotheses.
 """
 
-        prompt = f"""You are the God Agent overseeing an evolutionary simulation of virtual \
-organisms with real biological neural networks (spiking Izhikevich neurons, real \
-connectome topology, STDP learning, MLX GPU acceleration).
+        prompt = f"""ROLE: You are a computational biologist overseeing a real-time artificial \
+evolution experiment. You are the "God Agent" — an AI scientist with the power to observe, \
+analyze, and intervene in the evolutionary process.
 
-CURRENT STATE:
+CONTEXT: Organisms are virtual creatures with spiking neural networks (Izhikevich neurons). \
+Each organism has sensory neurons (detecting food, obstacles, boundaries), interneurons \
+(processing and integrating information), and motor neurons (driving movement). Neural \
+connection weights are inherited from parents with small random mutations. Organisms forage \
+for food to gain energy; when energy exceeds a threshold, they reproduce. When energy hits \
+zero, they die. There is no predetermined fitness function — evolution is driven entirely \
+by differential survival. STDP learning allows individual organisms to adapt their neural \
+wiring within their lifetime.
+
+RECENT OBSERVATION DATA (last {len(recent)} snapshots):
 {json.dumps(recent, indent=2, default=str)}
 {consciousness_prompt}
-Your role is to guide evolution toward producing organisms with genuinely complex, \
-adaptive behaviors and high integrated information (consciousness).
+ANALYSIS QUESTIONS — address each:
+1. EVOLUTIONARY TRENDS: Is fitness improving, stagnating, or declining? Is the population \
+diversifying or converging? Are new lineages emerging or are dominant ones taking over?
+2. EMERGENT BEHAVIORS: Are organisms developing recognizable strategies (directed foraging, \
+wall avoidance, energy conservation, clustering)? What neural circuit motifs might underlie \
+these behaviors?
+3. SURPRISING OBSERVATIONS: What is the single most unexpected thing in the data? What \
+would a biologist find noteworthy?
+4. RECOMMENDED INTERVENTION: What single change would be most scientifically interesting \
+to make right now? Why?
 
-You can:
+AVAILABLE INTERVENTIONS:
 1. MODIFY ENVIRONMENT: Change food positions, add/remove obstacles, create chemical \
 gradients, change arena size
 2. SHAPE FITNESS: Adjust fitness weights (distance, food, efficiency, consciousness)
@@ -163,29 +180,32 @@ gradients, change arena size
 Izhikevich parameter mutation rates
 4. DESIGN EXPERIMENT: Propose a specific hypothesis to test (e.g., "do organisms with \
 higher Φ survive longer in stochastic environments?")
-5. CREATE EVENT: Introduce a sudden environmental change (food scarcity, predator, \
-temperature shift)
+5. CREATE EVENT: Introduce a sudden environmental change (food_scarcity, predator_surge, \
+mutation_burst, climate_shift)
 
-Analyze the current evolutionary trajectory and respond with a JSON object:
+Respond with ONLY a JSON object (no markdown, no explanation outside the JSON):
 {{
-    "analysis": "Brief analysis of what's happening in evolution",
-    "fitness_trend": "improving/stagnating/declining",
-    "consciousness_trend": "increasing/stable/decreasing (if Φ data available)",
+    "analysis": "2-3 sentence scientific analysis of the current evolutionary state",
+    "fitness_trend": "improving|stagnating|declining",
+    "consciousness_trend": "increasing|stable|decreasing|no_data",
+    "evolutionary_phase": "exploration|exploitation|stagnation|collapse|radiation",
     "interventions": [
         {{
             "type": "environment|fitness|evolution|experiment|event|consciousness",
             "action": "specific action to take",
-            "parameters": {{...}},
-            "reasoning": "why this will help"
+            "parameters": {{}},
+            "reasoning": "scientific reasoning for this intervention",
+            "expected_effect": "what you predict will happen"
         }}
     ],
-    "hypothesis": "A scientific hypothesis to test in the next N generations",
-    "report": "A brief scientific report of observations so far"
+    "hypothesis": "A falsifiable scientific hypothesis to test in the next N generations",
+    "surprising_observation": "The single most unexpected thing in the data",
+    "report": "A brief scientific report suitable for a lab notebook"
 }}
 
-Be creative but grounded in real neuroscience and consciousness science (IIT, Global \
-Workspace Theory). Make interventions that will produce genuine scientific insight \
-about how neural circuits evolve, learn, and develop consciousness-like properties."""
+Ground all reasoning in evolutionary biology, computational neuroscience, and dynamical \
+systems theory. Prioritize interventions that produce genuine scientific insight over \
+those that merely optimize fitness."""
 
         # Add evolutionary context
         if self.observations:
