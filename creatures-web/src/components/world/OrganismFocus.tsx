@@ -301,7 +301,6 @@ function SynapseLines({ energy, isCelegans }: { energy: number; isCelegans: bool
       const active = wave * energy;
 
       const i6 = s * 6;
-      const brightness = 0.08 + active * 0.6;
       const r = 0.08 + active * 0.4;
       const g = 0.2 + active * 0.5;
       const b = 0.5 + active * 0.3;
