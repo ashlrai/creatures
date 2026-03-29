@@ -738,12 +738,24 @@ export function UnifiedWorld({
   // WebSocket ref
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Auto-refresh organism detail every 3 seconds while selected
+  // Auto-refresh organism detail via WebSocket every 2 seconds while selected
   useEffect(() => {
     if (selectedOrganismIndex === null || !massiveId) return;
+
+    // Initial fetch via REST (in case WebSocket isn't ready)
+    fetchOrganismDetail(selectedOrganismIndex);
+
+    // Periodic refresh via WebSocket for real-time updates
     const iv = setInterval(() => {
-      fetchOrganismDetail(selectedOrganismIndex);
-    }, 3000);
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({ type: 'focus_organism', org_idx: selectedOrganismIndex }),
+        );
+      } else {
+        // Fallback to REST if WebSocket is not open
+        fetchOrganismDetail(selectedOrganismIndex);
+      }
+    }, 2000);
     return () => clearInterval(iv);
   }, [selectedOrganismIndex, massiveId, fetchOrganismDetail]);
 
@@ -782,6 +794,12 @@ export function UnifiedWorld({
         const msg = JSON.parse(event.data);
         if (msg.type === 'ecosystem_state') {
           updateFromWs(msg);
+        } else if (msg.type === 'organism_detail') {
+          // Real-time organism detail from WebSocket focus command
+          useWorldStore.setState({
+            organismDetail: msg,
+            organismDetailLoading: false,
+          });
         }
       } catch (e) {
         console.error('[UnifiedWorld] Failed to parse message:', e);
