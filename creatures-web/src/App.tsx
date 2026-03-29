@@ -763,12 +763,16 @@ export default function App() {
         />
       )}
 
-      {/* Neuron hover tooltip + detail panel — rendered outside Canvas */}
-      <NeuronTooltip />
-      <NeuronDetailPanel />
-      <CircuitSurgeryToolbar />
-      <BreadcrumbNav />
-      <NeuronDetail />
+      {/* Neuron hover tooltip + detail panel — rendered outside Canvas, hidden in eco mode */}
+      {appMode !== 'eco' && (
+        <>
+          <NeuronTooltip />
+          <NeuronDetailPanel />
+          <CircuitSurgeryToolbar />
+          <BreadcrumbNav />
+          <NeuronDetail />
+        </>
+      )}
 
       {/* Welcome overlay — shown on first visit */}
       {showWelcome && (
