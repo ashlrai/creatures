@@ -30,7 +30,7 @@ export function ContextSidebar({
   const organisms = useWorldStore((s) => s.organisms);
   const populationStats = useWorldStore((s) => s.populationStats);
   const neuralStats = useWorldStore((s) => s.neuralStats);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   const handleNotify = useCallback(
     (msg: string) => notify?.(msg),
