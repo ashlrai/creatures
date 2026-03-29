@@ -583,7 +583,7 @@ function SpeedControl({
     <div
       style={{
         position: 'absolute',
-        bottom: 140,
+        bottom: 168,
         left: '50%',
         transform: 'translateX(-50%)',
         display: 'flex',
@@ -832,18 +832,18 @@ export function UnifiedWorld({
           {/* God Agent chat */}
           <GodChat bwId={massiveId} />
 
-          {/* Evolution timeline */}
+          {/* Evolution timeline — positioned above AI ticker and status bar */}
           <div
             style={{
               position: 'absolute',
-              bottom: 12,
+              bottom: 60,
               left: '50%',
               transform: 'translateX(-50%)',
               pointerEvents: 'none',
               zIndex: 10,
             }}
           >
-            <EvolutionTimeline width={300} height={120} />
+            <EvolutionTimeline width={340} height={100} />
           </div>
         </>
       )}
