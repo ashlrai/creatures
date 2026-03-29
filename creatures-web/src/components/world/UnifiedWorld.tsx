@@ -62,9 +62,11 @@ function SceneContents() {
     <>
       <SemanticZoomController />
 
-      {/* Lighting */}
-      <ambientLight intensity={0.3} />
-      <directionalLight position={[0, 0, 30]} intensity={0.5} />
+      {/* Lighting — warm ambient + directional for depth */}
+      <ambientLight intensity={0.4} color="#334466" />
+      <directionalLight position={[10, 10, 40]} intensity={0.6} color="#aaccff" />
+      <directionalLight position={[-10, -10, 20]} intensity={0.2} color="#ffaa66" />
+      <pointLight position={[0, 0, 15]} intensity={0.3} color="#00d4ff" distance={60} />
 
       {/* Camera controls */}
       <OrbitControls
@@ -778,10 +780,10 @@ export function UnifiedWorld({
       {/* 3D Canvas — always present */}
       <Canvas
         camera={{
-          fov: 60,
+          fov: 50,
           near: 0.1,
-          far: 200,
-          position: [0, 0, 60],
+          far: 300,
+          position: [0, -15, 45],
         }}
         gl={{
           antialias: true,
@@ -792,6 +794,7 @@ export function UnifiedWorld({
         style={{ width: '100%', height: '100%' }}
       >
         <color attach="background" args={['#030308']} />
+        <fog attach="fog" args={['#030308', 40, 120]} />
         <SceneContents />
       </Canvas>
 

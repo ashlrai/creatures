@@ -1387,8 +1387,8 @@ export default function App() {
         )}
       </div>
 
-      {/* Persistent interaction hint — disappears on first interaction */}
-      {showHint && !hasInteracted && (
+      {/* Persistent interaction hint — disappears on first interaction, hidden in eco mode */}
+      {showHint && !hasInteracted && appMode !== 'eco' && (
         <div className="interaction-hint-persistent" onClick={markInteracted}>
           Touch the {organismLabel} &bull; Lesion neurons &bull; Test drugs &bull; Switch to Evolution mode
         </div>
