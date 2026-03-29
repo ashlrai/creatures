@@ -13,9 +13,6 @@ const MAX_COLONY_ORGANISMS = 64;
 /** Camera distance within which organisms get colony-level detail */
 const COLONY_RADIUS = 20;
 
-/** Simplified worm: elongated capsule with 4 neural dots */
-const WORM_SEGMENTS = 6;
-
 // Shared temps
 const _obj = new THREE.Object3D();
 const _color = new THREE.Color();

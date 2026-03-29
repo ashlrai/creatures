@@ -30,8 +30,6 @@ export function AINotifications() {
   const organisms = useWorldStore((s) => s.organisms);
   const emergentEvents = useWorldStore((s) => s.emergentEvents);
   const populationStats = useWorldStore((s) => s.populationStats);
-  const narratives = useWorldStore((s) => s.narratives);
-
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const prevPopulation = useRef(0);
   const prevGeneration = useRef(0);
