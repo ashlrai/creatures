@@ -15,6 +15,7 @@ import { EvolutionSidebar } from './components/evolution/EvolutionSidebar';
 import { ChallengeSelector } from './components/evolution/ChallengeSelector';
 import { EcosystemView, type MassiveOrganism, type MassiveNeuralStats, type EmergentEvent } from './components/ecosystem/EcosystemView';
 import { EcosystemView3D } from './components/ecosystem/EcosystemView3D';
+import { UnifiedWorld } from './components/world/UnifiedWorld';
 import { SpeciesComparison } from './components/ui/SpeciesComparison';
 import { ViewportOverlay } from './components/ui/ViewportOverlay';
 import { useSimulation } from './hooks/useSimulation';
@@ -882,12 +883,13 @@ export default function App() {
 
       {/* Main content */}
       <div className="app-content">
-        {/* Left sidebar */}
+        {/* Left sidebar — hidden in eco mode (UnifiedWorld has its own) */}
+        {appMode !== 'eco' && (
         <div className={`sidebar${leftOpen ? '' : ' collapsed'}`} style={leftOpen ? { width: leftWidth } : undefined}>
           {leftOpen && <div className="sidebar-resize-handle sidebar-resize-handle-left" onMouseDown={startResizeLeft} />}
-          {leftOpen && (appMode === 'eco' ? (
+          {leftOpen && (false ? (
             <>
-              {/* Scale selector */}
+              {/* Legacy eco sidebar — disabled, kept for backwards compat */}
               <div className="glass">
                 <div className="glass-label">Scale</div>
                 <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
@@ -1226,24 +1228,29 @@ export default function App() {
             </>
           ))}
         </div>
+        )}
 
         {/* 3D Viewport / Arena */}
         <div className="viewport">
-          {/* Sidebar toggle buttons */}
-          <button
-            className="sidebar-toggle sidebar-toggle-left"
-            onClick={() => setLeftOpen(!leftOpen)}
-            style={{ left: leftOpen ? leftWidth : 0 }}
-          >
-            {leftOpen ? '\u2039' : '\u203A'}
-          </button>
-          <button
-            className="sidebar-toggle sidebar-toggle-right"
-            onClick={() => setRightOpen(!rightOpen)}
-            style={{ right: rightOpen ? rightWidth : 0 }}
-          >
-            {rightOpen ? '\u203A' : '\u2039'}
-          </button>
+          {/* Sidebar toggle buttons — hidden in eco mode */}
+          {appMode !== 'eco' && (
+            <>
+              <button
+                className="sidebar-toggle sidebar-toggle-left"
+                onClick={() => setLeftOpen(!leftOpen)}
+                style={{ left: leftOpen ? leftWidth : 0 }}
+              >
+                {leftOpen ? '\u2039' : '\u203A'}
+              </button>
+              <button
+                className="sidebar-toggle sidebar-toggle-right"
+                onClick={() => setRightOpen(!rightOpen)}
+                style={{ right: rightOpen ? rightWidth : 0 }}
+              >
+                {rightOpen ? '\u203A' : '\u2039'}
+              </button>
+            </>
+          )}
           {appMode === 'sim' && <ViewportOverlay />}
           {activeExperiment && (
             <GuidedExperiment
@@ -1255,32 +1262,7 @@ export default function App() {
             />
           )}
           {appMode === 'eco' ? (
-            ecoScale === 'massive' ? (
-              massiveId ? (
-                <EcosystemView3D
-                  massiveId={massiveId}
-                  massiveOrganisms={massiveOrganisms}
-                  massiveNeuralStats={massiveNeuralStats}
-                  emergentEvents={massiveEmergent}
-                  worldType={massiveWorldType}
-                  godNarratives={massiveNarratives}
-                  populationStats={massivePopStats}
-                  sendEcoCommand={sendEcoCommand}
-                  food={massiveFood}
-                />
-              ) : (
-                <WorldCreator
-                  onCreateWorld={(worldType, nOrganisms, _enableAI) => {
-                    createMassiveEcosystem(worldType, nOrganisms);
-                  }}
-                  loading={ecoLoading}
-                />
-              )
-            ) : (
-              <EcosystemView
-                ecosystemId={ecosystemId ?? undefined}
-              />
-            )
+            <UnifiedWorld notify={notify} />
           ) : appMode === 'evo' ? (
             <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
               <ChallengeSelector />
@@ -1303,10 +1285,11 @@ export default function App() {
           )}
         </div>
 
-        {/* Right sidebar */}
+        {/* Right sidebar — hidden in eco mode (UnifiedWorld has its own) */}
+        {appMode !== 'eco' && (
         <div className={`sidebar sidebar-right${rightOpen ? '' : ' collapsed'}`} style={rightOpen ? { width: rightWidth } : undefined}>
           {rightOpen && <div className="sidebar-resize-handle sidebar-resize-handle-right" onMouseDown={startResizeRight} />}
-          {rightOpen && (appMode === 'eco' ? (
+          {rightOpen && (false ? (
             <div className="glass" style={{ padding: 8, flex: 1, display: 'flex', flexDirection: 'column' }}>
               <div className="glass-label">{ecoScale === 'massive' ? 'Brain-World Info' : 'Ecosystem Info'}</div>
               <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
@@ -1401,6 +1384,7 @@ export default function App() {
             ) : <ConnectomeSkeleton />
           ))}
         </div>
+        )}
       </div>
 
       {/* Persistent interaction hint — disappears on first interaction */}
@@ -1464,16 +1448,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Bottom bar: waveform or generation timeline — hidden on eco creation screen */}
-      {!(appMode === 'eco' && ecoScale === 'massive' && !massiveId) && (
+      {/* Bottom bar: waveform or generation timeline — hidden in eco mode (UnifiedWorld has its own) */}
+      {appMode !== 'eco' && (
         <div className="bottom-bar">
-          {appMode === 'eco' ? (
-            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-label)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
-              {ecoScale === 'massive'
-                ? `BRAIN-WORLD LIVE — ${massivePopulation.toLocaleString()} organisms — ${massiveNeuralStats ? massiveNeuralStats.total_neurons.toLocaleString() + ' neurons' : 'initializing...'}`
-                : `ECOSYSTEM LIVE — ${(ecoStats?.c_elegans ?? 20) + (ecoStats?.drosophila ?? 5)} organisms`}
-            </div>
-          ) : appMode === 'evo' ? (
+          {appMode === 'evo' ? (
             <GenerationTimeline />
           ) : experiment ? (
             <TransportControls />

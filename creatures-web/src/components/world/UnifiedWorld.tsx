@@ -1,0 +1,891 @@
+import { useRef, useMemo, useEffect, useState, useCallback } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls } from '@react-three/drei';
+import * as THREE from 'three';
+import { useWorldStore } from '../../stores/worldStore';
+import { API_BASE, WS_HOST } from '../../config';
+import { SemanticZoomController } from './SemanticZoomController';
+import {
+  OrganismInstances,
+  OrganismTrails,
+  FoodInstances,
+  Arena,
+  DensityHeatmap,
+  LineageRivers,
+  SpeciesTerritories,
+} from './PopulationLayer';
+import { ColonyLayer } from './ColonyLayer';
+import { OrganismFocus } from './OrganismFocus';
+import { ContextSidebar } from './ContextSidebar';
+import { WorldCreator } from '../ui/WorldCreator';
+import { EvolutionTimeline } from '../ui/EvolutionTimeline';
+import { GodChat } from '../ui/GodChat';
+import { AITicker } from './AITicker';
+import { AINotifications } from './AINotifications';
+import { AIHighlighter } from './AIHighlighter';
+import type { MassiveOrganism } from '../ecosystem/EcosystemView';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const DEFAULT_ARENA_RADIUS = 25;
+
+// ---------------------------------------------------------------------------
+// Scene contents (inside Canvas)
+// ---------------------------------------------------------------------------
+
+function SceneContents() {
+  const organisms = useWorldStore((s) => s.organisms);
+  const neuralStats = useWorldStore((s) => s.neuralStats);
+  const worldType = useWorldStore((s) => s.worldType);
+  const colorMode = useWorldStore((s) => s.colorMode);
+  const food = useWorldStore((s) => s.food);
+  const selectedOrganismIndex = useWorldStore((s) => s.selectedOrganismIndex);
+  const selectedOrganism = useWorldStore((s) => s.selectedOrganism);
+  const highlightedIndices = useWorldStore((s) => s.highlightedOrganismIndices);
+  const zoomBand = useWorldStore((s) => s.zoomBand);
+  const selectOrganism = useWorldStore((s) => s.selectOrganism);
+
+  // Compute arena radius from organism positions
+  const arenaRadius = useMemo(() => {
+    if (organisms.length === 0) return DEFAULT_ARENA_RADIUS;
+    const maxCoord = organisms.reduce(
+      (max, o) => Math.max(max, Math.abs(o.x), Math.abs(o.y)),
+      0,
+    );
+    return Math.max(DEFAULT_ARENA_RADIUS, Math.ceil(maxCoord * 1.3));
+  }, [organisms.length]);
+
+  const handleSelectOrganism = useCallback(
+    (index: number, org: MassiveOrganism) => {
+      selectOrganism(index, org);
+    },
+    [selectOrganism],
+  );
+
+  const isEmpty = organisms.length === 0;
+
+  return (
+    <>
+      <SemanticZoomController />
+
+      {/* Lighting */}
+      <ambientLight intensity={0.3} />
+      <directionalLight position={[0, 0, 30]} intensity={0.5} />
+
+      {/* Camera controls */}
+      <OrbitControls
+        enableRotate={true}
+        enablePan={true}
+        enableZoom={true}
+        maxPolarAngle={Math.PI / 2}
+        minDistance={2}
+        maxDistance={80}
+        makeDefault
+      />
+
+      {/* Environment */}
+      <Arena worldType={worldType} arenaRadius={arenaRadius} />
+
+      {isEmpty ? (
+        <EmptyScene />
+      ) : (
+        <>
+          {/* Population Layer — always visible (instanced dots) */}
+          <OrganismInstances
+            organisms={organisms}
+            neuralStats={neuralStats}
+            colorMode={colorMode}
+            onSelectOrganism={handleSelectOrganism}
+            selectedIndex={selectedOrganismIndex}
+            highlightedIndices={highlightedIndices}
+          />
+
+          {/* Movement trails */}
+          <OrganismTrails organisms={organisms} />
+
+          {/* Food */}
+          <FoodInstances
+            organismCount={organisms.length}
+            arenaRadius={arenaRadius}
+            food={food}
+          />
+
+          {/* Population overlays — visible at population zoom */}
+          {zoomBand === 'population' && (
+            <>
+              <DensityHeatmap organisms={organisms} arenaRadius={arenaRadius} />
+              <SpeciesTerritories organisms={organisms} />
+              <LineageRivers organisms={organisms} />
+            </>
+          )}
+
+          {/* Colony Layer — visible at mid zoom */}
+          <ColonyLayer
+            organisms={organisms}
+            visible={zoomBand === 'colony' || zoomBand === 'organism'}
+          />
+
+          {/* Organism Focus — visible when zoomed into a specific organism */}
+          {selectedOrganism && zoomBand === 'organism' && (
+            <OrganismFocus organism={selectedOrganism} visible={true} />
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+function EmptyScene() {
+  return (
+    <mesh position={[0, 0, 0.5]}>
+      <planeGeometry args={[10, 2]} />
+      <meshBasicMaterial transparent opacity={0} />
+    </mesh>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// HUD Overlay (HTML)
+// ---------------------------------------------------------------------------
+
+function HudOverlay() {
+  const organisms = useWorldStore((s) => s.organisms);
+  const neuralStats = useWorldStore((s) => s.neuralStats);
+  const populationStats = useWorldStore((s) => s.populationStats);
+  const emergentEvents = useWorldStore((s) => s.emergentEvents);
+  const zoomBand = useWorldStore((s) => s.zoomBand);
+  const selectedOrganism = useWorldStore((s) => s.selectedOrganism);
+  const colorMode = useWorldStore((s) => s.colorMode);
+  const toggleColorMode = useWorldStore((s) => s.toggleColorMode);
+  const speed = useWorldStore((s) => s.speed);
+  const worldType = useWorldStore((s) => s.worldType);
+  const selectOrganism = useWorldStore((s) => s.selectOrganism);
+
+  // Birth/death tracking
+  const [birthCount, setBirthCount] = useState(0);
+  const [deathCount, setDeathCount] = useState(0);
+  const prevCountRef = useRef(0);
+  const startTimeRef = useRef(Date.now());
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const prev = prevCountRef.current;
+    const curr = organisms.length;
+    prevCountRef.current = curr;
+    if (prev === 0 && curr === 0) return;
+    const delta = curr - prev;
+    if (delta > 0) setBirthCount((c) => c + delta);
+    else if (delta < 0) setDeathCount((c) => c + Math.abs(delta));
+  }, [organisms.length]);
+
+  useEffect(() => {
+    const iv = setInterval(
+      () => setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000)),
+      1000,
+    );
+    return () => clearInterval(iv);
+  }, []);
+
+  // Narrative events from emergent behaviors
+  const [narratives, setNarratives] = useState<
+    { text: string; icon: string; time: number }[]
+  >([]);
+  const prevEventsLen = useRef(0);
+
+  useEffect(() => {
+    if (emergentEvents.length <= prevEventsLen.current) {
+      prevEventsLen.current = emergentEvents.length;
+      return;
+    }
+    const newEvents = emergentEvents.slice(prevEventsLen.current);
+    prevEventsLen.current = emergentEvents.length;
+
+    for (const ev of newEvents) {
+      const label = ev.behavior_type.replace(/_/g, ' ');
+      const conf = (ev.confidence * 100).toFixed(0);
+      setNarratives((prev) =>
+        [
+          { text: `${label} detected (${conf}%)`, icon: '\u{1F52C}', time: Date.now() },
+          ...prev,
+        ].slice(0, 5),
+      );
+    }
+  }, [emergentEvents]);
+
+  // Auto-remove stale narratives
+  useEffect(() => {
+    const iv = setInterval(() => {
+      const cutoff = Date.now() - 12000;
+      setNarratives((prev) => prev.filter((n) => n.time > cutoff));
+    }, 3000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const fontFamily = '"SF Mono", "Fira Code", monospace';
+
+  const worldLabels: Record<string, string> = {
+    soil: 'SOIL',
+    pond: 'POND',
+    lab_plate: 'LAB PLATE',
+    abstract: 'ABSTRACT',
+  };
+
+  // Population trend
+  const trend =
+    organisms.length > prevCountRef.current
+      ? 'up'
+      : organisms.length < prevCountRef.current
+        ? 'down'
+        : 'stable';
+
+  return (
+    <>
+      {/* Stats HUD — top left */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 8,
+          left: 8,
+          background: 'rgba(0,0,0,0.5)',
+          padding: '6px 10px',
+          borderRadius: 4,
+          fontFamily,
+          fontSize: 10,
+          lineHeight: '14px',
+          pointerEvents: 'auto',
+          zIndex: 10,
+        }}
+      >
+        <div style={{ color: 'rgba(140,170,200,0.5)' }}>BRAIN-WORLD LIVE</div>
+        <div
+          style={{
+            color: speed > 5 ? 'rgba(255,180,80,0.9)' : 'rgba(0,255,136,0.8)',
+            fontSize: 13,
+            fontWeight: 700,
+            marginBottom: 4,
+          }}
+        >
+          {speed.toFixed(1)}x SPEED
+        </div>
+        <div
+          style={{
+            color:
+              trend === 'down' ? '#ff4444' : 'rgba(0,212,255,0.7)',
+          }}
+        >
+          Organisms: {organisms.length}
+          {trend === 'up' && (
+            <span style={{ color: 'rgba(0,255,136,0.8)', marginLeft: 4 }}>
+              {'\u2191'}
+            </span>
+          )}
+          {trend === 'down' && (
+            <span style={{ color: '#ff4444', marginLeft: 4 }}>{'\u2193'}</span>
+          )}
+        </div>
+        <div style={{ color: 'rgba(0,255,136,0.65)' }}>Births: {birthCount}</div>
+        <div
+          style={{
+            color: deathCount > 0 ? '#ff4444' : 'rgba(255,100,100,0.65)',
+            fontWeight: deathCount > 0 ? 600 : 400,
+          }}
+        >
+          Deaths: {deathCount}
+        </div>
+        <div style={{ color: 'rgba(160,160,200,0.5)', fontSize: 9 }}>
+          Elapsed: {Math.floor(elapsed / 60)}m {Math.floor(elapsed % 60)}s
+        </div>
+        {neuralStats && (
+          <>
+            <div style={{ color: 'rgba(180,140,255,0.7)' }}>
+              Neurons: {neuralStats.total_neurons.toLocaleString()}
+            </div>
+            <div style={{ color: 'rgba(0,255,136,0.7)' }}>
+              Fired: {neuralStats.total_fired.toLocaleString()}
+            </div>
+            <div style={{ color: 'rgba(255,200,100,0.6)' }}>
+              Rate: {neuralStats.mean_firing_rate.toFixed(3)}
+            </div>
+          </>
+        )}
+        {populationStats?.max_generation > 0 && (
+          <div
+            style={{
+              marginTop: 8,
+              borderTop: '1px solid rgba(80,130,200,0.1)',
+              paddingTop: 6,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 8,
+                color: 'rgba(140,170,200,0.4)',
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+                marginBottom: 4,
+              }}
+            >
+              Evolution
+            </div>
+            <div>
+              Generation:{' '}
+              <span style={{ color: '#ffcc88' }}>
+                {populationStats.max_generation}
+              </span>
+            </div>
+            <div>
+              Lineages:{' '}
+              <span style={{ color: '#88ffcc' }}>
+                {populationStats.n_lineages}
+              </span>
+            </div>
+            <div>
+              Avg food:{' '}
+              <span style={{ color: '#ff8888' }}>
+                {populationStats.mean_lifetime_food?.toFixed(1)}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Zoom band indicator */}
+        <div
+          style={{
+            marginTop: 8,
+            borderTop: '1px solid rgba(80,130,200,0.1)',
+            paddingTop: 4,
+            fontSize: 9,
+            color: 'rgba(100,180,255,0.6)',
+            textTransform: 'uppercase',
+            letterSpacing: 1,
+          }}
+        >
+          {zoomBand === 'population'
+            ? 'Population View'
+            : zoomBand === 'colony'
+              ? 'Colony View'
+              : 'Organism View'}
+        </div>
+
+        <button
+          onClick={toggleColorMode}
+          style={{
+            background: 'rgba(100, 130, 200, 0.1)',
+            border: '1px solid rgba(100, 130, 200, 0.15)',
+            borderRadius: 4,
+            padding: '3px 8px',
+            fontSize: 9,
+            color: '#88aacc',
+            cursor: 'pointer',
+            fontFamily: 'var(--font-mono)',
+            marginTop: 4,
+            display: 'block',
+          }}
+        >
+          Color: {colorMode === 'energy' ? 'Energy' : 'Lineage'}
+        </button>
+      </div>
+
+      {/* World type label — bottom left */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 8,
+          left: 10,
+          fontFamily,
+          fontSize: 9,
+          color: 'rgba(100,130,170,0.35)',
+          pointerEvents: 'none',
+          zIndex: 10,
+        }}
+      >
+        {worldLabels[worldType] ?? worldType.toUpperCase()}
+      </div>
+
+      {/* Emergent behavior badges — top right */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 8,
+          right: 10,
+          textAlign: 'right',
+          fontFamily,
+          fontSize: 9,
+          pointerEvents: 'none',
+          zIndex: 10,
+        }}
+      >
+        <div style={{ color: 'rgba(0,255,136,0.5)', marginBottom: 4 }}>LIVE</div>
+      </div>
+
+      {/* Narrative event feed — bottom left */}
+      {narratives.length > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 150,
+            left: 16,
+            maxWidth: 380,
+            display: 'flex',
+            flexDirection: 'column-reverse',
+            gap: 6,
+            pointerEvents: 'none',
+            zIndex: 10,
+          }}
+        >
+          {narratives.slice(0, 3).map((n, i) => (
+            <div
+              key={n.time}
+              style={{
+                background: 'rgba(6, 8, 18, 0.92)',
+                backdropFilter: 'blur(16px)',
+                border: '1px solid rgba(100, 160, 255, 0.2)',
+                borderRadius: 10,
+                padding: '8px 14px',
+                fontSize: i === 0 ? 13 : 11,
+                fontWeight: i === 0 ? 600 : 400,
+                color:
+                  i === 0
+                    ? 'rgba(220, 235, 255, 0.95)'
+                    : 'rgba(180, 200, 220, 0.75)',
+                fontFamily,
+                opacity: 1 - i * 0.2,
+              }}
+            >
+              <span style={{ marginRight: 8, fontSize: i === 0 ? 15 : 12 }}>
+                {n.icon}
+              </span>
+              {n.text}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Selected organism inspect panel */}
+      {selectedOrganism && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 60,
+            left: 12,
+            zIndex: 25,
+            background: 'rgba(6, 8, 18, 0.92)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(100, 130, 200, 0.2)',
+            borderRadius: 10,
+            padding: '12px 16px',
+            maxWidth: 250,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 6,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color:
+                  selectedOrganism.species === 0 ? '#00d4ff' : '#ffaa22',
+              }}
+            >
+              {selectedOrganism.species === 0 ? 'C. elegans' : 'Drosophila'}
+            </span>
+            <button
+              onClick={() => selectOrganism(null)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'rgba(140,170,200,0.5)',
+                cursor: 'pointer',
+                fontSize: 14,
+                padding: '0 2px',
+              }}
+            >
+              {'\u00d7'}
+            </button>
+          </div>
+          <div
+            style={{
+              fontSize: 10,
+              color: 'rgba(160,180,210,0.7)',
+              fontFamily: 'var(--font-mono)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 3,
+            }}
+          >
+            <div>
+              Generation:{' '}
+              <span style={{ color: '#ffcc88' }}>
+                {selectedOrganism.generation ?? 0}
+              </span>
+            </div>
+            <div>
+              Lineage:{' '}
+              <span style={{ color: '#88ffcc' }}>
+                {selectedOrganism.lineage_id ?? '?'}
+              </span>
+            </div>
+            <div>
+              Energy:{' '}
+              <span style={{ color: '#ff8888' }}>
+                {(selectedOrganism.energy ?? 0).toFixed(1)}
+              </span>
+            </div>
+            <div>
+              Age:{' '}
+              <span style={{ color: 'rgba(220,235,255,0.9)' }}>
+                {(selectedOrganism.age ?? 0).toFixed(0)}
+              </span>
+            </div>
+            <div>
+              Food eaten:{' '}
+              <span style={{ color: '#88ccff' }}>
+                {(selectedOrganism.lifetime_food_eaten ?? 0).toFixed(0)}
+              </span>
+            </div>
+            <div>
+              Position:{' '}
+              <span style={{ color: 'rgba(180,200,220,0.7)' }}>
+                ({selectedOrganism.x.toFixed(1)}, {selectedOrganism.y.toFixed(1)})
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Speed Control
+// ---------------------------------------------------------------------------
+
+function SpeedControl({
+  sendCommand,
+}: {
+  sendCommand: (cmd: Record<string, unknown>) => void;
+}) {
+  const speed = useWorldStore((s) => s.speed);
+  const setSpeed = useWorldStore((s) => s.setSpeed);
+
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = Number(e.target.value);
+      setSpeed(value);
+      sendCommand({ type: 'speed', value });
+    },
+    [sendCommand, setSpeed],
+  );
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        bottom: 140,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        background: 'rgba(6,8,18,0.8)',
+        backdropFilter: 'blur(12px)',
+        border: '1px solid rgba(80,130,200,0.12)',
+        borderRadius: 8,
+        padding: '4px 12px',
+        zIndex: 10,
+      }}
+    >
+      <span
+        style={{
+          fontSize: 9,
+          color: 'rgba(140,170,200,0.4)',
+          fontFamily: 'var(--font-mono)',
+        }}
+      >
+        0.1x
+      </span>
+      <input
+        type="range"
+        min={0.1}
+        max={20}
+        step={0.1}
+        value={speed}
+        onChange={handleChange}
+        style={{ width: 120, accentColor: '#00d4ff', cursor: 'pointer' }}
+      />
+      <span
+        style={{
+          fontSize: 9,
+          color: 'rgba(140,170,200,0.4)',
+          fontFamily: 'var(--font-mono)',
+        }}
+      >
+        20x
+      </span>
+      <span
+        style={{
+          fontSize: 10,
+          color: speed > 5 ? 'rgba(255,180,80,0.8)' : 'rgba(0,212,255,0.7)',
+          fontFamily: 'var(--font-mono)',
+          fontWeight: 600,
+          minWidth: 32,
+          textAlign: 'right',
+        }}
+      >
+        {speed.toFixed(1)}x
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Exported Component
+// ---------------------------------------------------------------------------
+
+export function UnifiedWorld({
+  notify,
+}: {
+  notify?: (msg: string, duration?: number) => void;
+}) {
+  const massiveId = useWorldStore((s) => s.massiveId);
+  const setMassiveId = useWorldStore((s) => s.setMassiveId);
+  const setWorldType = useWorldStore((s) => s.setWorldType);
+  const worldType = useWorldStore((s) => s.worldType);
+  const isCreating = useWorldStore((s) => s.isCreating);
+  const setIsCreating = useWorldStore((s) => s.setIsCreating);
+  const updateFromWs = useWorldStore((s) => s.updateFromWs);
+  const organisms = useWorldStore((s) => s.organisms);
+  const population = useWorldStore((s) => s.population);
+  const neuralStats = useWorldStore((s) => s.neuralStats);
+
+  const selectedOrganismIndex = useWorldStore((s) => s.selectedOrganismIndex);
+  const fetchOrganismDetail = useWorldStore((s) => s.fetchOrganismDetail);
+
+  // WebSocket ref
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // Auto-refresh organism detail every 3 seconds while selected
+  useEffect(() => {
+    if (selectedOrganismIndex === null || !massiveId) return;
+    const iv = setInterval(() => {
+      fetchOrganismDetail(selectedOrganismIndex);
+    }, 3000);
+    return () => clearInterval(iv);
+  }, [selectedOrganismIndex, massiveId, fetchOrganismDetail]);
+
+  // --- WebSocket connection ---
+  useEffect(() => {
+    if (!massiveId) {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      return;
+    }
+
+    const wsProtocol =
+      window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${WS_HOST}/api/ecosystem/massive/ws/${massiveId}`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () =>
+      console.log('[UnifiedWorld] WebSocket connected to', massiveId);
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'ecosystem_state') {
+          updateFromWs(msg);
+        }
+      } catch (e) {
+        console.error('[UnifiedWorld] Failed to parse message:', e);
+      }
+    };
+
+    ws.onerror = (err) =>
+      console.error('[UnifiedWorld] WebSocket error:', err);
+    ws.onclose = () => {
+      console.log('[UnifiedWorld] WebSocket disconnected');
+      wsRef.current = null;
+    };
+
+    wsRef.current = ws;
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, [massiveId, updateFromWs]);
+
+  // --- Send command via WebSocket ---
+  const sendCommand = useCallback((cmd: Record<string, unknown>) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(cmd));
+    }
+  }, []);
+
+  // --- Create brain-world ---
+  const createWorld = useCallback(
+    async (type: string, nOrganisms = 1000, neuronsPerOrg = 50) => {
+      setIsCreating(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/ecosystem/massive`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            n_organisms: nOrganisms,
+            neurons_per: neuronsPerOrg,
+            world_type: type,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setMassiveId(data.id ?? null);
+          setWorldType(type);
+          notify?.(`Brain-world created (${nOrganisms} organisms)`);
+        } else {
+          notify?.('API unavailable — check server', 5000);
+        }
+      } catch {
+        notify?.('API unavailable — check server', 5000);
+      } finally {
+        setIsCreating(false);
+      }
+    },
+    [setIsCreating, setMassiveId, setWorldType, notify],
+  );
+
+  // Camera frustum sizing
+  const arenaRadius = useMemo(() => {
+    if (organisms.length === 0) return DEFAULT_ARENA_RADIUS;
+    const maxCoord = organisms.reduce(
+      (max, o) => Math.max(max, Math.abs(o.x), Math.abs(o.y)),
+      0,
+    );
+    return Math.max(DEFAULT_ARENA_RADIUS, Math.ceil(maxCoord * 1.3));
+  }, [organisms.length]);
+
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+        background: '#030308',
+        overflow: 'hidden',
+      }}
+    >
+      {/* World Creator overlay — shown when no world exists yet */}
+      {!massiveId && (
+        <WorldCreator
+          onCreateWorld={(type, nOrg, _enableAI) =>
+            createWorld(type, nOrg)
+          }
+          loading={isCreating}
+        />
+      )}
+
+      {/* 3D Canvas — always present */}
+      <Canvas
+        camera={{
+          fov: 60,
+          near: 0.1,
+          far: 200,
+          position: [0, 0, 60],
+        }}
+        gl={{
+          antialias: true,
+          toneMapping: THREE.NoToneMapping,
+          powerPreference: 'high-performance',
+        }}
+        dpr={[1, 2]}
+        style={{ width: '100%', height: '100%' }}
+      >
+        <color attach="background" args={['#030308']} />
+        <SceneContents />
+      </Canvas>
+
+      {/* HTML overlays */}
+      {massiveId && (
+        <>
+          <HudOverlay />
+          <SpeedControl sendCommand={sendCommand} />
+
+          {/* Context-sensitive sidebar */}
+          <ContextSidebar
+            massiveId={massiveId}
+            sendCommand={sendCommand}
+            notify={notify}
+          />
+
+          {/* AI Integration Layer */}
+          <AIHighlighter />
+          <AINotifications />
+          <AITicker />
+
+          {/* God Agent chat */}
+          <GodChat bwId={massiveId} />
+
+          {/* Evolution timeline */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 12,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              pointerEvents: 'none',
+              zIndex: 10,
+            }}
+          >
+            <EvolutionTimeline width={300} height={120} />
+          </div>
+        </>
+      )}
+
+      {/* Status bar */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 24,
+          background: 'rgba(3,3,8,0.9)',
+          borderTop: '1px solid rgba(80,130,200,0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 16,
+          fontSize: 10,
+          fontFamily: '"SF Mono", "Fira Code", monospace',
+          color: 'rgba(100,130,170,0.5)',
+          zIndex: 10,
+        }}
+      >
+        {massiveId ? (
+          <>
+            <span>
+              BRAIN-WORLD LIVE &mdash; {population.toLocaleString()} organisms
+            </span>
+            {neuralStats && (
+              <span>
+                &mdash; {neuralStats.total_neurons.toLocaleString()} neurons
+              </span>
+            )}
+          </>
+        ) : (
+          <span>Create a brain-world to begin</span>
+        )}
+      </div>
+    </div>
+  );
+}

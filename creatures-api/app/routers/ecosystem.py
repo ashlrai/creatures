@@ -706,6 +706,21 @@ async def get_massive_emergent(bw_id: str):
     }
 
 
+@router.get("/massive/{bw_id}/organism/{org_idx}")
+async def get_organism_detail(bw_id: str, org_idx: int):
+    """Get detailed neural and ecological data for a single organism."""
+    bw = _brain_worlds.get(bw_id)
+    if bw is None:
+        raise HTTPException(404, f"Brain-world {bw_id} not found")
+
+    try:
+        detail = bw.get_organism_detail(org_idx)
+    except IndexError as e:
+        raise HTTPException(400, str(e))
+
+    return {"id": bw_id, **detail}
+
+
 # ======================================================================
 # Massive brain-world auto-run loop + WebSocket
 # ======================================================================

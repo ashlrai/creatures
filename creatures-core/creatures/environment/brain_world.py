@@ -487,6 +487,126 @@ class BrainWorld:
             eco_state["consciousness_history"] = self._consciousness_history[-10:]
         return eco_state
 
+    def get_organism_detail(self, org_idx: int) -> dict[str, Any]:
+        """Extract detailed neural and ecological data for a single organism.
+
+        Parameters
+        ----------
+        org_idx:
+            Integer index of the organism (0-based, must be within engine range).
+
+        Returns
+        -------
+        dict with neural firing rates, STDP weight stats, ecosystem state,
+        and simple behavior classification for the organism.
+        """
+        eco = self.ecosystem
+        engine = self.engine
+        n_per = self.n_per
+
+        # Validate index
+        if org_idx < 0 or org_idx >= engine.n_organisms:
+            raise IndexError(
+                f"org_idx {org_idx} out of range [0, {engine.n_organisms})"
+            )
+
+        # --- Neural data ---
+        neuron_start = org_idx * n_per
+        neuron_end = (org_idx + 1) * n_per
+
+        fr_np = engine._to_numpy(engine.firing_rate)
+        org_firing_rates = fr_np[neuron_start:neuron_end].tolist()
+
+        fired_np = engine._to_numpy(engine.fired)
+        org_fired = fired_np[neuron_start:neuron_end]
+
+        # Break firing rates into roles
+        sensory_rates = fr_np[neuron_start:neuron_start + self.n_sensory].tolist()
+        motor_start_idx = neuron_start + n_per - self.n_motor
+        motor_rates = fr_np[motor_start_idx:neuron_end].tolist()
+        inter_rates = fr_np[neuron_start + self.n_sensory:motor_start_idx].tolist()
+
+        neural_data: dict[str, Any] = {
+            "firing_rates": org_firing_rates,
+            "active_neurons": int(np.sum(org_fired)),
+            "mean_firing_rate": float(np.mean(fr_np[neuron_start:neuron_end])),
+            "sensory_rates": sensory_rates,
+            "inter_rates": inter_rates,
+            "motor_rates": motor_rates,
+        }
+
+        # --- STDP weight data (if enabled) ---
+        if engine.enable_stdp:
+            w_start, w_end = engine.get_organism_weight_range(org_idx)
+            syn_w_np = engine._to_numpy(engine.syn_w)
+            org_weights = syn_w_np[w_start:w_end]
+
+            apre_np = engine._to_numpy(engine.apre)
+            apost_np = engine._to_numpy(engine.apost)
+            org_apre = apre_np[w_start:w_end]
+            org_apost = apost_np[w_start:w_end]
+
+            neural_data["stdp"] = {
+                "n_synapses": int(w_end - w_start),
+                "mean_weight": float(np.mean(org_weights)) if len(org_weights) > 0 else 0.0,
+                "std_weight": float(np.std(org_weights)) if len(org_weights) > 0 else 0.0,
+                "min_weight": float(np.min(org_weights)) if len(org_weights) > 0 else 0.0,
+                "max_weight": float(np.max(org_weights)) if len(org_weights) > 0 else 0.0,
+                "mean_apre": float(np.mean(org_apre)) if len(org_apre) > 0 else 0.0,
+                "mean_apost": float(np.mean(org_apost)) if len(org_apost) > 0 else 0.0,
+            }
+
+        # --- Ecosystem data ---
+        alive = bool(eco.alive[org_idx])
+        eco_data = {
+            "alive": alive,
+            "x": float(eco.x[org_idx]),
+            "y": float(eco.y[org_idx]),
+            "heading": float(eco.heading[org_idx]),
+            "energy": float(eco.energy[org_idx]),
+            "age": float(eco.age[org_idx]),
+            "generation": int(eco.generation[org_idx]),
+            "lineage_id": int(eco.lineage_id[org_idx]),
+            "parent_id": int(eco.parent_id[org_idx]),
+            "species": "c_elegans" if eco.species[org_idx] == 0 else "drosophila",
+            "lifetime_food": float(eco.lifetime_food[org_idx]),
+        }
+
+        # --- Behavior classification ---
+        # Speed: derived from motor neuron firing rates (same logic as _decode_motor_output)
+        forward_rate = sum(
+            fr_np[org_idx * n_per + n_idx] for n_idx in self.motor_forward
+        )
+        backward_rate = sum(
+            fr_np[org_idx * n_per + n_idx] for n_idx in self.motor_backward
+        )
+        turn_rate = sum(
+            fr_np[org_idx * n_per + n_idx] for n_idx in self.motor_turn
+        )
+        speed = float(abs(forward_rate - backward_rate) * 0.005)
+
+        # Linearity: net displacement from origin / (speed * age + epsilon)
+        # Approximation — true path-length requires trajectory history
+        displacement = float(np.sqrt(eco.x[org_idx] ** 2 + eco.y[org_idx] ** 2))
+        estimated_path = speed * float(eco.age[org_idx]) + 1e-8
+        linearity = min(float(displacement / estimated_path), 1.0)
+
+        behavior = {
+            "speed": speed,
+            "forward_rate": float(forward_rate),
+            "backward_rate": float(backward_rate),
+            "turn_rate": float(turn_rate),
+            "displacement": displacement,
+            "linearity": linearity,
+        }
+
+        return {
+            "org_idx": org_idx,
+            "neural": neural_data,
+            "ecosystem": eco_data,
+            "behavior": behavior,
+        }
+
     def get_emergent_state(self) -> dict[str, Any]:
         """Build a state dict compatible with EmergentBehaviorDetector.observe().
 
