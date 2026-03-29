@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { useWorldStore } from '../../stores/worldStore';
 import { CoCreatorPanel } from '../ui/CoCreatorPanel';
 import { getHighlights } from './AIHighlighter';
@@ -31,6 +31,13 @@ export function ContextSidebar({
   const populationStats = useWorldStore((s) => s.populationStats);
   const neuralStats = useWorldStore((s) => s.neuralStats);
   const [open, setOpen] = useState(false);
+
+  // Auto-open sidebar when an organism is selected
+  const prevSelectedRef = useRef(selectedOrganism);
+  if (selectedOrganism && !prevSelectedRef.current && !open) {
+    setOpen(true);
+  }
+  prevSelectedRef.current = selectedOrganism;
 
   const handleNotify = useCallback(
     (msg: string) => notify?.(msg),
