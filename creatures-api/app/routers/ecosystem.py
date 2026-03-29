@@ -977,6 +977,14 @@ async def massive_ecosystem_ws(websocket: WebSocket, bw_id: str):
                     value = float(data.get("value", 1.0))
                     _brain_world_speed[bw_id] = max(0.1, min(value, 50.0))
                     logger.info("WS %s set speed for %s to %.1f", ws_id, bw_id, _brain_world_speed[bw_id])
+                elif data.get("type") == "focus_organism":
+                    org_idx = int(data.get("org_idx", 0))
+                    bw = _brain_worlds.get(bw_id)
+                    if bw is not None:
+                        detail = bw.get_organism_detail(org_idx)
+                        await websocket.send_json({"type": "organism_detail", **detail})
+                    else:
+                        await websocket.send_json({"type": "error", "message": f"Brain-world {bw_id} not found"})
                 else:
                     logger.debug("Received from WS %s: %s", ws_id, raw[:100])
             except (ValueError, TypeError):
