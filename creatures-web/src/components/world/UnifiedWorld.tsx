@@ -660,6 +660,7 @@ export function UnifiedWorld({
   const neuralStats = useWorldStore((s) => s.neuralStats);
 
   const selectedOrganismIndex = useWorldStore((s) => s.selectedOrganismIndex);
+  const selectOrganism = useWorldStore((s) => s.selectOrganism);
   const fetchOrganismDetail = useWorldStore((s) => s.fetchOrganismDetail);
 
   // WebSocket ref
@@ -673,6 +674,18 @@ export function UnifiedWorld({
     }, 3000);
     return () => clearInterval(iv);
   }, [selectedOrganismIndex, massiveId, fetchOrganismDetail]);
+
+  // Keyboard shortcuts for World view
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'Escape') {
+        selectOrganism(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectOrganism]);
 
   // --- WebSocket connection ---
   useEffect(() => {

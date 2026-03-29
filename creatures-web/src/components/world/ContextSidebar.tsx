@@ -46,23 +46,35 @@ export function ContextSidebar({
           right: 0,
           top: '50%',
           transform: 'translateY(-50%)',
-          background: 'rgba(6,8,18,0.9)',
-          border: '1px solid rgba(80,130,200,0.15)',
+          background: 'rgba(6,8,18,0.92)',
+          backdropFilter: 'blur(12px)',
+          border: '1px solid rgba(80,130,200,0.2)',
           borderRight: 'none',
-          borderRadius: '8px 0 0 8px',
-          color: 'rgba(140,170,200,0.6)',
+          borderRadius: '10px 0 0 10px',
+          color: 'rgba(140,170,200,0.7)',
           cursor: 'pointer',
-          padding: '12px 6px',
+          padding: '16px 8px',
           fontSize: 11,
           zIndex: 20,
           writingMode: 'vertical-rl',
+          letterSpacing: 1,
+          fontFamily: '"SF Mono", "Fira Code", monospace',
+          transition: 'background 0.2s, border-color 0.2s',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'rgba(0,100,200,0.15)';
+          e.currentTarget.style.borderColor = 'rgba(0,180,255,0.3)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'rgba(6,8,18,0.92)';
+          e.currentTarget.style.borderColor = 'rgba(80,130,200,0.2)';
         }}
       >
         {zoomBand === 'population'
-          ? 'Controls'
+          ? '\u2699 Controls'
           : zoomBand === 'colony'
-            ? 'Colony'
-            : 'Organism'}
+            ? '\u{1F52C} Colony'
+            : '\u{1F9E0} Organism'}
       </button>
     );
   }
