@@ -210,11 +210,11 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       );
       if (res.ok) {
         const data = await res.json();
-        set({ organismDetail: data, organismDetailLoading: false });
-      } else {
-        set({ organismDetailLoading: false });
+        set({ organismDetail: data });
       }
     } catch {
+      // Network error — silently ignore, detail panel will show stale data
+    } finally {
       set({ organismDetailLoading: false });
     }
   },

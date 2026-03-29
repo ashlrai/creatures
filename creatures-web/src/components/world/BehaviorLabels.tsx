@@ -1,19 +1,17 @@
-import { useMemo } from 'react';
-import { useWorldStore } from '../../stores/worldStore';
 import type { MassiveOrganism } from '../ecosystem/EcosystemView';
 
 // ---------------------------------------------------------------------------
-// BehaviorLabels — classify and label organism behaviors at colony zoom
+// Behavior classification and configuration for organism states
 //
-// Analyzes organism state (energy, age, food eaten, position) to infer
-// behavioral state. Labels float near organisms in the 3D view.
+// Analyzes organism state (energy, age, food eaten) to infer behavioral
+// state. Used by ContextSidebar's colony panel for behavior breakdown.
 // Uses simple heuristics until per-organism neural data is available
 // in Phase 2.
 // ---------------------------------------------------------------------------
 
-type Behavior = 'foraging' | 'exploring' | 'thriving' | 'struggling' | 'elder' | 'newborn';
+export type Behavior = 'foraging' | 'exploring' | 'thriving' | 'struggling' | 'elder' | 'newborn';
 
-const BEHAVIOR_CONFIG: Record<Behavior, { label: string; color: string; icon: string }> = {
+export const BEHAVIOR_CONFIG: Record<Behavior, { label: string; color: string; icon: string }> = {
   foraging: { label: 'Foraging', color: 'rgba(0, 255, 136, 0.8)', icon: '\u{1F331}' },
   exploring: { label: 'Exploring', color: 'rgba(0, 180, 255, 0.8)', icon: '\u{1F30D}' },
   thriving: { label: 'Thriving', color: 'rgba(255, 200, 100, 0.8)', icon: '\u{2B50}' },
@@ -22,7 +20,7 @@ const BEHAVIOR_CONFIG: Record<Behavior, { label: string; color: string; icon: st
   newborn: { label: 'Newborn', color: 'rgba(140, 220, 255, 0.8)', icon: '\u{1F95A}' },
 };
 
-function classifyBehavior(org: MassiveOrganism, meanEnergy: number): Behavior {
+export function classifyBehavior(org: MassiveOrganism, meanEnergy: number): Behavior {
   const energy = org.energy;
   const age = org.age ?? 0;
   const food = org.lifetime_food_eaten ?? 0;
@@ -45,45 +43,3 @@ function classifyBehavior(org: MassiveOrganism, meanEnergy: number): Behavior {
   // Default: exploring
   return 'exploring';
 }
-
-export function BehaviorLabels() {
-  const organisms = useWorldStore((s) => s.organisms);
-  const zoomBand = useWorldStore((s) => s.zoomBand);
-
-  // Only show at colony zoom
-  if (zoomBand !== 'colony' || organisms.length === 0) return null;
-
-  // Compute mean energy for relative classification
-  const meanEnergy = useMemo(() => {
-    if (organisms.length === 0) return 100;
-    let sum = 0;
-    for (const org of organisms) sum += org.energy;
-    return sum / organisms.length;
-  }, [organisms]);
-
-  // Show labels for top organisms by energy (max 10 visible at once)
-  const labeledOrgs = useMemo(() => {
-    const sorted = [...organisms]
-      .map((org, idx) => ({ org, idx }))
-      .filter(({ org }) => org.energy > 1)
-      .sort((a, b) => b.org.energy - a.org.energy)
-      .slice(0, 10);
-
-    return sorted.map(({ org, idx }) => ({
-      org,
-      idx,
-      behavior: classifyBehavior(org, meanEnergy),
-    }));
-  }, [organisms, meanEnergy]);
-
-  // Note: Proper 3D-to-2D projection would require access to the camera.
-  // For now, we return null — behavior classification is surfaced in the
-  // ContextSidebar's colony panel instead. In a future pass, we'll use
-  // @react-three/drei Html component for projected labels.
-
-  return null;
-}
-
-/** Export classification function for use in sidebar */
-export { classifyBehavior, BEHAVIOR_CONFIG };
-export type { Behavior };
