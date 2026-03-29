@@ -457,103 +457,66 @@ function HudOverlay() {
         </div>
       )}
 
-      {/* Selected organism inspect panel */}
-      {selectedOrganism && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 60,
-            left: 12,
-            zIndex: 25,
-            background: 'rgba(6, 8, 18, 0.92)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(100, 130, 200, 0.2)',
-            borderRadius: 10,
-            padding: '12px 16px',
-            maxWidth: 250,
-          }}
-        >
+      {/* Selected organism inspect card */}
+      {selectedOrganism && (() => {
+        const energy = Math.min(1, Math.max(0, selectedOrganism.energy / 200));
+        const energyColor = energy > 0.5 ? '#00cc66' : energy > 0.2 ? '#ffaa22' : '#ff4444';
+        const speciesColor = selectedOrganism.species === 0 ? '#00d4ff' : '#ffaa22';
+        return (
           <div
             style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 6,
+              position: 'absolute',
+              top: 60,
+              left: 12,
+              zIndex: 25,
+              background: 'rgba(6, 8, 18, 0.92)',
+              backdropFilter: 'blur(16px)',
+              border: `1px solid ${speciesColor}30`,
+              borderRadius: 12,
+              padding: '12px 16px',
+              maxWidth: 220,
+              fontFamily: '"SF Mono", "Fira Code", monospace',
             }}
           >
-            <span
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color:
-                  selectedOrganism.species === 0 ? '#00d4ff' : '#ffaa22',
-              }}
-            >
-              {selectedOrganism.species === 0 ? 'C. elegans' : 'Drosophila'}
-            </span>
-            <button
-              onClick={() => selectOrganism(null)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'rgba(140,170,200,0.5)',
-                cursor: 'pointer',
-                fontSize: 14,
-                padding: '0 2px',
-              }}
-            >
-              {'\u00d7'}
-            </button>
-          </div>
-          <div
-            style={{
-              fontSize: 10,
-              color: 'rgba(160,180,210,0.7)',
-              fontFamily: 'var(--font-mono)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 3,
-            }}
-          >
-            <div>
-              Generation:{' '}
-              <span style={{ color: '#ffcc88' }}>
-                {selectedOrganism.generation ?? 0}
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: speciesColor }}>
+                {selectedOrganism.species === 0 ? 'C. elegans' : 'Drosophila'}
               </span>
+              <button
+                onClick={() => selectOrganism(null)}
+                style={{ background: 'none', border: 'none', color: 'rgba(140,170,200,0.5)', cursor: 'pointer', fontSize: 14, padding: '0 2px' }}
+              >
+                {'\u00d7'}
+              </button>
             </div>
-            <div>
-              Lineage:{' '}
-              <span style={{ color: '#88ffcc' }}>
-                {selectedOrganism.lineage_id ?? '?'}
-              </span>
+
+            {/* Energy bar */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'rgba(140,170,200,0.4)', marginBottom: 3 }}>
+                <span>Energy</span>
+                <span style={{ color: energyColor }}>{selectedOrganism.energy.toFixed(0)}</span>
+              </div>
+              <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ width: `${energy * 100}%`, height: '100%', background: energyColor, borderRadius: 2, transition: 'width 0.3s' }} />
+              </div>
             </div>
-            <div>
-              Energy:{' '}
-              <span style={{ color: '#ff8888' }}>
-                {(selectedOrganism.energy ?? 0).toFixed(1)}
-              </span>
+
+            {/* Stats grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px', fontSize: 10, color: 'rgba(160,180,210,0.7)' }}>
+              <div>Gen <span style={{ color: '#ffcc88' }}>{selectedOrganism.generation ?? 0}</span></div>
+              <div>Age <span style={{ color: 'rgba(220,235,255,0.9)' }}>{(selectedOrganism.age ?? 0).toFixed(0)}</span></div>
+              <div>Food <span style={{ color: '#88ccff' }}>{(selectedOrganism.lifetime_food_eaten ?? 0).toFixed(0)}</span></div>
+              <div>Lin <span style={{ color: '#88ffcc' }}>{(selectedOrganism.lineage_id ?? '?').toString().slice(0, 6)}</span></div>
             </div>
-            <div>
-              Age:{' '}
-              <span style={{ color: 'rgba(220,235,255,0.9)' }}>
-                {(selectedOrganism.age ?? 0).toFixed(0)}
-              </span>
-            </div>
-            <div>
-              Food eaten:{' '}
-              <span style={{ color: '#88ccff' }}>
-                {(selectedOrganism.lifetime_food_eaten ?? 0).toFixed(0)}
-              </span>
-            </div>
-            <div>
-              Position:{' '}
-              <span style={{ color: 'rgba(180,200,220,0.7)' }}>
-                ({selectedOrganism.x.toFixed(1)}, {selectedOrganism.y.toFixed(1)})
-              </span>
+
+            {/* Hint to open sidebar */}
+            <div style={{ marginTop: 8, fontSize: 8, color: 'rgba(100,130,170,0.3)', textAlign: 'center' }}>
+              Open sidebar for neural detail {'\u2192'}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </>
   );
 }
