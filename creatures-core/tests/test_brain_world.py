@@ -17,7 +17,7 @@ class TestBrainWorldBuild:
         assert bw.engine.n_organisms == 100
         assert bw.engine.n_per == 50
         assert bw.engine.n_total == 5000
-        assert bw.ecosystem.n == 100
+        assert int(bw.ecosystem.alive.sum()) == 100  # n includes overcapacity slots
         assert bw.n_sensory == 10  # 20% of 50
         assert bw.n_motor == 10  # 20% of 50
 
