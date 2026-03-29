@@ -676,6 +676,322 @@ function SpeedControl({
 }
 
 // ---------------------------------------------------------------------------
+// Left Sidebar — Divine Interventions (always-visible icon strip)
+// ---------------------------------------------------------------------------
+
+function LeftSidebar({
+  massiveId,
+  notify,
+}: {
+  massiveId: string;
+  notify?: (msg: string, duration?: number) => void;
+}) {
+  const [mutationRate, setMutationRate] = useState(0.02);
+  const [hovered, setHovered] = useState(false);
+  const [activeBtn, setActiveBtn] = useState<string | null>(null);
+
+  const triggerEvent = useCallback(
+    async (eventType: string, label: string) => {
+      setActiveBtn(eventType);
+      try {
+        await fetch(`${API_BASE}/api/ecosystem/${massiveId}/event`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: eventType }),
+        });
+        notify?.(`${label} triggered`);
+      } catch {
+        notify?.(`${label} (local only)`);
+      } finally {
+        setTimeout(() => setActiveBtn(null), 600);
+      }
+    },
+    [massiveId, notify],
+  );
+
+  const fastForward = useCallback(async () => {
+    setActiveBtn('fast_forward');
+    try {
+      await fetch(
+        `${API_BASE}/api/ecosystem/massive/${massiveId}/step?steps=1000`,
+        { method: 'POST' },
+      );
+      notify?.('Fast-forwarded 1000 steps');
+    } catch {
+      notify?.('Fast-forward unavailable');
+    } finally {
+      setTimeout(() => setActiveBtn(null), 600);
+    }
+  }, [massiveId, notify]);
+
+  const downloadData = useCallback(async () => {
+    setActiveBtn('download');
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/ecosystem/massive/${massiveId}`,
+      );
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ecosystem-${massiveId}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      notify?.('Ecosystem data downloaded');
+    } catch {
+      notify?.('Download failed');
+    } finally {
+      setTimeout(() => setActiveBtn(null), 600);
+    }
+  }, [massiveId, notify]);
+
+  const interventions = [
+    { key: 'food_scarcity', icon: '\u{1F3DC}\uFE0F', label: 'Famine', desc: 'Remove 50% food' },
+    { key: 'predator_surge', icon: '\u{1F480}', label: 'Predator Surge', desc: 'Cull weakest 20%' },
+    { key: 'mutation_burst', icon: '\u{1F9EC}', label: 'Mutation Burst', desc: 'Increase variation' },
+    { key: 'climate_shift', icon: '\u{1F30A}', label: 'Climate Shift', desc: 'Relocate resources' },
+  ];
+
+  const sidebarWidth = hovered ? 200 : 48;
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        bottom: 24,
+        width: sidebarWidth,
+        background: 'rgba(6, 8, 18, 0.85)',
+        backdropFilter: 'blur(20px)',
+        borderRight: '1px solid rgba(80, 130, 200, 0.1)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: hovered ? 'stretch' : 'center',
+        paddingTop: 12,
+        gap: 4,
+        zIndex: 30,
+        transition: 'width 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+        overflow: 'hidden',
+        fontFamily: '"SF Mono", "Fira Code", monospace',
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          fontSize: 8,
+          color: 'rgba(140, 170, 200, 0.4)',
+          textTransform: 'uppercase',
+          letterSpacing: 1.5,
+          textAlign: 'center',
+          marginBottom: 8,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+        }}
+      >
+        {hovered ? 'DIVINE INTERVENTIONS' : '\u2726'}
+      </div>
+
+      {/* Intervention buttons */}
+      {interventions.map((item) => {
+        const isActive = activeBtn === item.key;
+        return (
+          <button
+            key={item.key}
+            onClick={() => triggerEvent(item.key, item.label)}
+            title={!hovered ? `${item.label} — ${item.desc}` : undefined}
+            style={{
+              background: isActive
+                ? 'rgba(0, 212, 255, 0.15)'
+                : 'rgba(100, 130, 200, 0.06)',
+              border: `1px solid ${isActive ? 'rgba(0, 212, 255, 0.3)' : 'rgba(100, 130, 200, 0.08)'}`,
+              borderRadius: 8,
+              padding: hovered ? '8px 10px' : '8px 0',
+              margin: '0 4px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              color: isActive ? '#00d4ff' : 'rgba(200, 215, 235, 0.8)',
+              fontSize: 12,
+              fontFamily: 'inherit',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              transition: 'all 0.2s ease',
+              justifyContent: hovered ? 'flex-start' : 'center',
+              minHeight: 36,
+            }}
+          >
+            <span style={{ fontSize: 16, flexShrink: 0, width: 24, textAlign: 'center' }}>
+              {item.icon}
+            </span>
+            {hovered && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                <span style={{ fontSize: 11, fontWeight: 600 }}>{item.label}</span>
+                <span style={{ fontSize: 9, color: 'rgba(140, 170, 200, 0.4)' }}>
+                  {item.desc}
+                </span>
+              </div>
+            )}
+          </button>
+        );
+      })}
+
+      {/* Divider */}
+      <div
+        style={{
+          height: 1,
+          background: 'rgba(80, 130, 200, 0.1)',
+          margin: '6px 8px',
+        }}
+      />
+
+      {/* Fast-forward button */}
+      <button
+        onClick={fastForward}
+        title={!hovered ? 'Fast-Forward 1000 Steps' : undefined}
+        style={{
+          background:
+            activeBtn === 'fast_forward'
+              ? 'rgba(255, 180, 80, 0.15)'
+              : 'rgba(255, 180, 80, 0.06)',
+          border: `1px solid ${activeBtn === 'fast_forward' ? 'rgba(255, 180, 80, 0.3)' : 'rgba(255, 180, 80, 0.1)'}`,
+          borderRadius: 8,
+          padding: hovered ? '8px 10px' : '8px 0',
+          margin: '0 4px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          color: activeBtn === 'fast_forward' ? '#ffb450' : 'rgba(255, 200, 140, 0.8)',
+          fontSize: 12,
+          fontFamily: 'inherit',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          transition: 'all 0.2s ease',
+          justifyContent: hovered ? 'flex-start' : 'center',
+          minHeight: 36,
+        }}
+      >
+        <span style={{ fontSize: 16, flexShrink: 0, width: 24, textAlign: 'center' }}>
+          {'\u23E9'}
+        </span>
+        {hovered && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+            <span style={{ fontSize: 11, fontWeight: 600 }}>Fast-Forward</span>
+            <span style={{ fontSize: 9, color: 'rgba(140, 170, 200, 0.4)' }}>
+              +1000 steps
+            </span>
+          </div>
+        )}
+      </button>
+
+      {/* Mutation rate slider */}
+      <div
+        style={{
+          margin: '6px 4px 0',
+          padding: hovered ? '8px 8px' : '8px 4px',
+          background: 'rgba(100, 130, 200, 0.04)',
+          borderRadius: 8,
+          border: '1px solid rgba(100, 130, 200, 0.06)',
+          overflow: 'hidden',
+        }}
+      >
+        {hovered ? (
+          <>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 4,
+              }}
+            >
+              <span style={{ fontSize: 9, color: 'rgba(140, 170, 200, 0.5)' }}>
+                Mutation Rate
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  color: '#ffcc88',
+                  fontFamily: 'inherit',
+                  fontWeight: 600,
+                }}
+              >
+                {mutationRate.toFixed(3)}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0.001}
+              max={0.1}
+              step={0.001}
+              value={mutationRate}
+              onChange={(e) => setMutationRate(Number(e.target.value))}
+              style={{ width: '100%', accentColor: '#ffcc88', cursor: 'pointer' }}
+            />
+          </>
+        ) : (
+          <div
+            title={`Mutation Rate: ${mutationRate.toFixed(3)}`}
+            style={{
+              fontSize: 14,
+              textAlign: 'center',
+              color: 'rgba(255, 204, 136, 0.7)',
+            }}
+          >
+            {'\u{1F52C}'}
+          </div>
+        )}
+      </div>
+
+      {/* Spacer */}
+      <div style={{ flex: 1 }} />
+
+      {/* Download button at bottom */}
+      <button
+        onClick={downloadData}
+        title={!hovered ? 'Download Ecosystem Data' : undefined}
+        style={{
+          background:
+            activeBtn === 'download'
+              ? 'rgba(0, 255, 136, 0.15)'
+              : 'rgba(0, 255, 136, 0.04)',
+          border: `1px solid ${activeBtn === 'download' ? 'rgba(0, 255, 136, 0.3)' : 'rgba(0, 255, 136, 0.08)'}`,
+          borderRadius: 8,
+          padding: hovered ? '8px 10px' : '8px 0',
+          margin: '0 4px 12px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          color: activeBtn === 'download' ? '#00ff88' : 'rgba(0, 255, 136, 0.7)',
+          fontSize: 12,
+          fontFamily: 'inherit',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          transition: 'all 0.2s ease',
+          justifyContent: hovered ? 'flex-start' : 'center',
+          minHeight: 36,
+        }}
+      >
+        <span style={{ fontSize: 16, flexShrink: 0, width: 24, textAlign: 'center' }}>
+          {'\u{1F4BE}'}
+        </span>
+        {hovered && (
+          <span style={{ fontSize: 11, fontWeight: 600 }}>Download Data</span>
+        )}
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Exported Component
 // ---------------------------------------------------------------------------
 
@@ -870,6 +1186,9 @@ export function UnifiedWorld({
           <HudOverlay />
           <ZoomBreadcrumb />
           <SpeedControl sendCommand={sendCommand} />
+
+          {/* Divine Interventions — left sidebar */}
+          <LeftSidebar massiveId={massiveId} notify={notify} />
 
           {/* Context-sensitive sidebar */}
           <ContextSidebar

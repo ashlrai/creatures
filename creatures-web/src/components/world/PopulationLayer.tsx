@@ -14,7 +14,7 @@ const MAX_TRAIL_LENGTH = 10;
 const MAX_TRAIL_VERTS = MAX_TRAIL_ORGANISMS * (MAX_TRAIL_LENGTH - 1) * 2;
 const MAX_FOOD = 256;
 
-const HEATMAP_RESOLUTION = 32;
+const HEATMAP_RESOLUTION = 48;
 
 // Shared temp objects — avoid per-frame allocation
 const _obj = new THREE.Object3D();
@@ -581,23 +581,30 @@ export function DensityHeatmap({
       }
     }
 
-    // Simple box blur for smoothing
+    // 5x5 Gaussian blur for smooth appearance
+    // Approximate Gaussian kernel weights (sigma ~1.0)
+    const kernel = [
+      1, 4, 7, 4, 1,
+      4, 16, 26, 16, 4,
+      7, 26, 41, 26, 7,
+      4, 16, 26, 16, 4,
+      1, 4, 7, 4, 1,
+    ];
+    const kernelSum = 273;
     const blurred = new Float32Array(size * size);
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         let sum = 0;
-        let count = 0;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            const nx = x + dx;
-            const ny = y + dy;
+        for (let ky = -2; ky <= 2; ky++) {
+          for (let kx = -2; kx <= 2; kx++) {
+            const nx = x + kx;
+            const ny = y + ky;
             if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
-              sum += grid[ny * size + nx];
-              count++;
+              sum += grid[ny * size + nx] * kernel[(ky + 2) * 5 + (kx + 2)];
             }
           }
         }
-        blurred[y * size + x] = sum / count;
+        blurred[y * size + x] = sum / kernelSum;
       }
     }
 
@@ -608,7 +615,7 @@ export function DensityHeatmap({
     }
     if (maxDensity === 0) maxDensity = 1;
 
-    // Write to texture: green → yellow → red gradient
+    // Write to texture: deep blue → teal/cyan → warm white/gold gradient
     for (let i = 0; i < size * size; i++) {
       const d = blurred[i] / maxDensity;
       const idx = i * 4;
@@ -620,14 +627,25 @@ export function DensityHeatmap({
         data[idx + 2] = 0;
         data[idx + 3] = 0;
       } else {
-        // Green → cyan → white
-        const r = Math.floor(d * d * 100);
-        const g = Math.floor(50 + d * 150);
-        const b = Math.floor(d * 200);
+        // Deep blue (0,20,80) → teal (0,160,200) → warm gold (255,220,140)
+        let r: number, g: number, b: number;
+        if (d < 0.5) {
+          // Low → medium: deep blue to teal
+          const t = d * 2; // 0..1
+          r = Math.floor(0);
+          g = Math.floor(20 + t * 140);
+          b = Math.floor(80 + t * 120);
+        } else {
+          // Medium → high: teal to warm gold
+          const t = (d - 0.5) * 2; // 0..1
+          r = Math.floor(t * 255);
+          g = Math.floor(160 + t * 60);
+          b = Math.floor(200 - t * 60);
+        }
         data[idx] = r;
         data[idx + 1] = g;
         data[idx + 2] = b;
-        data[idx + 3] = Math.floor(d * 40); // Very subtle
+        data[idx + 3] = Math.floor(d * 70); // More visible
       }
     }
 
