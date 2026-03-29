@@ -21,7 +21,7 @@ export function TopOrganismCard() {
     : null;
   const delta = prevBest !== null ? bestFitness - prevBest : 0;
   const genomeId = latestStats.best_genome_id ?? 'unknown';
-  const stdDev = latestStats.std_fitness;
+  const stdDev = latestStats.std_fitness ?? 0;
   const dominance = bestFitness - latestStats.mean_fitness;
 
   return (

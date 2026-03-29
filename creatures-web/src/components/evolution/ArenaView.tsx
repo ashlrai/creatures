@@ -365,7 +365,7 @@ export function ArenaView() {
         const dx = org.pos.x - obs.pos.x;
         const dy = org.pos.y - obs.pos.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < obs.radius + 15) {
+        if (dist < obs.radius + 15 && dist > 0) {
           const pushStrength = 0.8 / Math.max(dist - obs.radius, 1);
           org.pos.x += (dx / dist) * pushStrength;
           org.pos.y += (dy / dist) * pushStrength;
@@ -377,7 +377,7 @@ export function ArenaView() {
         const dx = org.pos.x - tox.pos.x;
         const dy = org.pos.y - tox.pos.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < tox.radius + 20) {
+        if (dist < tox.radius + 20 && dist > 0) {
           const pushStrength = 1.2 / Math.max(dist - tox.radius, 1);
           org.pos.x += (dx / dist) * pushStrength;
           org.pos.y += (dy / dist) * pushStrength;
@@ -642,7 +642,7 @@ export function ArenaView() {
           canvas.height = h * dpr;
           canvas.style.width = `${w}px`;
           canvas.style.height = `${h}px`;
-          ctx.scale(dpr, dpr);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         }
       }
 
