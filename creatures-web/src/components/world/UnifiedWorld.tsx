@@ -559,6 +559,78 @@ function HudOverlay() {
 }
 
 // ---------------------------------------------------------------------------
+// Zoom Breadcrumb — shows current zoom level with visual indicator
+// ---------------------------------------------------------------------------
+
+function ZoomBreadcrumb() {
+  const zoomLevel = useWorldStore((s) => s.zoomLevel);
+  const zoomBand = useWorldStore((s) => s.zoomBand);
+  const selectedOrganism = useWorldStore((s) => s.selectedOrganism);
+
+  const labels = [
+    { band: 'population' as const, label: 'Population', color: '#00d4ff', range: [0, 0.3] },
+    { band: 'colony' as const, label: 'Colony', color: '#ffaa22', range: [0.3, 0.7] },
+    { band: 'organism' as const, label: 'Organism', color: '#ff4488', range: [0.7, 1.0] },
+  ];
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 40,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 2,
+        background: 'rgba(6,8,18,0.7)',
+        backdropFilter: 'blur(12px)',
+        border: '1px solid rgba(80,130,200,0.1)',
+        borderRadius: 20,
+        padding: '3px 6px',
+        zIndex: 15,
+        pointerEvents: 'none',
+      }}
+    >
+      {labels.map((l, i) => {
+        const isActive = zoomBand === l.band;
+        return (
+          <div key={l.band} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            {i > 0 && (
+              <div style={{
+                width: 12, height: 1,
+                background: `rgba(80,130,200,${isActive || labels[i - 1].band === zoomBand ? 0.3 : 0.08})`,
+              }} />
+            )}
+            <div
+              style={{
+                fontSize: 9,
+                fontFamily: '"SF Mono", "Fira Code", monospace',
+                color: isActive ? l.color : 'rgba(140,170,200,0.3)',
+                fontWeight: isActive ? 600 : 400,
+                padding: '2px 8px',
+                borderRadius: 12,
+                background: isActive ? `${l.color}10` : 'transparent',
+                border: isActive ? `1px solid ${l.color}30` : '1px solid transparent',
+                transition: 'all 0.3s ease',
+                letterSpacing: 0.5,
+              }}
+            >
+              {l.label}
+              {isActive && l.band === 'organism' && selectedOrganism && (
+                <span style={{ marginLeft: 4, opacity: 0.6 }}>
+                  #{selectedOrganism.species === 0 ? 'Ce' : 'Dm'}
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Speed Control
 // ---------------------------------------------------------------------------
 
@@ -815,6 +887,7 @@ export function UnifiedWorld({
       {massiveId && (
         <>
           <HudOverlay />
+          <ZoomBreadcrumb />
           <SpeedControl sendCommand={sendCommand} />
 
           {/* Context-sensitive sidebar */}
