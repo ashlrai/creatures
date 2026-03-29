@@ -23,7 +23,6 @@ import { GodChat } from '../ui/GodChat';
 import { AITicker } from './AITicker';
 import { AINotifications } from './AINotifications';
 import { AIHighlighter } from './AIHighlighter';
-import type { MassiveOrganism } from '../ecosystem/EcosystemView';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -56,13 +55,6 @@ function SceneContents() {
     );
     return Math.max(DEFAULT_ARENA_RADIUS, Math.ceil(maxCoord * 1.3));
   }, [organisms.length]);
-
-  const handleSelectOrganism = useCallback(
-    (index: number, org: MassiveOrganism) => {
-      selectOrganism(index, org);
-    },
-    [selectOrganism],
-  );
 
   const isEmpty = organisms.length === 0;
 
@@ -97,7 +89,7 @@ function SceneContents() {
             organisms={organisms}
             neuralStats={neuralStats}
             colorMode={colorMode}
-            onSelectOrganism={handleSelectOrganism}
+            onSelectOrganism={selectOrganism}
             selectedIndex={selectedOrganismIndex}
             highlightedIndices={highlightedIndices}
           />
@@ -662,7 +654,6 @@ export function UnifiedWorld({
   const isCreating = useWorldStore((s) => s.isCreating);
   const setIsCreating = useWorldStore((s) => s.setIsCreating);
   const updateFromWs = useWorldStore((s) => s.updateFromWs);
-  const organisms = useWorldStore((s) => s.organisms);
   const population = useWorldStore((s) => s.population);
   const neuralStats = useWorldStore((s) => s.neuralStats);
 
@@ -763,16 +754,6 @@ export function UnifiedWorld({
     },
     [setIsCreating, setMassiveId, setWorldType, notify],
   );
-
-  // Camera frustum sizing
-  const arenaRadius = useMemo(() => {
-    if (organisms.length === 0) return DEFAULT_ARENA_RADIUS;
-    const maxCoord = organisms.reduce(
-      (max, o) => Math.max(max, Math.abs(o.x), Math.abs(o.y)),
-      0,
-    );
-    return Math.max(DEFAULT_ARENA_RADIUS, Math.ceil(maxCoord * 1.3));
-  }, [organisms.length]);
 
   return (
     <div
