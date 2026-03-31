@@ -52,6 +52,7 @@ class MassiveEcosystem:
         self.species = np.zeros(n_organisms, dtype=np.int8)  # 0=c_elegans
         self.age = np.zeros(n_organisms, dtype=np.float64)
         self.speed = np.full(n_organisms, 0.5)  # base movement speed
+        self.predator_proximity = np.full(n_organisms, np.inf)  # distance to nearest predator (for C. elegans)
 
         # Assign ~30 % as drosophila
         drosophila_mask = rng.random(n_organisms) < 0.3
@@ -76,7 +77,7 @@ class MassiveEcosystem:
         if overcapacity > 0:
             total_slots = n_organisms + overcapacity
             for attr in ['x', 'y', 'heading', 'energy', 'alive', 'species', 'age',
-                         'speed', 'generation', 'parent_id', 'lineage_id', 'lifetime_food']:
+                         'speed', 'predator_proximity', 'generation', 'parent_id', 'lineage_id', 'lifetime_food']:
                 old = getattr(self, attr)
                 new = np.zeros(total_slots, dtype=old.dtype)
                 new[:n_organisms] = old
@@ -89,6 +90,8 @@ class MassiveEcosystem:
         self._step_count = 0
         self._total_born = 0
         self._total_died = 0
+        self._total_predation = 0
+        self._predation_events: list[dict] = []  # ring buffer, max 100
 
     # ------------------------------------------------------------------
     # Main simulation step (fully vectorized)
@@ -114,6 +117,9 @@ class MassiveEcosystem:
 
         # 3. Food consumption — proximity-based
         n_eaten = self._eat(eat_radius=1.5)
+
+        # 3b. Predation — Drosophila hunt C. elegans
+        n_predation = self._predation()
 
         # 4. Death — energy depletion + aging
         newly_dead = alive & (self.energy <= 0)
@@ -146,6 +152,7 @@ class MassiveEcosystem:
             "born_this_step": n_born,
             "died_this_step": n_died,
             "eaten_this_step": n_eaten,
+            "predation_this_step": n_predation,
             "mean_energy": float(np.mean(self.energy[self.alive]))
             if n_alive > 0
             else 0.0,
@@ -268,6 +275,122 @@ class MassiveEcosystem:
             n_eaten += len(unique_food)
 
         return n_eaten
+
+    # ------------------------------------------------------------------
+    # Predation (vectorized)
+    # ------------------------------------------------------------------
+
+    def _predation(self, kill_radius: float = 1.2) -> int:
+        """Drosophila (species=1) prey on C. elegans (species=0).
+
+        Fully vectorized using batched spatial distance matrices.
+        Each predator has a 30% chance per step to kill the closest prey
+        within *kill_radius*. Predator gains 40% of prey energy.
+        Probabilistic predation creates selection pressure without
+        causing instant extinction.
+
+        Also updates ``self.predator_proximity`` for danger-signal injection.
+
+        Returns the number of predation events this step.
+        """
+        alive = self.alive
+
+        # Identify predators and prey
+        predator_mask = alive & (self.species == 1) & (self.energy > 30.0)
+        prey_mask = alive & (self.species == 0)
+
+        predator_idx = np.where(predator_mask)[0]
+        prey_idx = np.where(prey_mask)[0]
+
+        # Reset predator_proximity for all alive C. elegans
+        self.predator_proximity[prey_mask] = np.inf
+
+        if len(predator_idx) == 0 or len(prey_idx) == 0:
+            return 0
+
+        # --- Update predator_proximity for ALL alive C. elegans ---
+        # (needed for danger signal even when no kills happen)
+        # Batch to control memory: O(n_prey_batch * n_predator)
+        all_predator_idx = np.where(alive & (self.species == 1))[0]
+        if len(all_predator_idx) > 0:
+            px = self.x[all_predator_idx]
+            py = self.y[all_predator_idx]
+            batch_size = 5000
+            for start in range(0, len(prey_idx), batch_size):
+                batch = prey_idx[start:start + batch_size]
+                dx = px[None, :] - self.x[batch][:, None]
+                dy = py[None, :] - self.y[batch][:, None]
+                dist = np.sqrt(dx * dx + dy * dy)
+                self.predator_proximity[batch] = np.min(dist, axis=1)
+
+        # --- Predation kills (batched) ---
+        n_killed = 0
+        r2 = kill_radius * kill_radius
+        batch_size = 3000
+
+        for start in range(0, len(predator_idx), batch_size):
+            pred_batch = predator_idx[start:start + batch_size]
+            # Recompute live prey each batch (some may have been eaten)
+            current_prey = np.where(self.alive & (self.species == 0))[0]
+            if len(current_prey) == 0:
+                break
+
+            # Distance matrix: (n_pred_batch, n_prey)
+            dx = self.x[current_prey][None, :] - self.x[pred_batch][:, None]
+            dy = self.y[current_prey][None, :] - self.y[pred_batch][:, None]
+            dist2 = dx * dx + dy * dy
+
+            # Each predator targets its nearest prey
+            nearest_prey_local = np.argmin(dist2, axis=1)
+            nearest_dist2 = dist2[np.arange(len(pred_batch)), nearest_prey_local]
+
+            in_range = nearest_dist2 < r2
+            if not np.any(in_range):
+                continue
+
+            # Probabilistic predation (30% chance per step) — creates selection
+            # pressure without instant extinction
+            kill_roll = self._rng.random(len(pred_batch)) < 0.30
+            can_kill = in_range & kill_roll
+            if not np.any(can_kill):
+                continue
+
+            killers = pred_batch[can_kill]
+            victim_local = nearest_prey_local[can_kill]
+            victim_global = current_prey[victim_local]
+
+            # Each prey can only be killed once per batch — first predator wins
+            unique_victims, first_killer_idx = np.unique(victim_global, return_index=True)
+            first_killers = killers[first_killer_idx]
+
+            # Energy transfer: predator gains 40% of prey energy
+            energy_gained = self.energy[unique_victims] * 0.4
+            self.energy[first_killers] += energy_gained
+
+            # Prey dies
+            self.alive[unique_victims] = False
+
+            # Log predation events (ring buffer, max 100)
+            for k, v, eg in zip(
+                first_killers.tolist(),
+                unique_victims.tolist(),
+                energy_gained.tolist(),
+            ):
+                event = {
+                    "step": self._step_count,
+                    "predator_idx": k,
+                    "prey_idx": v,
+                    "energy_gained": eg,
+                }
+                if len(self._predation_events) >= 100:
+                    self._predation_events.pop(0)
+                self._predation_events.append(event)
+
+            n_killed += len(unique_victims)
+
+        self._total_predation += n_killed
+        self._total_died += n_killed
+        return n_killed
 
     # ------------------------------------------------------------------
     # Reproduction (vectorized)
@@ -430,6 +553,8 @@ class MassiveEcosystem:
                 "mean_age": float(np.mean(self.age[alive]))
                 if n_alive > 0
                 else 0.0,
+                "total_predation_events": self._total_predation,
+                "recent_predation": self._predation_events[-10:],
             },
         }
 

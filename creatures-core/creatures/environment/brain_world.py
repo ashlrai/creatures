@@ -21,6 +21,7 @@ from typing import Any
 
 import numpy as np
 
+from creatures.analysis.trajectory_recorder import TrajectoryRecorder
 from creatures.environment.massive_ecosystem import MassiveEcosystem
 from creatures.environment.worlds import SoilWorld, PondWorld, LabPlateWorld
 from creatures.neural.vectorized_engine import NeuronModel, VectorizedEngine
@@ -93,13 +94,14 @@ class BrainWorld:
         self.n_motor = int(neurons_per_organism * 0.2)
 
         # Sensory channel mapping (which sensory neurons respond to what)
-        # Divide sensory neurons evenly across 4 channels
-        ch_size = self.n_sensory // 4
+        # Divide sensory neurons evenly across 5 channels
+        ch_size = self.n_sensory // 5
         self.sensory_channels = {
             "chemical": (0, ch_size),
             "temperature": (ch_size, 2 * ch_size),
             "danger": (2 * ch_size, 3 * ch_size),
-            "food": (3 * ch_size, self.n_sensory),
+            "food": (3 * ch_size, 4 * ch_size),
+            "neighbor_density": (4 * ch_size, self.n_sensory),
         }
 
         # Motor decoding: forward neurons, backward neurons, turn neurons
@@ -118,6 +120,9 @@ class BrainWorld:
 
         # Precompute organism index array (reused every step)
         self._org_indices = np.arange(n_organisms)
+
+        # Trajectory recording for scientific analysis
+        self.trajectory_recorder = TrajectoryRecorder()
 
         # Disable hardcoded food-seeking in ecosystem — neural network drives ALL movement
         self.ecosystem._neural_control = True
@@ -240,7 +245,22 @@ class BrainWorld:
             self._measure_consciousness()
             result["consciousness"] = self._last_consciousness
 
+        # 8. Trajectory recording
+        self.trajectory_recorder.record_step(self)
+
         return result
+
+    # ------------------------------------------------------------------
+    # Trajectory data persistence
+    # ------------------------------------------------------------------
+
+    def flush_trajectories(self, filepath: str) -> int:
+        """Flush recorded trajectory data to an HDF5 file.
+
+        Delegates to :pyclass:`TrajectoryRecorder.flush_to_hdf5`.
+        Returns the number of samples written.
+        """
+        return self.trajectory_recorder.flush_to_hdf5(filepath)
 
     # ------------------------------------------------------------------
     # Chemotaxis measurement
@@ -316,6 +336,10 @@ class BrainWorld:
     def _inject_sensory_input(self, alive: np.ndarray) -> None:
         """Convert environment signals to neural currents for all organisms.
 
+        Uses SensoryWorld / world.sense_at() when available to provide rich
+        multi-modal input (chemical gradients, temperature fields, toxic zones).
+        Falls back to hardcoded heuristics when the world lacks sense_at().
+
         Builds the full I_ext array in numpy, then converts to backend
         format in one shot (avoids per-element MLX conversions).
         """
@@ -326,7 +350,50 @@ class BrainWorld:
         # Build I_ext as numpy, convert at the end
         I_ext_np = np.zeros(self.engine.n_total, dtype=np.float32)
 
-        # --- Food proximity signal ---
+        alive_org = alive[:n_org]
+
+        # Check if the world supports rich sensory queries
+        has_sense_at = hasattr(self.world, 'sense_at')
+
+        # --- Sample SensoryWorld for a sparse set of organisms ---
+        # Calling sense_at() per-organism is expensive at scale, so we sample
+        # a subset and interpolate / broadcast for the rest. For the vectorized
+        # channels (food proximity, chemical alignment) we keep the existing
+        # fast numpy path and ADD the SensoryWorld signal on top.
+        sensory_cache: dict[int, dict] | None = None
+        if has_sense_at:
+            # Sample up to 200 organisms for SensoryWorld queries
+            alive_indices = np.where(alive_org)[0]
+            n_sample = min(len(alive_indices), 200)
+            if n_sample > 0:
+                if len(alive_indices) > n_sample:
+                    sample_idx = np.sort(
+                        np.random.default_rng(self._step_count).choice(
+                            alive_indices, n_sample, replace=False
+                        )
+                    )
+                else:
+                    sample_idx = alive_indices
+
+                # Detect sense_at signature once: worlds.py classes use
+                # sense_at(x, y) while SensoryWorld uses sense_at((x, y)).
+                if not hasattr(self, '_sense_at_uses_tuple'):
+                    test_x, test_y = float(eco.x[sample_idx[0]]), float(eco.y[sample_idx[0]])
+                    try:
+                        self.world.sense_at(test_x, test_y)
+                        self._sense_at_uses_tuple = False
+                    except TypeError:
+                        self._sense_at_uses_tuple = True
+
+                sensory_cache = {}
+                for i in sample_idx:
+                    xi, yi = float(eco.x[i]), float(eco.y[i])
+                    if self._sense_at_uses_tuple:
+                        sensory_cache[int(i)] = self.world.sense_at((xi, yi))
+                    else:
+                        sensory_cache[int(i)] = self.world.sense_at(xi, yi)
+
+        # --- Food proximity signal (primary food channel — always active) ---
         food_alive_idx = np.where(eco.food_alive)[0]
         if len(food_alive_idx) > 0:
             max_food = min(len(food_alive_idx), 500)
@@ -341,7 +408,6 @@ class BrainWorld:
             dist = np.sqrt(dx * dx + dy * dy)
             nearest_dist = np.min(dist, axis=1)
 
-            alive_org = alive[:n_org]
             food_signal = np.clip(1.0 - nearest_dist / 5.0, 0.0, 1.0) * 30.0
             food_signal *= alive_org
 
@@ -362,28 +428,141 @@ class BrainWorld:
             global_food = (org_idx[:, None] * self.n_per + food_offsets[None, :]).ravel()
             I_ext_np[global_food] = np.repeat(food_signal, food_end - food_start)
 
-            # Chemical channel
+            # Chemical channel: food-heading alignment (always present)
             chem_start, chem_end = self.sensory_channels["chemical"]
             chem_offsets = np.arange(chem_start, chem_end)
             global_chem = (org_idx[:, None] * self.n_per + chem_offsets[None, :]).ravel()
             I_ext_np[global_chem] = np.repeat(chemical_signal, chem_end - chem_start)
 
+        # --- Chemical channel enhancement from SensoryWorld gradients ---
+        # Add chemical gradient direction signal on top of food-alignment signal.
+        # Gradient direction from SensoryWorld tells organisms which way to turn
+        # to climb the chemical concentration hill toward food clusters.
+        if sensory_cache:
+            chem_start, chem_end = self.sensory_channels["chemical"]
+            n_chem = chem_end - chem_start
+            chem_offsets = np.arange(chem_start, chem_end)
+            heading = eco.heading[:n_org]
+
+            for org_i, sensory in sensory_cache.items():
+                grad_dirs = sensory.get("gradient_direction", {})
+                if not grad_dirs:
+                    continue
+                # Aggregate all chemical gradient directions into one signal:
+                # how well is the organism's heading aligned with the gradient?
+                total_gx, total_gy = 0.0, 0.0
+                for _name, (gx, gy) in grad_dirs.items():
+                    total_gx += gx
+                    total_gy += gy
+                gmag = (total_gx ** 2 + total_gy ** 2) ** 0.5
+                if gmag < 1e-10:
+                    continue
+                # Normalize and compute alignment with organism heading
+                gx_n = total_gx / gmag
+                gy_n = total_gy / gmag
+                h = float(heading[org_i])
+                grad_alignment = np.cos(h) * gx_n + np.sin(h) * gy_n
+                # Scale: +/- 15 pA additional current (additive to food alignment)
+                grad_current = float(np.clip(grad_alignment, -1.0, 1.0)) * 15.0
+                global_neurons = org_i * self.n_per + chem_offsets
+                I_ext_np[global_neurons] += grad_current
+
+        # --- Temperature signal ---
+        # Use SensoryWorld temperature field if available; otherwise fall back
+        # to y-position heuristic.
+        temp_start, temp_end = self.sensory_channels["temperature"]
+        temp_offsets = np.arange(temp_start, temp_end)
+        global_temp = (org_idx[:, None] * self.n_per + temp_offsets[None, :]).ravel()
+
+        if sensory_cache:
+            # Build temperature signal from SensoryWorld for sampled organisms,
+            # fall back to y-position for non-sampled organisms.
+            half = eco.arena_size / 2.0
+            temp_signal = (eco.y[:n_org] + half) / eco.arena_size * 15.0 * alive_org
+
+            for org_i, sensory in sensory_cache.items():
+                temp_val = sensory.get("temperature")
+                if temp_val is not None:
+                    # Normalize temperature to neural current. Temperature fields
+                    # typically range 15-25 C. Map to 0-30 pA current range so
+                    # organisms can distinguish warm from cold regions.
+                    temp_signal[org_i] = float(
+                        np.clip((temp_val - 10.0) / 20.0, 0.0, 1.0)
+                    ) * 30.0 * float(alive_org[org_i])
+
+            I_ext_np[global_temp] = np.repeat(temp_signal, temp_end - temp_start)
+        else:
+            # Fallback: y-position as temperature proxy
+            half = eco.arena_size / 2.0
+            temp_normalized = (eco.y[:n_org] + half) / eco.arena_size
+            temp_signal = temp_normalized * 15.0 * alive_org
+            I_ext_np[global_temp] = np.repeat(temp_signal, temp_end - temp_start)
+
         # --- Danger signal ---
-        alive_org = alive[:n_org]
+        # Base signal: low energy = danger (interoception / hunger)
         danger_signal = np.clip(1.0 - eco.energy[:n_org] / 50.0, 0.0, 1.0) * 25.0 * alive_org
+
+        # Add toxic zone sensing from SensoryWorld if available.
+        # Toxin exposure creates a nociceptive (pain) signal that organisms
+        # must evolve to avoid — selection pressure for pain avoidance.
+        if sensory_cache:
+            for org_i, sensory in sensory_cache.items():
+                toxin = sensory.get("toxin_exposure", 0.0)
+                if toxin > 0.0:
+                    # Toxin damage rate scaled to neural current (0-30 pA).
+                    # Typical damage_rate is 5.0 at zone center, so /5 * 30 = 30 pA max.
+                    toxin_current = min(toxin / 5.0, 1.0) * 30.0
+                    danger_signal[org_i] = min(
+                        danger_signal[org_i] + toxin_current, 50.0
+                    ) * float(alive_org[org_i])
+
         danger_start, danger_end = self.sensory_channels["danger"]
         danger_offsets = np.arange(danger_start, danger_end)
         global_danger = (org_idx[:, None] * self.n_per + danger_offsets[None, :]).ravel()
         I_ext_np[global_danger] = np.repeat(danger_signal, danger_end - danger_start)
 
-        # --- Temperature signal ---
-        half = eco.arena_size / 2.0
-        temp_normalized = (eco.y[:n_org] + half) / eco.arena_size
-        temp_signal = temp_normalized * 15.0 * alive_org
-        temp_start, temp_end = self.sensory_channels["temperature"]
-        temp_offsets = np.arange(temp_start, temp_end)
-        global_temp = (org_idx[:, None] * self.n_per + temp_offsets[None, :]).ravel()
-        I_ext_np[global_temp] = np.repeat(temp_signal, temp_end - temp_start)
+        # --- Neighbor density signal ---
+        # Count how many other organisms are within radius 3 of each organism.
+        # This is the foundation for social behavior — organisms can "sense"
+        # nearby conspecifics, enabling aggregation, avoidance, and mating.
+        neighbor_radius = 3.0
+        nd_start, nd_end = self.sensory_channels["neighbor_density"]
+        nd_offsets = np.arange(nd_start, nd_end)
+        global_nd = (org_idx[:, None] * self.n_per + nd_offsets[None, :]).ravel()
+
+        # Efficient neighbor counting: use a random subsample of alive organisms
+        # as "probe" positions to avoid O(n^2) all-pairs distance computation.
+        alive_indices = np.where(alive_org)[0]
+        if len(alive_indices) > 1:
+            max_probes = min(len(alive_indices), 500)
+            if len(alive_indices) > max_probes:
+                probe_idx = np.random.default_rng(self._step_count).choice(
+                    alive_indices, max_probes, replace=False
+                )
+            else:
+                probe_idx = alive_indices
+
+            # Distance from each organism to each probe organism
+            ox = eco.x[:n_org]
+            oy = eco.y[:n_org]
+            px = eco.x[probe_idx]
+            py = eco.y[probe_idx]
+            ddx = ox[:, None] - px[None, :]
+            ddy = oy[:, None] - py[None, :]
+            probe_dist = np.sqrt(ddx * ddx + ddy * ddy)
+
+            # Count neighbors within radius (exclude self — distance ~0)
+            neighbors_in_range = np.sum(
+                (probe_dist < neighbor_radius) & (probe_dist > 1e-6), axis=1
+            ).astype(np.float32)
+
+            # Scale by sampling ratio if we subsampled
+            if len(alive_indices) > max_probes:
+                neighbors_in_range *= float(len(alive_indices)) / float(max_probes)
+
+            # Normalize to neural current: 0 neighbors = 0, 10+ neighbors = 25 pA
+            nd_signal = np.clip(neighbors_in_range / 10.0, 0.0, 1.0) * 25.0 * alive_org
+            I_ext_np[global_nd] = np.repeat(nd_signal, nd_end - nd_start)
 
         # --- Innate reflex coupling ---
         # Directly inject current into motor neurons proportional to sensory activation.

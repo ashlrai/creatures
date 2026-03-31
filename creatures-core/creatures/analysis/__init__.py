@@ -6,6 +6,7 @@ from creatures.analysis.statistics import (
     batch_compare,
     generate_stats_report,
 )
+from creatures.analysis.trajectory_recorder import TrajectoryRecorder
 
 __all__ = [
     "StatisticalResult",
@@ -14,4 +15,5 @@ __all__ = [
     "compute_effect_size",
     "batch_compare",
     "generate_stats_report",
+    "TrajectoryRecorder",
 ]
