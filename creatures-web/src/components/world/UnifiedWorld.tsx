@@ -9,7 +9,8 @@ import {
   OrganismInstances,
   OrganismTrails,
   FoodInstances,
-  Arena,
+  TerrainArena,
+  AmbientParticles,
   DensityHeatmap,
   LineageRivers,
   SpeciesTerritories,
@@ -62,11 +63,23 @@ function SceneContents() {
     <>
       <SemanticZoomController />
 
-      {/* Lighting — warm ambient + directional for depth */}
-      <ambientLight intensity={0.4} color="#334466" />
-      <directionalLight position={[10, 10, 40]} intensity={0.6} color="#aaccff" />
-      <directionalLight position={[-10, -10, 20]} intensity={0.2} color="#ffaa66" />
-      <pointLight position={[0, 0, 15]} intensity={0.3} color="#00d4ff" distance={60} />
+      {/* Lighting — hemisphere + directional shadows + subtle point glow */}
+      <hemisphereLight args={['#334466', '#1a0f08', 0.5]} />
+      <directionalLight
+        position={[20, 20, 30]}
+        intensity={0.7}
+        color="#fff8ee"
+        castShadow
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
+      />
+      <pointLight position={[0, 0, 10]} intensity={0.25} color="#00d4ff" distance={50} />
+
+      {/* Sky dome — gradient from dark horizon to darker zenith */}
+      <mesh>
+        <sphereGeometry args={[120, 32, 16]} />
+        <meshBasicMaterial color="#050510" side={THREE.BackSide} />
+      </mesh>
 
       {/* Camera controls */}
       <OrbitControls
@@ -79,8 +92,9 @@ function SceneContents() {
         makeDefault
       />
 
-      {/* Environment */}
-      <Arena worldType={worldType} arenaRadius={arenaRadius} />
+      {/* Environment — terrain + ambient particles */}
+      <TerrainArena worldType={worldType} arenaRadius={arenaRadius} />
+      <AmbientParticles arenaRadius={arenaRadius} />
 
       {isEmpty ? (
         <EmptyScene />
@@ -1335,7 +1349,7 @@ export function UnifiedWorld({
         style={{ width: '100%', height: '100%' }}
       >
         <color attach="background" args={['#030308']} />
-        <fog attach="fog" args={['#030308', 40, 120]} />
+        <fog attach="fog" args={['#030308', 30, 100]} />
         <SceneContents />
       </Canvas>
 
