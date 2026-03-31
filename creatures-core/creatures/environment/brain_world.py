@@ -74,10 +74,9 @@ class BrainWorld:
         if arena_size <= 0:
             arena_size = max(50.0, float(int(n_organisms ** 0.5) * 3))
 
-        # Food is ABUNDANT — organisms with random weights need enough food
-        # to occasionally stumble into it. Natural selection operates on who
-        # finds food EFFICIENTLY, not who finds food at all. ~6 food per organism.
-        n_food = max(20, n_organisms * 6)
+        # Food moderately abundant — organisms with baseline movement can survive
+        # but must evolve efficient food-seeking to thrive. ~3 food per organism.
+        n_food = max(20, n_organisms * 3)
         self.ecosystem = MassiveEcosystem(n_organisms, arena_size, n_food=n_food, seed=seed)
 
         # Consciousness tracking
@@ -270,19 +269,22 @@ class BrainWorld:
         """Measure how effectively organisms navigate toward food.
 
         Returns chemotaxis index (0.5 = random walk, >0.5 = directed food-seeking).
-        Requires at least 2 calls (stores previous positions for displacement computation).
+        Tracks positions by organism INDEX (not alive-mask) so births/deaths
+        don't corrupt the measurement.
         """
         from creatures.evolution.analytics import measure_chemotaxis_index
 
         eco = self.ecosystem
-        alive_mask = eco.alive[:self.engine.n_organisms]
+        n_eng = self.engine.n_organisms
+        alive_mask = eco.alive[:n_eng]
         alive_idx = np.where(alive_mask)[0]
 
         if len(alive_idx) == 0:
             return {"chemotaxis_index": 0.0, "mean_food_distance": 0.0,
                     "approaching_fraction": 0.0, "random_walk_baseline": 0.5}
 
-        current_pos = np.column_stack([eco.x[alive_idx], eco.y[alive_idx]])
+        # Store ALL positions by index (not just alive) for stable tracking
+        all_pos = np.column_stack([eco.x[:n_eng], eco.y[:n_eng]])
 
         # Food positions
         food_alive = np.where(eco.food_alive)[0]
@@ -291,21 +293,28 @@ class BrainWorld:
                     "approaching_fraction": 0.0, "random_walk_baseline": 0.5}
         food_pos = np.column_stack([eco.food_x[food_alive], eco.food_y[food_alive]])
 
-        # Previous positions (stored from last call)
-        prev = getattr(self, '_prev_positions', None)
-        prev_idx = getattr(self, '_prev_alive_idx', None)
+        # Previous positions (indexed by organism, not by alive-mask)
+        prev_all = getattr(self, '_prev_all_positions', None)
 
         # Store current for next call
-        self._prev_positions = current_pos.copy()
-        self._prev_alive_idx = alive_idx.copy()
+        self._prev_all_positions = all_pos.copy()
 
-        if prev is None or prev_idx is None or len(prev) != len(current_pos):
-            return {"chemotaxis_index": 0.0, "mean_food_distance": float(np.mean(
-                np.min(np.sqrt((current_pos[:, 0:1] - food_pos[:, 0]) ** 2 +
-                               (current_pos[:, 1:2] - food_pos[:, 1]) ** 2), axis=1))),
+        if prev_all is None or len(prev_all) != len(all_pos):
+            # First call — compute food distance only
+            alive_pos = all_pos[alive_idx]
+            dx = alive_pos[:, 0:1] - food_pos[:, 0]
+            dy = alive_pos[:, 1:2] - food_pos[:, 1]
+            dists = np.sqrt(dx ** 2 + dy ** 2)
+            return {"chemotaxis_index": 0.0,
+                    "mean_food_distance": float(np.mean(np.min(dists, axis=1))),
                     "approaching_fraction": 0.0, "random_walk_baseline": 0.5}
 
-        return measure_chemotaxis_index(current_pos, food_pos, prev)
+        # Compute CI only for organisms alive in BOTH this step and previous
+        # (use same indices — positions are stored per-index)
+        current_alive = all_pos[alive_idx]
+        prev_alive = prev_all[alive_idx]
+
+        return measure_chemotaxis_index(current_alive, food_pos, prev_alive)
 
     # ------------------------------------------------------------------
     # Neural weight inheritance
@@ -617,12 +626,26 @@ class BrainWorld:
             turn_rate += fr[org_idx * self.n_per + n_idx]
 
         alive_f = alive[:n_org].astype(np.float64)
-        # Motor gains — large enough that neural output is the PRIMARY driver of movement.
-        # With ~7 motor neurons × 20Hz firing rate:
-        #   speed = 7*20 * 0.005 = 0.7 units/step (significant movement)
-        #   turn  = 7*20 * 0.02  = 2.8 rad/step (rapid reorientation)
-        speed = (forward_rate - backward_rate) * 0.005 * alive_f
-        turn = turn_rate * 0.02 * alive_f
+
+        # Motor decode: organisms always move forward (base speed) — neural
+        # activity modulates speed and steering. This ensures even organisms
+        # with random weights explore the arena, creating the opportunity
+        # for natural selection to improve food-finding efficiency.
+        #
+        # Base speed = 0.3 units/step (random walk exploration)
+        # Neural modulation: forward neurons increase speed, backward decrease
+        # Turn rate driven entirely by turn neurons (no baseline bias)
+        base_speed = 0.3
+        neural_speed = (forward_rate - backward_rate) * 0.003
+        speed = (base_speed + neural_speed) * alive_f
+        # Clamp speed to prevent backwards movement (organisms can slow but not reverse)
+        speed = np.clip(speed, 0.05, 1.5)
+        speed *= alive_f  # dead organisms don't move
+
+        # Turn: neural activity + small random jitter for exploration
+        neural_turn = turn_rate * 0.015
+        jitter = np.random.default_rng().normal(0, 0.1, n_org) * alive_f
+        turn = (neural_turn + jitter) * alive_f
 
         eco.heading[:n_org] += turn
         eco.x[:n_org] += np.cos(eco.heading[:n_org]) * speed
