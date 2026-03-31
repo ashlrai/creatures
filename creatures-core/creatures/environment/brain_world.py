@@ -243,6 +243,51 @@ class BrainWorld:
         return result
 
     # ------------------------------------------------------------------
+    # Chemotaxis measurement
+    # ------------------------------------------------------------------
+
+    def get_chemotaxis_index(self) -> dict[str, float]:
+        """Measure how effectively organisms navigate toward food.
+
+        Returns chemotaxis index (0.5 = random walk, >0.5 = directed food-seeking).
+        Requires at least 2 calls (stores previous positions for displacement computation).
+        """
+        from creatures.evolution.analytics import measure_chemotaxis_index
+
+        eco = self.ecosystem
+        alive_mask = eco.alive[:self.engine.n_organisms]
+        alive_idx = np.where(alive_mask)[0]
+
+        if len(alive_idx) == 0:
+            return {"chemotaxis_index": 0.0, "mean_food_distance": 0.0,
+                    "approaching_fraction": 0.0, "random_walk_baseline": 0.5}
+
+        current_pos = np.column_stack([eco.x[alive_idx], eco.y[alive_idx]])
+
+        # Food positions
+        food_alive = np.where(eco.food_alive)[0]
+        if len(food_alive) == 0:
+            return {"chemotaxis_index": 0.0, "mean_food_distance": 0.0,
+                    "approaching_fraction": 0.0, "random_walk_baseline": 0.5}
+        food_pos = np.column_stack([eco.food_x[food_alive], eco.food_y[food_alive]])
+
+        # Previous positions (stored from last call)
+        prev = getattr(self, '_prev_positions', None)
+        prev_idx = getattr(self, '_prev_alive_idx', None)
+
+        # Store current for next call
+        self._prev_positions = current_pos.copy()
+        self._prev_alive_idx = alive_idx.copy()
+
+        if prev is None or prev_idx is None or len(prev) != len(current_pos):
+            return {"chemotaxis_index": 0.0, "mean_food_distance": float(np.mean(
+                np.min(np.sqrt((current_pos[:, 0:1] - food_pos[:, 0]) ** 2 +
+                               (current_pos[:, 1:2] - food_pos[:, 1]) ** 2), axis=1))),
+                    "approaching_fraction": 0.0, "random_walk_baseline": 0.5}
+
+        return measure_chemotaxis_index(current_pos, food_pos, prev)
+
+    # ------------------------------------------------------------------
     # Neural weight inheritance
     # ------------------------------------------------------------------
 

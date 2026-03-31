@@ -872,6 +872,14 @@ async def _massive_run_loop(bw_id: str) -> None:
                     for idx in sample_food:
                         food_data.append({"x": float(eco.food_x[idx]), "y": float(eco.food_y[idx])})
 
+                    # Chemotaxis index (every 100 steps to avoid overhead)
+                    chemotaxis = {}
+                    if step_count % 100 == 0 and hasattr(bw, 'get_chemotaxis_index'):
+                        try:
+                            chemotaxis = bw.get_chemotaxis_index()
+                        except Exception:
+                            pass
+
                     message = {
                         "type": "ecosystem_state",
                         "organisms": state_data.get("organisms", []),
@@ -886,6 +894,7 @@ async def _massive_run_loop(bw_id: str) -> None:
                         "step": step_count,
                         "speed": speed,
                         "food": food_data,
+                        "chemotaxis": chemotaxis,
                     }
 
                     dead_ids: list[str] = []

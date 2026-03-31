@@ -96,6 +96,11 @@ interface WorldState {
   food: FoodPosition[];
   step: number;
 
+  // --- Chemotaxis tracking ---
+  chemotaxisIndex: number;
+  meanFoodDistance: number;
+  approachingFraction: number;
+
   // --- Lifecycle ---
   isCreating: boolean;
   isTransitioning: boolean;
@@ -165,6 +170,11 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   food: [],
   step: 0,
 
+  // Chemotaxis
+  chemotaxisIndex: 0,
+  meanFoodDistance: 0,
+  approachingFraction: 0,
+
   // Lifecycle
   isCreating: false,
   isTransitioning: false,
@@ -229,6 +239,11 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     if (msg.population_stats) updates.populationStats = msg.population_stats;
     if (msg.food) updates.food = msg.food;
     if (msg.step !== undefined) updates.step = msg.step;
+    if (msg.chemotaxis?.chemotaxis_index !== undefined) {
+      updates.chemotaxisIndex = msg.chemotaxis.chemotaxis_index;
+      updates.meanFoodDistance = msg.chemotaxis.mean_food_distance ?? 0;
+      updates.approachingFraction = msg.chemotaxis.approaching_fraction ?? 0;
+    }
     set(updates);
 
     // Dispatch for EvolutionTimeline compatibility
@@ -265,6 +280,9 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       populationStats: null,
       food: [],
       step: 0,
+      chemotaxisIndex: 0,
+      meanFoodDistance: 0,
+      approachingFraction: 0,
       isCreating: false,
       isTransitioning: false,
     }),

@@ -154,6 +154,8 @@ function HudOverlay() {
   const colorMode = useWorldStore((s) => s.colorMode);
   const toggleColorMode = useWorldStore((s) => s.toggleColorMode);
   const speed = useWorldStore((s) => s.speed);
+  const chemotaxisIndex = useWorldStore((s) => s.chemotaxisIndex);
+  const approachingFraction = useWorldStore((s) => s.approachingFraction);
   const worldType = useWorldStore((s) => s.worldType);
   const selectOrganism = useWorldStore((s) => s.selectOrganism);
 
@@ -340,6 +342,72 @@ function HudOverlay() {
               <span style={{ color: '#ff8888' }}>
                 {populationStats.mean_lifetime_food?.toFixed(1)}
               </span>
+            </div>
+          </div>
+        )}
+
+        {/* Chemotaxis index — the key scientific metric */}
+        {chemotaxisIndex > 0 && (
+          <div
+            style={{
+              marginTop: 8,
+              borderTop: '1px solid rgba(80,130,200,0.1)',
+              paddingTop: 6,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 8,
+                color: 'rgba(140,170,200,0.4)',
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+                marginBottom: 4,
+              }}
+            >
+              Chemotaxis
+            </div>
+            <div>
+              CI:{' '}
+              <span
+                style={{
+                  color:
+                    chemotaxisIndex > 0.6
+                      ? '#00ff88'
+                      : chemotaxisIndex > 0.52
+                        ? '#ffcc88'
+                        : '#ff6666',
+                  fontWeight: 600,
+                  fontSize: 12,
+                }}
+              >
+                {chemotaxisIndex.toFixed(3)}
+              </span>
+              <span style={{ color: 'rgba(140,170,200,0.3)', fontSize: 9, marginLeft: 4 }}>
+                (0.5 = random)
+              </span>
+            </div>
+            <div>
+              Approaching:{' '}
+              <span style={{ color: approachingFraction > 0.5 ? '#88ffcc' : '#ff8888' }}>
+                {(approachingFraction * 100).toFixed(0)}%
+              </span>
+            </div>
+            {/* Mini CI bar */}
+            <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 8, color: 'rgba(140,170,200,0.3)' }}>0</span>
+              <div style={{ flex: 1, height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, position: 'relative', overflow: 'hidden' }}>
+                {/* Random walk baseline */}
+                <div style={{ position: 'absolute', left: '50%', top: 0, width: 1, height: '100%', background: 'rgba(255,255,255,0.15)' }} />
+                {/* Current CI */}
+                <div style={{
+                  width: `${chemotaxisIndex * 100}%`,
+                  height: '100%',
+                  background: chemotaxisIndex > 0.55 ? '#00ff88' : chemotaxisIndex > 0.5 ? '#ffcc88' : '#ff6666',
+                  borderRadius: 2,
+                  transition: 'width 0.5s',
+                }} />
+              </div>
+              <span style={{ fontSize: 8, color: 'rgba(140,170,200,0.3)' }}>1</span>
             </div>
           </div>
         )}
