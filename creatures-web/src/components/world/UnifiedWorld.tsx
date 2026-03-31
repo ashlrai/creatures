@@ -1184,7 +1184,7 @@ export function UnifiedWorld({
 
   // --- Create brain-world ---
   const createWorld = useCallback(
-    async (type: string, nOrganisms = 1000, neuronsPerOrg = 50) => {
+    async (type: string, nOrganisms = 500, neuronsPerOrg = 50) => {
       setIsCreating(true);
       try {
         const res = await fetch(`${API_BASE}/api/ecosystem/massive`, {
