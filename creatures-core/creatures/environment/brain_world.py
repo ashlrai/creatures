@@ -74,9 +74,9 @@ class BrainWorld:
         if arena_size <= 0:
             arena_size = max(50.0, float(int(n_organisms ** 0.5) * 3))
 
-        # Food moderately abundant — organisms with baseline movement can survive
-        # but must evolve efficient food-seeking to thrive. ~3 food per organism.
-        n_food = max(20, n_organisms * 3)
+        # Food moderate — organisms with baseline movement can find food
+        # but must evolve efficient seeking to thrive. ~2 food per organism.
+        n_food = max(20, n_organisms * 2)
         self.ecosystem = MassiveEcosystem(n_organisms, arena_size, n_food=n_food, seed=seed)
 
         # Consciousness tracking

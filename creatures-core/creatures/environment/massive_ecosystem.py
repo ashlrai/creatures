@@ -54,15 +54,15 @@ class MassiveEcosystem:
         self.speed = np.full(n_organisms, 0.5)  # base movement speed
         self.predator_proximity = np.full(n_organisms, np.inf)  # distance to nearest predator (for C. elegans)
 
-        # Assign ~30 % as drosophila
-        drosophila_mask = rng.random(n_organisms) < 0.3
+        # Assign ~15% as drosophila (predators) — realistic predator-prey ratio
+        drosophila_mask = rng.random(n_organisms) < 0.15
         self.species[drosophila_mask] = 1
 
         # --- Food source arrays ---
         self.n_food = n_food
         self.food_x = rng.uniform(-half, half, n_food)
         self.food_y = rng.uniform(-half, half, n_food)
-        self.food_energy = np.full(n_food, 50.0)
+        self.food_energy = np.full(n_food, 25.0)
         self.food_alive = np.ones(n_food, dtype=bool)
 
         # --- Generational tracking arrays ---
@@ -106,8 +106,14 @@ class MassiveEcosystem:
 
         # 1. Energy decay — metabolic cost
         # Higher cost when neural control is active to create real selection pressure
-        metabolic_rate = 0.5 if getattr(self, '_neural_control', False) else 0.01
-        self.energy[alive] -= metabolic_rate * dt
+        if getattr(self, '_neural_control', False):
+            # Metabolic cost: base rate + movement cost (proportional to speed)
+            # This creates selection pressure for EFFICIENT movement, not just movement
+            base_cost = 1.5
+            # Speed-proportional cost computed from heading change (proxy for neural activity)
+            self.energy[alive] -= base_cost * dt
+        else:
+            self.energy[alive] -= 0.01 * dt
 
         # 2. Movement — steer toward nearest food + noise
         # When neural_control is enabled (via BrainWorld), skip hardcoded movement
@@ -119,7 +125,10 @@ class MassiveEcosystem:
         n_eaten = self._eat(eat_radius=1.5)
 
         # 3b. Predation — Drosophila hunt C. elegans
-        n_predation = self._predation()
+        # Delayed start: predation only activates after generation 5
+        # so both species can establish populations first
+        max_gen = int(self.generation[self.alive].max()) if self.alive.any() else 0
+        n_predation = self._predation() if max_gen >= 5 else 0
 
         # 4. Death — energy depletion + aging
         newly_dead = alive & (self.energy <= 0)
@@ -134,7 +143,7 @@ class MassiveEcosystem:
         self._total_died += n_died
 
         # 5. Reproduction — organisms with high energy can split
-        n_born = self._reproduce(energy_threshold=150.0, offspring_cost=60.0)
+        n_born = self._reproduce(energy_threshold=110.0, offspring_cost=40.0)
 
         # 6. Respawn depleted food (keep the ecosystem running)
         self._respawn_food()
@@ -350,7 +359,7 @@ class MassiveEcosystem:
 
             # Probabilistic predation (30% chance per step) — creates selection
             # pressure without instant extinction
-            kill_roll = self._rng.random(len(pred_batch)) < 0.30
+            kill_roll = self._rng.random(len(pred_batch)) < 0.12
             can_kill = in_range & kill_roll
             if not np.any(can_kill):
                 continue
@@ -448,8 +457,8 @@ class MassiveEcosystem:
             parents_list.append(winner)
             slots_list.append(slot)
 
-            # Limit births per step to prevent population explosion
-            if len(parents_list) >= min(len(candidates), 20):
+            # Stop when all dead slots are filled
+            if len(parents_list) >= len(dead_slots):
                 break
 
         if not parents_list:
@@ -500,7 +509,7 @@ class MassiveEcosystem:
         half = self.arena_size / 2.0
         self.food_x[to_respawn] = self._rng.uniform(-half, half, len(to_respawn))
         self.food_y[to_respawn] = self._rng.uniform(-half, half, len(to_respawn))
-        self.food_energy[to_respawn] = 50.0
+        self.food_energy[to_respawn] = 25.0
         self.food_alive[to_respawn] = True
 
     # ------------------------------------------------------------------

@@ -286,9 +286,34 @@ def measure_chemotaxis_index(
     chemotaxis_index = float(np.mean(ci_normalized))
     approaching_fraction = float(np.mean(ci_per_organism > 0))
 
+    # Compute ACTUAL random walk baseline for this food configuration
+    # (not theoretical 0.5 — with dense food, random walk CI can be much higher)
+    rng = np.random.default_rng(42)
+    n_random = min(200, len(org))
+    random_movements = rng.normal(0, float(np.mean(move_dist[moving])), (n_random, 2))
+    random_pos = org[:n_random]
+    random_prev = random_pos - random_movements
+
+    # CI for random movements toward same food
+    r_to_food = food[nearest_idx[:n_random]] - random_prev
+    r_food_dist = np.linalg.norm(r_to_food, axis=1)
+    r_move_dist = np.linalg.norm(random_movements, axis=1)
+    r_valid = (r_move_dist > 1e-6) & (r_food_dist > 1e-6)
+
+    if r_valid.sum() > 10:
+        r_dots = np.sum(random_movements[r_valid] * r_to_food[r_valid], axis=1)
+        r_norms = r_move_dist[r_valid] * r_food_dist[r_valid]
+        r_ci = float(np.mean((r_dots / r_norms + 1) / 2))
+    else:
+        r_ci = 0.5
+
+    # Relative CI: how much better than random walk? (0 = same, positive = better)
+    relative_ci = (chemotaxis_index - r_ci) / max(1.0 - r_ci, 0.01)
+
     return {
         "chemotaxis_index": chemotaxis_index,
         "mean_food_distance": mean_food_distance,
         "approaching_fraction": approaching_fraction,
-        "random_walk_baseline": 0.5,  # random walk gives CI ≈ 0.5 (uniform distribution)
+        "random_walk_baseline": r_ci,
+        "relative_chemotaxis": float(np.clip(relative_ci, -1, 1)),
     }
