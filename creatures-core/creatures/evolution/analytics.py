@@ -190,3 +190,105 @@ def summarize_evolution(
         "template_synapses": template.n_synapses,
         "evolved_synapses": final.n_synapses,
     }
+
+
+# ---------------------------------------------------------------------------
+# Chemotaxis measurement — quantifies directed food-seeking behavior
+# ---------------------------------------------------------------------------
+
+def measure_chemotaxis_index(
+    organism_positions: np.ndarray,
+    food_positions: np.ndarray,
+    previous_positions: np.ndarray | None = None,
+) -> dict[str, float]:
+    """Measure how effectively organisms navigate toward food sources.
+
+    The chemotaxis index (CI) measures the ratio of displacement toward
+    the nearest food source vs. total displacement. CI = 1 means perfect
+    chemotaxis (always moving toward food), CI = 0 means random walk.
+
+    Parameters
+    ----------
+    organism_positions : (N, 2) array of current (x, y) positions
+    food_positions : (M, 2) array of food source (x, y) positions
+    previous_positions : (N, 2) array of positions from previous step
+
+    Returns
+    -------
+    dict with:
+      - chemotaxis_index: float (0-1, mean CI across organisms)
+      - mean_food_distance: float (mean distance to nearest food)
+      - approaching_fraction: float (fraction of organisms moving toward food)
+      - random_walk_baseline: float (expected CI for random walk ≈ 0)
+    """
+    if len(organism_positions) == 0 or len(food_positions) == 0:
+        return {
+            "chemotaxis_index": 0.0,
+            "mean_food_distance": float("inf"),
+            "approaching_fraction": 0.0,
+            "random_walk_baseline": 0.0,
+        }
+
+    org = np.asarray(organism_positions)
+    food = np.asarray(food_positions)
+
+    # Distance from each organism to nearest food
+    # (N, M) pairwise distances
+    dx = org[:, 0:1] - food[:, 0]  # (N, M)
+    dy = org[:, 1:2] - food[:, 1]  # (N, M)
+    dists = np.sqrt(dx ** 2 + dy ** 2)  # (N, M)
+    nearest_idx = np.argmin(dists, axis=1)  # (N,)
+    nearest_dist = dists[np.arange(len(org)), nearest_idx]  # (N,)
+
+    mean_food_distance = float(np.mean(nearest_dist))
+
+    if previous_positions is None or len(previous_positions) != len(org):
+        return {
+            "chemotaxis_index": 0.0,
+            "mean_food_distance": mean_food_distance,
+            "approaching_fraction": 0.0,
+            "random_walk_baseline": 0.0,
+        }
+
+    prev = np.asarray(previous_positions)
+
+    # Movement vector
+    movement = org - prev  # (N, 2)
+    move_dist = np.linalg.norm(movement, axis=1)  # (N,)
+
+    # Vector from previous position to nearest food
+    nearest_food = food[nearest_idx]  # (N, 2)
+    to_food = nearest_food - prev  # (N, 2)
+    food_dist = np.linalg.norm(to_food, axis=1)  # (N,)
+
+    # Chemotaxis index = dot(movement, to_food) / (|movement| * |to_food|)
+    # This is cos(angle) between movement direction and food direction.
+    # CI > 0 means moving toward food, CI < 0 means moving away.
+    moving = move_dist > 1e-6
+    has_food = food_dist > 1e-6
+    valid = moving & has_food
+
+    if valid.sum() == 0:
+        return {
+            "chemotaxis_index": 0.0,
+            "mean_food_distance": mean_food_distance,
+            "approaching_fraction": 0.0,
+            "random_walk_baseline": 0.0,
+        }
+
+    dot_products = np.sum(movement[valid] * to_food[valid], axis=1)
+    norms = move_dist[valid] * food_dist[valid]
+    ci_per_organism = dot_products / norms  # cosine similarity, range [-1, 1]
+
+    # Normalize to [0, 1]: (ci + 1) / 2
+    ci_normalized = (ci_per_organism + 1) / 2
+
+    chemotaxis_index = float(np.mean(ci_normalized))
+    approaching_fraction = float(np.mean(ci_per_organism > 0))
+
+    return {
+        "chemotaxis_index": chemotaxis_index,
+        "mean_food_distance": mean_food_distance,
+        "approaching_fraction": approaching_fraction,
+        "random_walk_baseline": 0.5,  # random walk gives CI ≈ 0.5 (uniform distribution)
+    }

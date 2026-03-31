@@ -73,9 +73,10 @@ class BrainWorld:
         if arena_size <= 0:
             arena_size = max(50.0, float(int(n_organisms ** 0.5) * 3))
 
-        # Food is SCARCE — organisms must use their neural network to find it.
-        # ~2 food sources per organism creates genuine selection pressure.
-        n_food = max(20, n_organisms * 2)
+        # Food is ABUNDANT — organisms with random weights need enough food
+        # to occasionally stumble into it. Natural selection operates on who
+        # finds food EFFICIENTLY, not who finds food at all. ~6 food per organism.
+        n_food = max(20, n_organisms * 6)
         self.ecosystem = MassiveEcosystem(n_organisms, arena_size, n_food=n_food, seed=seed)
 
         # Consciousness tracking
@@ -121,11 +122,14 @@ class BrainWorld:
         # Disable hardcoded food-seeking in ecosystem — neural network drives ALL movement
         self.ecosystem._neural_control = True
 
-        # Innate reflex: bias initial weights so food-sensory neurons weakly excite
-        # forward-motor neurons. This gives organisms a baseline food-seeking tendency
-        # that evolution can refine. Without this, random weights produce random
-        # movement and the entire population starves before any useful circuit evolves.
-        self._seed_innate_reflexes()
+        # No innate reflexes — evolution must discover sensory-motor coupling
+        # from scratch. Organisms start with random weights and must evolve
+        # food-seeking behavior through natural selection alone.
+        # (Previously: _seed_innate_reflexes() injected hardcoded food→forward,
+        # chemical→turn, danger→backward couplings that bypassed the neural network.)
+        self._innate_food_forward = ([], [], 0)
+        self._innate_chem_turn = ([], [], 0)
+        self._innate_danger_backward = ([], [], 0)
 
         logger.info(
             "BrainWorld built: %d organisms x %d neurons = %d total, "
@@ -243,8 +247,20 @@ class BrainWorld:
     # ------------------------------------------------------------------
 
     def _inherit_neural_weights(self, parent_indices: np.ndarray, offspring_indices: np.ndarray) -> None:
-        """Copy parent neural weights to offspring with mutation."""
-        mutation_sigma = getattr(self, '_mutation_sigma', 0.02)
+        """Copy parent neural weights to offspring with adaptive mutation.
+
+        Mutation rate starts high (sigma=0.5) for exploration and decays
+        toward sigma_min (0.05) as the population evolves, following:
+          sigma = sigma_min + (sigma_max - sigma_min) * exp(-generation / tau)
+        """
+        eco = self.ecosystem
+        # Adaptive mutation: high early (exploration), low late (exploitation)
+        max_gen = int(eco.generation[eco.alive].max()) if eco.alive.any() else 0
+        sigma_max = 0.5
+        sigma_min = 0.05
+        tau = 50  # half-life in generations
+        mutation_sigma = sigma_min + (sigma_max - sigma_min) * np.exp(-max_gen / tau)
+
         for parent_idx, offspring_idx in zip(parent_indices, offspring_indices):
             self.engine.inherit_weights(int(parent_idx), int(offspring_idx), mutation_sigma)
 

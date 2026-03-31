@@ -117,9 +117,10 @@ class MassiveEcosystem:
 
         # 4. Death — energy depletion + aging
         newly_dead = alive & (self.energy <= 0)
-        # Age-based death: probability increases with age (max lifespan ~2000 steps)
+        # Age-based death: probability increases with age (max lifespan ~1000 steps)
+        # Faster turnover = more generations = faster evolution
         if getattr(self, '_neural_control', False):
-            age_death_prob = np.clip((self.age - 1000) / 1000, 0, 0.01)  # 1% chance/step after age 1000
+            age_death_prob = np.clip((self.age - 500) / 500, 0, 0.02)  # 2% chance/step after age 500
             age_death = alive & (self._rng.random(len(alive)) < age_death_prob)
             newly_dead = newly_dead | age_death
         n_died = int(np.sum(newly_dead))
@@ -273,32 +274,76 @@ class MassiveEcosystem:
     # ------------------------------------------------------------------
 
     def _reproduce(
-        self, energy_threshold: float = 150.0, offspring_cost: float = 60.0
+        self, energy_threshold: float = 120.0, offspring_cost: float = 50.0
     ) -> int:
-        """Organisms above the energy threshold split into two."""
+        """Tournament selection: highest-energy organisms in local neighborhoods reproduce.
+
+        Instead of letting ANY organism above threshold reproduce, we select
+        the BEST organism within each local neighborhood. This creates real
+        selection pressure: organisms that find food efficiently out-compete
+        those that wander randomly.
+        """
         can_reproduce = self.alive & (self.energy > energy_threshold)
-        parents = np.where(can_reproduce)[0]
-        if len(parents) == 0:
+        candidates = np.where(can_reproduce)[0]
+        if len(candidates) == 0:
             return 0
 
-        # Find dead slots to reuse
         dead_slots = np.where(~self.alive)[0]
-        n_births = min(len(parents), len(dead_slots))
-        if n_births == 0:
+        if len(dead_slots) == 0:
             return 0
 
-        parents = parents[:n_births]
-        slots = dead_slots[:n_births]
+        rng = self._rng
+
+        # Tournament selection: for each dead slot, find the highest-energy
+        # candidate within a local radius (tournament_radius). This selects
+        # for organisms that are BETTER at gathering energy, not just above threshold.
+        tournament_radius = self.arena_size * 0.15  # 15% of arena
+        parents_list = []
+        slots_list = []
+
+        for slot in dead_slots:
+            if len(candidates) == 0:
+                break
+
+            # Pick a random candidate as the "center" of the tournament
+            center_idx = rng.integers(0, len(candidates))
+            center = candidates[center_idx]
+            cx, cy = self.x[center], self.y[center]
+
+            # Find all candidates within tournament radius
+            dx = self.x[candidates] - cx
+            dy = self.y[candidates] - cy
+            dists = dx * dx + dy * dy
+            in_range = dists < tournament_radius * tournament_radius
+            local_candidates = candidates[in_range]
+
+            if len(local_candidates) == 0:
+                local_candidates = np.array([center])
+
+            # Winner = highest energy in the local neighborhood
+            winner = local_candidates[np.argmax(self.energy[local_candidates])]
+            parents_list.append(winner)
+            slots_list.append(slot)
+
+            # Limit births per step to prevent population explosion
+            if len(parents_list) >= min(len(candidates), 20):
+                break
+
+        if not parents_list:
+            return 0
+
+        parents = np.array(parents_list)
+        slots = np.array(slots_list)
+        n_births = len(parents)
 
         # Parent pays energy cost
         self.energy[parents] -= offspring_cost
 
-        # Offspring inherits position + small offset, half parent's remaining energy
-        rng = self._rng
+        # Offspring inherits position + small offset
         self.x[slots] = self.x[parents] + rng.normal(0, 0.5, n_births)
         self.y[slots] = self.y[parents] + rng.normal(0, 0.5, n_births)
         self.heading[slots] = rng.uniform(0, 2 * np.pi, n_births)
-        self.energy[slots] = offspring_cost * 0.8  # offspring starts with some energy
+        self.energy[slots] = offspring_cost * 0.8
         self.species[slots] = self.species[parents]
         self.age[slots] = 0.0
         self.speed[slots] = self.speed[parents]
@@ -308,8 +353,7 @@ class MassiveEcosystem:
         self.generation[slots] = self.generation[parents] + 1
         self.parent_id[slots] = parents
         self.lifetime_food[slots] = 0.0
-        # Each offspring inherits parent's lineage
-        for i, (p, s) in enumerate(zip(parents, slots)):
+        for p, s in zip(parents, slots):
             self.lineage_id[s] = self.lineage_id[p]
 
         self._total_born += n_births
@@ -323,7 +367,7 @@ class MassiveEcosystem:
     # Food respawn
     # ------------------------------------------------------------------
 
-    def _respawn_food(self, respawn_fraction: float = 0.10) -> None:
+    def _respawn_food(self, respawn_fraction: float = 0.15) -> None:
         """Respawn a fraction of eaten food sources each step."""
         dead_food = np.where(~self.food_alive)[0]
         if len(dead_food) == 0:
