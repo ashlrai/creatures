@@ -103,12 +103,14 @@ class BrainWorld:
             "neighbor_density": (4 * ch_size, self.n_sensory),
         }
 
-        # Motor decoding: forward neurons, backward neurons, turn neurons
+        # Motor decoding: forward, backward, turn, pitch (4 groups for 3D)
         motor_start = neurons_per_organism - self.n_motor
-        n_third = self.n_motor // 3
-        self.motor_forward = list(range(motor_start, motor_start + n_third))
-        self.motor_backward = list(range(motor_start + n_third, motor_start + 2 * n_third))
-        self.motor_turn = list(range(motor_start + 2 * n_third, neurons_per_organism))
+        n_quarter = self.n_motor // 4
+        self.motor_forward = list(range(motor_start, motor_start + n_quarter))
+        self.motor_backward = list(range(motor_start + n_quarter, motor_start + 2 * n_quarter))
+        self.motor_turn = list(range(motor_start + 2 * n_quarter, motor_start + 3 * n_quarter))
+        # Pitch motor neurons (up/down for 3D movement)
+        self.motor_pitch = list(range(motor_start + 3 * n_quarter, neurons_per_organism))
 
         # Time tracking (MassiveEcosystem doesn't track time_ms)
         self.time_ms: float = 0.0
@@ -625,35 +627,52 @@ class BrainWorld:
         for n_idx in self.motor_turn:
             turn_rate += fr[org_idx * self.n_per + n_idx]
 
+        pitch_rate = np.zeros(n_org)
+        for n_idx in self.motor_pitch:
+            pitch_rate += fr[org_idx * self.n_per + n_idx]
+
         alive_f = alive[:n_org].astype(np.float64)
 
-        # Motor decode: organisms always move forward (base speed) — neural
-        # activity modulates speed and steering. This ensures even organisms
-        # with random weights explore the arena, creating the opportunity
-        # for natural selection to improve food-finding efficiency.
-        #
-        # Base speed = 0.3 units/step (random walk exploration)
-        # Neural modulation: forward neurons increase speed, backward decrease
-        # Turn rate driven entirely by turn neurons (no baseline bias)
-        base_speed = 0.3
+        # Motor decode for 3D world:
+        # Base speed from morphology (if available), otherwise 0.3
+        if hasattr(eco, 'morphology'):
+            from creatures.evolution.morphology import compute_speed
+            morph_speed = compute_speed(eco.morphology[:n_org])
+            base_speed = morph_speed * 0.3  # scale to arena units
+        else:
+            base_speed = np.full(n_org, 0.3)
+
         neural_speed = (forward_rate - backward_rate) * 0.003
         speed = (base_speed + neural_speed) * alive_f
-        # Clamp speed to prevent backwards movement (organisms can slow but not reverse)
-        speed = np.clip(speed, 0.05, 1.5)
-        speed *= alive_f  # dead organisms don't move
+        speed = np.clip(speed, 0.05, 2.0) * alive_f
 
-        # Turn: neural activity + small random jitter for exploration
+        # Turn + pitch: neural activity + jitter for exploration
         neural_turn = turn_rate * 0.015
         jitter = np.random.default_rng().normal(0, 0.1, n_org) * alive_f
         turn = (neural_turn + jitter) * alive_f
 
-        eco.heading[:n_org] += turn
-        eco.x[:n_org] += np.cos(eco.heading[:n_org]) * speed
-        eco.y[:n_org] += np.sin(eco.heading[:n_org]) * speed
+        neural_pitch = (pitch_rate - np.mean(pitch_rate)) * 0.008
+        pitch_change = neural_pitch * alive_f
 
+        # Update orientation
+        eco.heading[:n_org] += turn
+        eco.pitch[:n_org] = np.clip(eco.pitch[:n_org] + pitch_change, -0.5, 0.5)
+
+        # 3D movement: heading + pitch → direction vector
+        cos_h = np.cos(eco.heading[:n_org])
+        sin_h = np.sin(eco.heading[:n_org])
+        cos_p = np.cos(eco.pitch[:n_org])
+        sin_p = np.sin(eco.pitch[:n_org])
+
+        eco.x[:n_org] += cos_h * cos_p * speed
+        eco.y[:n_org] += sin_h * cos_p * speed
+        eco.z[:n_org] += sin_p * speed
+
+        # Arena boundary wrapping (x, y) and ground clamping (z)
         half = eco.arena_size / 2.0
         eco.x = ((eco.x + half) % eco.arena_size) - half
         eco.y = ((eco.y + half) % eco.arena_size) - half
+        eco.z = np.maximum(eco.z, 0.0)  # can't go below ground
 
     # ------------------------------------------------------------------
     # Consciousness measurement

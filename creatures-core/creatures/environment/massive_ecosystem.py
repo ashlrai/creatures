@@ -13,6 +13,18 @@ from typing import Any
 
 import numpy as np
 
+from creatures.evolution.morphology import (
+    random_morphology,
+    N_MORPH_GENES,
+    mutate_morphology,
+    compute_metabolic_cost,
+    compute_speed,
+    compute_eat_radius,
+    GENE_BODY_LENGTH,
+    GENE_BODY_WIDTH,
+    GENE_BODY_HEIGHT,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,8 +63,13 @@ class MassiveEcosystem:
         self.alive = np.ones(n_organisms, dtype=bool)
         self.species = np.zeros(n_organisms, dtype=np.int8)  # 0=c_elegans
         self.age = np.zeros(n_organisms, dtype=np.float64)
+        self.z = np.zeros(n_organisms)  # vertical position (0 = ground)
+        self.pitch = np.zeros(n_organisms)  # vertical angle
         self.speed = np.full(n_organisms, 0.5)  # base movement speed
         self.predator_proximity = np.full(n_organisms, np.inf)  # distance to nearest predator (for C. elegans)
+
+        # --- Morphology (evolvable body plan) ---
+        self.morphology = random_morphology(n_organisms, rng)
 
         # Assign ~15% as drosophila (predators) — realistic predator-prey ratio
         drosophila_mask = rng.random(n_organisms) < 0.15
@@ -76,12 +93,17 @@ class MassiveEcosystem:
         overcapacity = int(n_organisms * 0.2)
         if overcapacity > 0:
             total_slots = n_organisms + overcapacity
-            for attr in ['x', 'y', 'heading', 'energy', 'alive', 'species', 'age',
+            for attr in ['x', 'y', 'z', 'heading', 'pitch', 'energy', 'alive', 'species', 'age',
                          'speed', 'predator_proximity', 'generation', 'parent_id', 'lineage_id', 'lifetime_food']:
                 old = getattr(self, attr)
                 new = np.zeros(total_slots, dtype=old.dtype)
                 new[:n_organisms] = old
                 setattr(self, attr, new)
+            # Morphology is 2-D (n, N_MORPH_GENES) — expand along axis 0
+            old_morph = self.morphology
+            new_morph = np.zeros((total_slots, N_MORPH_GENES), dtype=old_morph.dtype)
+            new_morph[:n_organisms] = old_morph
+            self.morphology = new_morph
             self.alive[n_organisms:] = False  # extra slots start dead
             self.n = total_slots  # update total slot count
 
@@ -104,14 +126,12 @@ class MassiveEcosystem:
         """
         alive = self.alive
 
-        # 1. Energy decay — metabolic cost
-        # Higher cost when neural control is active to create real selection pressure
+        # 1. Energy decay — morphology-driven metabolic cost
+        alive_indices = np.where(alive)[0]
         if getattr(self, '_neural_control', False):
-            # Metabolic cost: base rate + movement cost (proportional to speed)
-            # This creates selection pressure for EFFICIENT movement, not just movement
-            base_cost = 1.5
-            # Speed-proportional cost computed from heading change (proxy for neural activity)
-            self.energy[alive] -= base_cost * dt
+            # Per-organism cost from body morphology (creates selection pressure)
+            metabolic_costs = compute_metabolic_cost(self.morphology[alive_indices])
+            self.energy[alive] -= metabolic_costs * dt
         else:
             self.energy[alive] -= 0.01 * dt
 
@@ -121,8 +141,11 @@ class MassiveEcosystem:
         if not getattr(self, '_neural_control', False):
             self._move(dt)
 
-        # 3. Food consumption — proximity-based
-        n_eaten = self._eat(eat_radius=1.5)
+        # 2b. 3D physics — gravity, repulsion, arena boundaries
+        self._physics_3d(dt)
+
+        # 3. Food consumption — morphology-based eat radius
+        n_eaten = self._eat()
 
         # 3b. Predation — disabled for now to let evolution work on food-seeking first.
         # Re-enable once base chemotaxis is evolved and prey can survive.
@@ -233,11 +256,112 @@ class MassiveEcosystem:
         self.y[alive_idx] = ((self.y[alive_idx] + half) % self.arena_size) - half
 
     # ------------------------------------------------------------------
+    # 3D Physics (vectorized)
+    # ------------------------------------------------------------------
+
+    def _physics_3d(self, dt: float) -> None:
+        """Apply gravity, organism-organism repulsion, and arena boundaries.
+
+        All operations are vectorized over alive organisms.
+        """
+        alive_idx = np.where(self.alive)[0]
+        if len(alive_idx) == 0:
+            return
+
+        # --- Gravity: pull organisms toward ground ---
+        self.z[alive_idx] -= 0.05 * dt
+        self.z = np.maximum(self.z, 0.0)
+
+        # --- Organism-organism repulsion (nearest-5 batch approach) ---
+        n_alive = len(alive_idx)
+        if n_alive > 1:
+            mean_body_length = float(np.mean(
+                self.morphology[alive_idx, GENE_BODY_LENGTH]
+            ))
+            repulsion_radius = mean_body_length * 0.5
+            r2 = repulsion_radius * repulsion_radius
+
+            # Process in batches to control memory: O(batch * n_sample)
+            batch_size = 4000
+            # Subsample neighbors for distance calc if population is large
+            max_sample = min(n_alive, 2000)
+            if n_alive > max_sample:
+                sample_idx = self._rng.choice(alive_idx, max_sample, replace=False)
+            else:
+                sample_idx = alive_idx
+
+            sx = self.x[sample_idx]
+            sy = self.y[sample_idx]
+            sz = self.z[sample_idx]
+
+            for start in range(0, n_alive, batch_size):
+                batch = alive_idx[start:start + batch_size]
+                bx = self.x[batch]
+                by = self.y[batch]
+                bz = self.z[batch]
+
+                # Distance to all sampled organisms: (batch, sample)
+                dx = sx[None, :] - bx[:, None]
+                dy = sy[None, :] - by[:, None]
+                dz = sz[None, :] - bz[:, None]
+                dist2 = dx * dx + dy * dy + dz * dz
+
+                # Avoid self-repulsion by setting self-distances to inf
+                # (when batch organism is in sample, mask it out)
+                # This is approximate but fast — set very small distances to inf
+                dist2 = np.where(dist2 < 1e-12, np.inf, dist2)
+
+                # Find nearest 5 neighbors
+                k = min(5, dist2.shape[1])
+                # argpartition is O(n) — much faster than full sort
+                nearest_k = np.argpartition(dist2, k, axis=1)[:, :k]
+                rows = np.arange(len(batch))[:, None]
+                nearest_dist2 = dist2[rows, nearest_k]
+                nearest_dx = dx[rows, nearest_k]
+                nearest_dy = dy[rows, nearest_k]
+                nearest_dz = dz[rows, nearest_k]
+
+                # Only repel if within repulsion radius
+                in_range = nearest_dist2 < r2
+                nearest_dist = np.sqrt(nearest_dist2 + 1e-12)
+                # Repulsion force: stronger when closer (inverse-linear)
+                force_mag = np.where(
+                    in_range,
+                    (repulsion_radius - nearest_dist) / (nearest_dist + 1e-8) * 0.1 * dt,
+                    0.0,
+                )
+                # Direction: push AWAY from neighbor (negate the dx/dy/dz)
+                fx = np.sum(-nearest_dx / (nearest_dist + 1e-8) * force_mag, axis=1)
+                fy = np.sum(-nearest_dy / (nearest_dist + 1e-8) * force_mag, axis=1)
+                fz = np.sum(-nearest_dz / (nearest_dist + 1e-8) * force_mag, axis=1)
+
+                self.x[batch] += fx
+                self.y[batch] += fy
+                self.z[batch] += fz
+
+            # Ground clamp after repulsion
+            self.z = np.maximum(self.z, 0.0)
+
+        # --- Arena soft walls: spring force pushing back ---
+        half = self.arena_size / 2.0
+        spring_k = 0.2 * dt
+        # X boundaries
+        over_x_pos = self.x[alive_idx] - half
+        over_x_neg = -half - self.x[alive_idx]
+        self.x[alive_idx] -= np.where(over_x_pos > 0, over_x_pos * spring_k, 0.0)
+        self.x[alive_idx] += np.where(over_x_neg > 0, over_x_neg * spring_k, 0.0)
+        # Y boundaries
+        over_y_pos = self.y[alive_idx] - half
+        over_y_neg = -half - self.y[alive_idx]
+        self.y[alive_idx] -= np.where(over_y_pos > 0, over_y_pos * spring_k, 0.0)
+        self.y[alive_idx] += np.where(over_y_neg > 0, over_y_neg * spring_k, 0.0)
+
+    # ------------------------------------------------------------------
     # Eating (vectorized)
     # ------------------------------------------------------------------
 
-    def _eat(self, eat_radius: float = 1.5) -> int:
-        """Organisms within *eat_radius* of a food source consume it."""
+    def _eat(self) -> int:
+        """Organisms within morphology-based eat radius consume food."""
         alive = self.alive
         food_alive = self.food_alive
 
@@ -247,14 +371,21 @@ class MassiveEcosystem:
         alive_idx = np.where(alive)[0]
         food_idx = np.where(food_alive)[0]
 
+        # Per-organism eat radii from morphology
+        all_eat_radii = compute_eat_radius(self.morphology[alive_idx])
+        # Use mean radius for the broad-phase distance check (perf optimization)
+        mean_r = float(np.mean(all_eat_radii))
+        mean_r2 = mean_r * mean_r
+
         # For very large populations, do proximity check in batches
         # to avoid O(n_organisms * n_food) memory explosion.
         n_eaten = 0
         batch_size = 5000
-        r2 = eat_radius * eat_radius
 
         for start in range(0, len(alive_idx), batch_size):
             batch = alive_idx[start : start + batch_size]
+            batch_radii = all_eat_radii[start : start + batch_size]
+            batch_r2 = batch_radii * batch_radii
             # Remaining live food
             food_idx = np.where(self.food_alive)[0]
             if len(food_idx) == 0:
@@ -264,10 +395,11 @@ class MassiveEcosystem:
             dy = self.food_y[food_idx][None, :] - self.y[batch][:, None]
             dist2 = dx * dx + dy * dy  # (batch, food)
 
-            # Each organism eats its nearest food if within radius
+            # Each organism eats its nearest food if within its individual radius
             nearest_food = np.argmin(dist2, axis=1)
             nearest_dist2 = dist2[np.arange(len(batch)), nearest_food]
-            can_eat = nearest_dist2 < r2
+            # Verify against per-organism radius (not the mean)
+            can_eat = nearest_dist2 < batch_r2
 
             if not np.any(can_eat):
                 continue
@@ -483,12 +615,21 @@ class MassiveEcosystem:
         # Offspring inherits position + small offset
         self.x[slots] = self.x[parents] + rng.normal(0, 0.5, n_births)
         self.y[slots] = self.y[parents] + rng.normal(0, 0.5, n_births)
+        self.z[slots] = 0.0  # offspring start on ground
         self.heading[slots] = rng.uniform(0, 2 * np.pi, n_births)
+        self.pitch[slots] = 0.0
         self.energy[slots] = offspring_cost * 0.8
         self.species[slots] = self.species[parents]
         self.age[slots] = 0.0
         self.speed[slots] = self.speed[parents]
         self.alive[slots] = True
+
+        # Inherit and mutate morphology
+        self.morphology[slots] = self.morphology[parents]
+        for i, s in enumerate(slots):
+            self.morphology[s] = mutate_morphology(
+                self.morphology[s], sigma=0.1, rng=self._rng
+            )
 
         # Track generational lineage
         self.generation[slots] = self.generation[parents] + 1
@@ -554,11 +695,19 @@ class MassiveEcosystem:
                 {
                     "x": float(self.x[i]),
                     "y": float(self.y[i]),
+                    "z": float(self.z[i]),
+                    "pitch": float(self.pitch[i]),
                     "species": int(self.species[i]),
                     "energy": float(self.energy[i]),
                     "age": float(self.age[i]),
                     "generation": int(self.generation[i]),
                     "lineage_id": int(self.lineage_id[i]),
+                    "body_length": float(self.morphology[i, GENE_BODY_LENGTH]),
+                    "body_width": float(self.morphology[i, GENE_BODY_WIDTH]),
+                    "body_height": float(self.morphology[i, GENE_BODY_HEIGHT]),
+                    "n_segments": int(round(self.morphology[i, 3])),
+                    "limb_count": int(round(self.morphology[i, 4])),
+                    "color_hue": float(self.morphology[i, 6]),
                 }
                 for i in indices
             ],
