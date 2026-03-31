@@ -776,6 +776,9 @@ async def _massive_run_loop(bw_id: str) -> None:
                     if events:
                         pending_events.extend(events)
                         emergent_log.extend(events)
+                        # Cap emergent log to prevent unbounded memory growth
+                        if len(emergent_log) > 500:
+                            del emergent_log[:len(emergent_log) - 500]
 
                 # --- Quick AI commentary every 100 steps (short observation for narrative feed) ---
                 if step_count % 100 == 0 and step_count % 500 != 0:
@@ -849,9 +852,9 @@ async def _massive_run_loop(bw_id: str) -> None:
                     }
                     pending_narratives.append(narrative_entry)
                     narrative_log.append(narrative_entry)
-                    # Cap narrative log
-                    if len(narrative_log) > 200:
-                        del narrative_log[:len(narrative_log) - 200]
+                    # Cap narrative log to limit memory
+                    if len(narrative_log) > 100:
+                        del narrative_log[:len(narrative_log) - 100]
 
             # --- Broadcast to subscribers every 10 steps ---
             if step_count % 10 == 0:
@@ -1004,6 +1007,24 @@ async def massive_ecosystem_ws(websocket: WebSocket, bw_id: str):
         if not subs:
             # Last subscriber gone — loop will stop itself on next broadcast check
             _brain_world_subscribers.pop(bw_id, None)
+
+            # Schedule cleanup of brain-world data after a delay
+            # (allows reconnection within 60s without losing state)
+            async def _delayed_cleanup(bid: str) -> None:
+                await asyncio.sleep(60)
+                # Only clean up if still no subscribers
+                if not _brain_world_subscribers.get(bid):
+                    logger.info("Cleaning up brain-world %s (no subscribers for 60s)", bid)
+                    _brain_worlds.pop(bid, None)
+                    _brain_world_detectors.pop(bid, None)
+                    _brain_world_emergent.pop(bid, None)
+                    _brain_world_god.pop(bid, None)
+                    _brain_world_narratives.pop(bid, None)
+                    _brain_world_speed.pop(bid, None)
+                    _brain_world_world_types.pop(bid, None)
+                    _brain_world_locks.pop(bid, None)
+
+            asyncio.create_task(_delayed_cleanup(bw_id))
 
 
 # ======================================================================

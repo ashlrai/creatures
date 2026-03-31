@@ -186,7 +186,9 @@ class VectorizedEngine:
         self.syn_w: Any = None
 
         # Spike history recording (numpy ring buffer)
-        self._spike_buffer = SpikeRingBuffer(capacity=500_000)
+        # Scale spike buffer to population — avoid 8MB for small sims
+        spike_capacity = min(500_000, max(10_000, self.n_total * 50))
+        self._spike_buffer = SpikeRingBuffer(capacity=spike_capacity)
         self._time_ms: float = 0.0
         self._record_spikes: bool = True
 

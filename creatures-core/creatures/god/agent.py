@@ -76,6 +76,9 @@ class GodAgent:
         if consciousness_metrics:
             obs["consciousness"] = consciousness_metrics
         self.observations.append(obs)
+        # Cap observations to prevent unbounded memory growth
+        if len(self.observations) > 50:
+            del self.observations[:len(self.observations) - 50]
 
     async def analyze_and_intervene(self) -> dict:
         """Ask the LLM to analyze evolution and suggest interventions.
