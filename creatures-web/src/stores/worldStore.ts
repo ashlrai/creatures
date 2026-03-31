@@ -86,6 +86,10 @@ interface WorldState {
   massiveId: string | null;
   worldType: string;
 
+  // --- Connection mode (cloud vs local WebSocket) ---
+  connectionMode: 'cloud' | 'local';
+  localWsUrl: string;
+
   // --- Ecosystem data (streamed via WebSocket) ---
   organisms: MassiveOrganism[];
   neuralStats: MassiveNeuralStats | null;
@@ -113,6 +117,8 @@ interface WorldState {
   setSpeed: (speed: number) => void;
   setMassiveId: (id: string | null) => void;
   setWorldType: (type: string) => void;
+  setConnectionMode: (mode: 'cloud' | 'local') => void;
+  setLocalWsUrl: (url: string) => void;
   setIsCreating: (v: boolean) => void;
   setTransitioning: (v: boolean) => void;
   toggleColorMode: () => void;
@@ -161,6 +167,10 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   massiveId: null,
   worldType: 'soil',
 
+  // Connection mode
+  connectionMode: 'cloud',
+  localWsUrl: 'ws://localhost:8765',
+
   // Data
   organisms: [],
   neuralStats: null,
@@ -205,6 +215,8 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   setSpeed: (speed) => set({ speed }),
   setMassiveId: (id) => set({ massiveId: id }),
   setWorldType: (type) => set({ worldType: type }),
+  setConnectionMode: (mode) => set({ connectionMode: mode }),
+  setLocalWsUrl: (url) => set({ localWsUrl: url }),
   setIsCreating: (v) => set({ isCreating: v }),
   setTransitioning: (v) => set({ isTransitioning: v }),
 
@@ -275,6 +287,8 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       speed: 1.0,
       massiveId: null,
       worldType: 'soil',
+      connectionMode: 'cloud',
+      localWsUrl: 'ws://localhost:8765',
       organisms: [],
       neuralStats: null,
       emergentEvents: [],

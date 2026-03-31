@@ -481,24 +481,8 @@ export function FoodInstances({
 }
 
 // ---------------------------------------------------------------------------
-// Arena Environment
+// Arena Environment — Terrain-based
 // ---------------------------------------------------------------------------
-
-const GRID_DIVISIONS = 20;
-
-const GROUND_COLORS: Record<string, string> = {
-  soil: '#1a0f08',
-  pond: '#061828',
-  lab_plate: '#1a1a1a',
-  abstract: '#080810',
-};
-
-const GRID_STYLES: Record<string, { color: number; opacity: number; divisions: number }> = {
-  soil: { color: 0x3a2510, opacity: 0.06, divisions: GRID_DIVISIONS },
-  pond: { color: 0x1e3260, opacity: 0.1, divisions: GRID_DIVISIONS },
-  lab_plate: { color: 0x404040, opacity: 0.15, divisions: GRID_DIVISIONS * 2 },
-  abstract: { color: 0x1e3250, opacity: 0.08, divisions: GRID_DIVISIONS },
-};
 
 const BOUNDARY_COLORS: Record<string, number> = {
   soil: 0x5a3820,
@@ -507,38 +491,238 @@ const BOUNDARY_COLORS: Record<string, number> = {
   abstract: 0x284678,
 };
 
-export function Arena({ worldType, arenaRadius }: { worldType: string; arenaRadius: number }) {
-  const groundColor = GROUND_COLORS[worldType] ?? GROUND_COLORS.abstract;
-  const gridStyle = GRID_STYLES[worldType] ?? GRID_STYLES.abstract;
+/** Height function for procedural terrain */
+function terrainHeight(x: number, y: number): number {
+  return 0.5 * Math.sin(x * 0.3) * Math.cos(y * 0.2) + 0.3 * Math.sin(x * 0.5 + y * 0.3);
+}
+
+/** Normalize terrain height to 0..1 range for coloring */
+function normalizedHeight(h: number): number {
+  // terrainHeight range is roughly -0.8..+0.8, map to 0..1
+  return Math.max(0, Math.min(1, (h + 0.8) / 1.6));
+}
+
+/** Get vertex color based on world type and normalized height */
+function getTerrainColor(worldType: string, t: number, color: THREE.Color): void {
+  switch (worldType) {
+    case 'pond': {
+      // deep blue (low) -> teal (mid) -> sandy (high)
+      if (t < 0.5) {
+        const f = t / 0.5;
+        color.setRGB(0.02 + f * 0.02, 0.06 + f * 0.2, 0.15 + f * 0.2);
+      } else {
+        const f = (t - 0.5) / 0.5;
+        color.setRGB(0.04 + f * 0.45, 0.26 + f * 0.35, 0.35 - f * 0.1);
+      }
+      break;
+    }
+    case 'soil': {
+      // dark brown (low) -> warm brown (mid) -> green (high)
+      if (t < 0.5) {
+        const f = t / 0.5;
+        color.setRGB(0.08 + f * 0.1, 0.04 + f * 0.06, 0.02 + f * 0.02);
+      } else {
+        const f = (t - 0.5) / 0.5;
+        color.setRGB(0.18 - f * 0.06, 0.1 + f * 0.18, 0.04 + f * 0.02);
+      }
+      break;
+    }
+    case 'lab_plate': {
+      // uniform gray with subtle variation
+      const base = 0.1 + t * 0.04;
+      color.setRGB(base, base, base * 1.05);
+      break;
+    }
+    default: {
+      // abstract: dark purple -> blue -> cyan
+      if (t < 0.5) {
+        const f = t / 0.5;
+        color.setRGB(0.04 + f * 0.01, 0.02 + f * 0.04, 0.08 + f * 0.12);
+      } else {
+        const f = (t - 0.5) / 0.5;
+        color.setRGB(0.05 - f * 0.02, 0.06 + f * 0.12, 0.2 + f * 0.15);
+      }
+      break;
+    }
+  }
+}
+
+const TERRAIN_SUBDIVISIONS = 64;
+
+export function TerrainArena({ worldType, arenaRadius }: { worldType: string; arenaRadius: number }) {
   const boundaryColor = BOUNDARY_COLORS[worldType] ?? BOUNDARY_COLORS.abstract;
+  const waterRef = useRef<THREE.Mesh>(null);
+
+  // Build terrain geometry with height map and vertex colors
+  const terrainGeom = useMemo(() => {
+    const size = arenaRadius * 2;
+    const geom = new THREE.PlaneGeometry(size, size, TERRAIN_SUBDIVISIONS, TERRAIN_SUBDIVISIONS);
+    const pos = geom.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+    const tempColor = new THREE.Color();
+    const radiusSq = arenaRadius * arenaRadius;
+
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const distSq = x * x + y * y;
+
+      // Apply height — scale to 0-2 units
+      let h = terrainHeight(x, y);
+      // Fade height to 0 at arena boundary for clean edge
+      const edgeFade = Math.max(0, 1 - distSq / radiusSq);
+      h *= edgeFade;
+      // Scale height to 0-2 range (the raw function gives roughly -0.8..0.8)
+      const scaledH = (h + 0.8) * (2 / 1.6);
+      pos.setZ(i, scaledH * edgeFade);
+
+      // Vertex color based on normalized height
+      const nh = normalizedHeight(h);
+      getTerrainColor(worldType, nh, tempColor);
+
+      // Darken vertices outside the arena circle
+      if (distSq > radiusSq * 0.95) {
+        const fade = Math.max(0, 1 - (distSq - radiusSq * 0.95) / (radiusSq * 0.05));
+        tempColor.multiplyScalar(fade);
+      }
+
+      colors[i * 3] = tempColor.r;
+      colors[i * 3 + 1] = tempColor.g;
+      colors[i * 3 + 2] = tempColor.b;
+    }
+
+    geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geom.computeVertexNormals();
+    return geom;
+  }, [worldType, arenaRadius]);
+
+  const terrainMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.85,
+        metalness: 0.05,
+        side: THREE.DoubleSide,
+      }),
+    [],
+  );
+
+  // Water plane material for pond worlds
+  const waterMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: 0x1a5588,
+        transparent: true,
+        opacity: 0.3,
+        roughness: 0.1,
+        metalness: 0.3,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    [],
+  );
+
+  // Animate water opacity
+  useFrame(({ clock }) => {
+    if (waterRef.current && worldType === 'pond') {
+      const mat = waterRef.current.material as THREE.MeshStandardMaterial;
+      mat.opacity = 0.3 + 0.05 * Math.sin(clock.getElapsedTime() * 0.5);
+    }
+  });
 
   return (
     <>
-      <mesh rotation={[0, 0, 0]} position={[0, 0, -0.01]}>
-        <circleGeometry args={[arenaRadius, 64]} />
-        <meshStandardMaterial color={groundColor} roughness={1} />
-      </mesh>
+      {/* Terrain mesh */}
+      <mesh geometry={terrainGeom} material={terrainMat} position={[0, 0, -0.5]} />
 
-      <gridHelper
-        args={[arenaRadius * 2, gridStyle.divisions, gridStyle.color, gridStyle.color]}
-        rotation={[Math.PI / 2, 0, 0]}
-        position={[0, 0, 0.001]}
-      >
-        <meshBasicMaterial
-          attach="material"
-          color={gridStyle.color}
-          opacity={gridStyle.opacity}
-          transparent
-          depthWrite={false}
-        />
-      </gridHelper>
+      {/* Water plane for pond worlds */}
+      {worldType === 'pond' && (
+        <mesh ref={waterRef} position={[0, 0, 0.1]} material={waterMat}>
+          <circleGeometry args={[arenaRadius * 0.98, 64]} />
+        </mesh>
+      )}
 
-      <mesh position={[0, 0, 0.002]}>
-        <ringGeometry args={[arenaRadius - 0.08, arenaRadius, 64]} />
-        <meshBasicMaterial color={boundaryColor} opacity={0.35} transparent depthWrite={false} />
+      {/* Subtle boundary ring */}
+      <mesh position={[0, 0, 0.05]}>
+        <ringGeometry args={[arenaRadius - 0.12, arenaRadius, 64]} />
+        <meshBasicMaterial color={boundaryColor} opacity={0.15} transparent depthWrite={false} />
       </mesh>
     </>
   );
+}
+
+// Keep Arena as an alias for backward compatibility
+export const Arena = TerrainArena;
+
+// ---------------------------------------------------------------------------
+// Ambient Particles — floating spores / energy motes
+// ---------------------------------------------------------------------------
+
+const PARTICLE_COUNT = 200;
+
+export function AmbientParticles({ arenaRadius }: { arenaRadius: number }) {
+  const pointsRef = useRef<THREE.Points>(null);
+
+  // Initialize particle positions and per-particle phase offsets
+  const { positions, phases } = useMemo(() => {
+    const pos = new Float32Array(PARTICLE_COUNT * 3);
+    const ph = new Float32Array(PARTICLE_COUNT);
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(Math.random()) * arenaRadius * 0.9;
+      pos[i * 3] = Math.cos(angle) * r;
+      pos[i * 3 + 1] = Math.sin(angle) * r;
+      pos[i * 3 + 2] = Math.random() * 4 + 0.5;
+      ph[i] = Math.random() * Math.PI * 2;
+    }
+    return { positions: pos, phases: ph };
+  }, [arenaRadius]);
+
+  const geom = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    return g;
+  }, [positions]);
+
+  const mat = useMemo(
+    () =>
+      new THREE.PointsMaterial({
+        color: 0x44ffaa,
+        size: 0.1,
+        transparent: true,
+        opacity: 0.15,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        sizeAttenuation: true,
+      }),
+    [],
+  );
+
+  useFrame(({ clock }) => {
+    const pts = pointsRef.current;
+    if (!pts) return;
+    const posAttr = pts.geometry.attributes.position as THREE.BufferAttribute;
+    const arr = posAttr.array as Float32Array;
+    const t = clock.getElapsedTime();
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      // Gentle upward drift with sinusoidal variation
+      arr[i * 3 + 2] += 0.01 * Math.sin(t + phases[i]);
+
+      // Reset particles that drift too high
+      if (arr[i * 3 + 2] > 6) {
+        arr[i * 3 + 2] = 0.5;
+      }
+
+      // Subtle horizontal sway
+      arr[i * 3] += 0.003 * Math.sin(t * 0.7 + phases[i] * 2);
+      arr[i * 3 + 1] += 0.003 * Math.cos(t * 0.5 + phases[i] * 3);
+    }
+
+    posAttr.needsUpdate = true;
+  });
+
+  return <points ref={pointsRef} geometry={geom} material={mat} frustumCulled={false} />;
 }
 
 // ---------------------------------------------------------------------------

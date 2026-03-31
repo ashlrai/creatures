@@ -159,6 +159,7 @@ function HudOverlay() {
   const relativeChemotaxis = useWorldStore((s) => s.relativeChemotaxis);
   const worldType = useWorldStore((s) => s.worldType);
   const selectOrganism = useWorldStore((s) => s.selectOrganism);
+  const connectionMode = useWorldStore((s) => s.connectionMode);
 
   // Birth/death tracking
   const [birthCount, setBirthCount] = useState(0);
@@ -255,7 +256,9 @@ function HudOverlay() {
           zIndex: 10,
         }}
       >
-        <div style={{ color: 'rgba(140,170,200,0.5)' }}>BRAIN-WORLD LIVE</div>
+        <div style={{ color: 'rgba(140,170,200,0.5)' }}>
+          {connectionMode === 'local' ? 'BRAIN-WORLD LOCAL' : 'BRAIN-WORLD LIVE'}
+        </div>
         <div
           style={{
             color: speed > 5 ? 'rgba(255,180,80,0.9)' : 'rgba(0,255,136,0.8)',
@@ -485,7 +488,9 @@ function HudOverlay() {
           zIndex: 10,
         }}
       >
-        <div style={{ color: 'rgba(0,255,136,0.5)', marginBottom: 4 }}>LIVE</div>
+        <div style={{ color: connectionMode === 'local' ? 'rgba(255,180,80,0.7)' : 'rgba(0,255,136,0.5)', marginBottom: 4 }}>
+          {connectionMode === 'local' ? 'LOCAL' : 'LIVE'}
+        </div>
       </div>
 
       {/* Narrative event feed — bottom left */}
@@ -1083,6 +1088,10 @@ export function UnifiedWorld({
   const updateFromWs = useWorldStore((s) => s.updateFromWs);
   const population = useWorldStore((s) => s.population);
   const neuralStats = useWorldStore((s) => s.neuralStats);
+  const storeConnectionMode = useWorldStore((s) => s.connectionMode);
+  const localWsUrl = useWorldStore((s) => s.localWsUrl);
+  const setConnectionMode = useWorldStore((s) => s.setConnectionMode);
+  const setLocalWsUrl = useWorldStore((s) => s.setLocalWsUrl);
 
   const selectedOrganismIndex = useWorldStore((s) => s.selectedOrganismIndex);
   const selectOrganism = useWorldStore((s) => s.selectOrganism);
@@ -1090,6 +1099,82 @@ export function UnifiedWorld({
 
   // WebSocket ref
   const wsRef = useRef<WebSocket | null>(null);
+
+  // Local connection UI state
+  const [localConnStatus, setLocalConnStatus] = useState<'idle' | 'connecting' | 'connected' | 'failed'>('idle');
+  const [localUrlInput, setLocalUrlInput] = useState('ws://localhost:8765');
+
+  // --- URL parameter auto-connect (?ws=<url>) ---
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const wsParam = params.get('ws');
+    if (wsParam) {
+      setLocalUrlInput(wsParam);
+      setLocalWsUrl(wsParam);
+      // Auto-connect after a tick to let component mount
+      setTimeout(() => {
+        connectLocal(wsParam);
+      }, 100);
+    }
+    // Run only on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // --- Connect to a local WebSocket ---
+  const connectLocal = useCallback(
+    (url?: string) => {
+      const wsUrl = url || localWsUrl;
+      setLocalConnStatus('connecting');
+      setConnectionMode('local');
+      setLocalWsUrl(wsUrl);
+
+      // Close any existing connection
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log('[UnifiedWorld] Local WebSocket connected to', wsUrl);
+        setLocalConnStatus('connected');
+        // Set massiveId to 'local' so the world view renders
+        setMassiveId('local');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'ecosystem_state') {
+            updateFromWs(msg);
+          } else if (msg.type === 'organism_detail') {
+            useWorldStore.setState({
+              organismDetail: msg,
+              organismDetailLoading: false,
+            });
+          }
+        } catch (e) {
+          console.error('[UnifiedWorld] Failed to parse local message:', e);
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error('[UnifiedWorld] Local WebSocket error:', err);
+        setLocalConnStatus('failed');
+      };
+
+      ws.onclose = () => {
+        console.log('[UnifiedWorld] Local WebSocket disconnected');
+        if (wsRef.current === ws) {
+          wsRef.current = null;
+        }
+      };
+
+      wsRef.current = ws;
+    },
+    [localWsUrl, setConnectionMode, setLocalWsUrl, setMassiveId, updateFromWs],
+  );
 
   // Auto-refresh organism detail via WebSocket every 2 seconds while selected
   useEffect(() => {
