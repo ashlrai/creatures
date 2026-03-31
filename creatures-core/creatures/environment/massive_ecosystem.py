@@ -124,11 +124,10 @@ class MassiveEcosystem:
         # 3. Food consumption — proximity-based
         n_eaten = self._eat(eat_radius=1.5)
 
-        # 3b. Predation — Drosophila hunt C. elegans
-        # Delayed start: predation only activates after generation 5
-        # so both species can establish populations first
-        max_gen = int(self.generation[self.alive].max()) if self.alive.any() else 0
-        n_predation = self._predation() if max_gen >= 10 else 0
+        # 3b. Predation — disabled for now to let evolution work on food-seeking first.
+        # Re-enable once base chemotaxis is evolved and prey can survive.
+        # n_predation = self._predation() if max_gen >= 10 else 0
+        n_predation = 0
 
         # 4. Death — energy depletion + aging
         newly_dead = alive & (self.energy <= 0)
@@ -142,8 +141,13 @@ class MassiveEcosystem:
         self.alive[newly_dead] = False
         self._total_died += n_died
 
-        # 5. Reproduction — organisms with high energy can split
-        n_born = self._reproduce(energy_threshold=110.0, offspring_cost=40.0)
+        # 5. Reproduction — prey reproduce faster (lower threshold) to offset predation
+        # This mirrors biology: prey species (r-strategists) reproduce faster than predators
+        n_born = self._reproduce(
+            prey_threshold=90.0,    # C. elegans: reproduce quickly (r-strategy)
+            pred_threshold=130.0,   # Drosophila: reproduce slower (K-strategy)
+            offspring_cost=35.0,
+        )
 
         # 6. Respawn depleted food (keep the ecosystem running)
         self._respawn_food()
@@ -359,7 +363,7 @@ class MassiveEcosystem:
 
             # Probabilistic predation (30% chance per step) — creates selection
             # pressure without instant extinction
-            kill_roll = self._rng.random(len(pred_batch)) < 0.12
+            kill_roll = self._rng.random(len(pred_batch)) < 0.05
             can_kill = in_range & kill_roll
             if not np.any(can_kill):
                 continue
@@ -406,16 +410,21 @@ class MassiveEcosystem:
     # ------------------------------------------------------------------
 
     def _reproduce(
-        self, energy_threshold: float = 120.0, offspring_cost: float = 50.0
+        self,
+        prey_threshold: float = 90.0,
+        pred_threshold: float = 130.0,
+        offspring_cost: float = 35.0,
     ) -> int:
-        """Tournament selection: highest-energy organisms in local neighborhoods reproduce.
+        """Tournament selection with species-specific thresholds.
 
-        Instead of letting ANY organism above threshold reproduce, we select
-        the BEST organism within each local neighborhood. This creates real
-        selection pressure: organisms that find food efficiently out-compete
-        those that wander randomly.
+        Prey (C. elegans, species=0) reproduce at lower energy threshold
+        (r-strategy: many offspring, fast reproduction) to offset predation.
+        Predators (Drosophila, species=1) reproduce at higher threshold
+        (K-strategy: fewer, better-provisioned offspring).
         """
-        can_reproduce = self.alive & (self.energy > energy_threshold)
+        # Species-specific reproduction thresholds
+        thresholds = np.where(self.species == 0, prey_threshold, pred_threshold)
+        can_reproduce = self.alive & (self.energy > thresholds)
         candidates = np.where(can_reproduce)[0]
         if len(candidates) == 0:
             return 0
