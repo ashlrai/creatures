@@ -100,6 +100,7 @@ interface WorldState {
   chemotaxisIndex: number;
   meanFoodDistance: number;
   approachingFraction: number;
+  relativeChemotaxis: number;
 
   // --- Lifecycle ---
   isCreating: boolean;
@@ -174,6 +175,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   chemotaxisIndex: 0,
   meanFoodDistance: 0,
   approachingFraction: 0,
+  relativeChemotaxis: 0,
 
   // Lifecycle
   isCreating: false,
@@ -243,6 +245,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       updates.chemotaxisIndex = msg.chemotaxis.chemotaxis_index;
       updates.meanFoodDistance = msg.chemotaxis.mean_food_distance ?? 0;
       updates.approachingFraction = msg.chemotaxis.approaching_fraction ?? 0;
+      updates.relativeChemotaxis = msg.chemotaxis.relative_chemotaxis ?? 0;
     }
     set(updates);
 
@@ -283,6 +286,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       chemotaxisIndex: 0,
       meanFoodDistance: 0,
       approachingFraction: 0,
+      relativeChemotaxis: 0,
       isCreating: false,
       isTransitioning: false,
     }),

@@ -128,7 +128,7 @@ class MassiveEcosystem:
         # Delayed start: predation only activates after generation 5
         # so both species can establish populations first
         max_gen = int(self.generation[self.alive].max()) if self.alive.any() else 0
-        n_predation = self._predation() if max_gen >= 5 else 0
+        n_predation = self._predation() if max_gen >= 10 else 0
 
         # 4. Death — energy depletion + aging
         newly_dead = alive & (self.energy <= 0)

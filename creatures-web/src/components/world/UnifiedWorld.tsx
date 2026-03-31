@@ -156,6 +156,7 @@ function HudOverlay() {
   const speed = useWorldStore((s) => s.speed);
   const chemotaxisIndex = useWorldStore((s) => s.chemotaxisIndex);
   const approachingFraction = useWorldStore((s) => s.approachingFraction);
+  const relativeChemotaxis = useWorldStore((s) => s.relativeChemotaxis);
   const worldType = useWorldStore((s) => s.worldType);
   const selectOrganism = useWorldStore((s) => s.selectOrganism);
 
@@ -271,16 +272,25 @@ function HudOverlay() {
               trend === 'down' ? '#ff4444' : 'rgba(0,212,255,0.7)',
           }}
         >
-          Organisms: {organisms.length}
+          Pop: {organisms.length}
           {trend === 'up' && (
-            <span style={{ color: 'rgba(0,255,136,0.8)', marginLeft: 4 }}>
-              {'\u2191'}
-            </span>
+            <span style={{ color: 'rgba(0,255,136,0.8)', marginLeft: 4 }}>{'\u2191'}</span>
           )}
           {trend === 'down' && (
             <span style={{ color: '#ff4444', marginLeft: 4 }}>{'\u2193'}</span>
           )}
         </div>
+        {/* Species breakdown */}
+        {organisms.length > 0 && (() => {
+          const ce = organisms.filter(o => o.species === 0).length;
+          const dm = organisms.length - ce;
+          return (
+            <div style={{ fontSize: 9, display: 'flex', gap: 8 }}>
+              <span style={{ color: '#00d4ff' }}>Ce: {ce}</span>
+              <span style={{ color: '#ffaa22' }}>Dm: {dm}</span>
+            </div>
+          );
+        })()}
         <div style={{ color: 'rgba(0,255,136,0.65)' }}>Births: {birthCount}</div>
         <div
           style={{
@@ -346,8 +356,8 @@ function HudOverlay() {
           </div>
         )}
 
-        {/* Chemotaxis index — the key scientific metric */}
-        {chemotaxisIndex > 0 && (
+        {/* Chemotaxis — relative to random walk (key scientific metric) */}
+        {(chemotaxisIndex > 0 || relativeChemotaxis !== 0) && (
           <div
             style={{
               marginTop: 8,
@@ -367,47 +377,43 @@ function HudOverlay() {
               Chemotaxis
             </div>
             <div>
-              CI:{' '}
+              Rel CI:{' '}
               <span
                 style={{
                   color:
-                    chemotaxisIndex > 0.6
+                    relativeChemotaxis > 0.1
                       ? '#00ff88'
-                      : chemotaxisIndex > 0.52
+                      : relativeChemotaxis > 0.0
                         ? '#ffcc88'
                         : '#ff6666',
                   fontWeight: 600,
                   fontSize: 12,
                 }}
               >
-                {chemotaxisIndex.toFixed(3)}
+                {relativeChemotaxis > 0 ? '+' : ''}{relativeChemotaxis.toFixed(3)}
               </span>
               <span style={{ color: 'rgba(140,170,200,0.3)', fontSize: 9, marginLeft: 4 }}>
-                (0.5 = random)
+                (0 = random walk)
               </span>
             </div>
-            <div>
-              Approaching:{' '}
-              <span style={{ color: approachingFraction > 0.5 ? '#88ffcc' : '#ff8888' }}>
-                {(approachingFraction * 100).toFixed(0)}%
-              </span>
-            </div>
-            {/* Mini CI bar */}
+            {/* Mini relative CI bar — centered at 0 */}
             <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: 8, color: 'rgba(140,170,200,0.3)' }}>0</span>
+              <span style={{ fontSize: 8, color: 'rgba(140,170,200,0.3)' }}>-1</span>
               <div style={{ flex: 1, height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, position: 'relative', overflow: 'hidden' }}>
-                {/* Random walk baseline */}
-                <div style={{ position: 'absolute', left: '50%', top: 0, width: 1, height: '100%', background: 'rgba(255,255,255,0.15)' }} />
-                {/* Current CI */}
+                {/* Center line (0 = random walk) */}
+                <div style={{ position: 'absolute', left: '50%', top: 0, width: 1, height: '100%', background: 'rgba(255,255,255,0.2)' }} />
+                {/* Current relative CI */}
                 <div style={{
-                  width: `${chemotaxisIndex * 100}%`,
+                  position: 'absolute',
+                  left: relativeChemotaxis >= 0 ? '50%' : `${(0.5 + relativeChemotaxis * 0.5) * 100}%`,
+                  width: `${Math.abs(relativeChemotaxis) * 50}%`,
                   height: '100%',
-                  background: chemotaxisIndex > 0.55 ? '#00ff88' : chemotaxisIndex > 0.5 ? '#ffcc88' : '#ff6666',
+                  background: relativeChemotaxis > 0 ? '#00ff88' : '#ff6666',
                   borderRadius: 2,
-                  transition: 'width 0.5s',
+                  transition: 'all 0.5s',
                 }} />
               </div>
-              <span style={{ fontSize: 8, color: 'rgba(140,170,200,0.3)' }}>1</span>
+              <span style={{ fontSize: 8, color: 'rgba(140,170,200,0.3)' }}>+1</span>
             </div>
           </div>
         )}
