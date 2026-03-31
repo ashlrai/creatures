@@ -109,10 +109,9 @@ export function OrganismInstances({
       const heading =
         Math.atan2(org.y, org.x + 0.001) + Math.sin(t * 2 + i * 1.7) * 0.3;
 
-      // Fitness elevation: thriving organisms float slightly higher
-      const zElevation = e * 0.3;
-
-      _obj.position.set(org.x, org.y, 0.05 + zElevation);
+      // 3D position: use z from backend + energy elevation
+      const orgZ = (org.z ?? 0) + 0.05 + e * 0.3;
+      _obj.position.set(org.x, org.y, orgZ);
 
       // Selected organism pulses larger
       const isSelected = selectedIndex === i;
@@ -123,11 +122,14 @@ export function OrganismInstances({
           ? 1.3 + 0.15 * Math.sin(t * 3)
           : 1;
 
-      if (isCelegans) {
-        _obj.scale.set(scale * 2.8 * selectionScale, scale * selectionScale, scale * selectionScale);
-      } else {
-        _obj.scale.set(scale * 1.4 * selectionScale, scale * selectionScale, scale * selectionScale);
-      }
+      // Body scale from morphology (if available)
+      const bodyLength = org.body_length ?? (isCelegans ? 2.8 : 1.4);
+      const bodyWidth = org.body_width ?? 1.0;
+      _obj.scale.set(
+        scale * bodyLength * selectionScale,
+        scale * bodyWidth * selectionScale,
+        scale * (org.body_height ?? 1.0) * selectionScale,
+      );
       _obj.rotation.set(0, 0, heading);
       _obj.updateMatrix();
 

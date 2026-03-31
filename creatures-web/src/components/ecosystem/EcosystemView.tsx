@@ -39,12 +39,21 @@ export interface EcosystemStats {
 export interface MassiveOrganism {
   x: number;
   y: number;
-  species: number; // 0 = c_elegans, 1 = drosophila
+  z?: number;            // 3D: height above ground
+  pitch?: number;        // 3D: vertical angle
+  species: number;       // 0 = c_elegans, 1 = drosophila
   energy: number;
   age?: number;
   generation?: number;
   lineage_id?: string;
   lifetime_food_eaten?: number;
+  // Morphology (evolved body plan)
+  body_length?: number;
+  body_width?: number;
+  body_height?: number;
+  n_segments?: number;
+  limb_count?: number;
+  color_hue?: number;
 }
 
 /** Neural stats from the massive brain-world state. */
