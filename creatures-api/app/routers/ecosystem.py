@@ -599,11 +599,14 @@ async def create_massive(req: MassiveCreateRequest):
     """Create a massive brain-world: every organism has a spiking neural brain."""
     bw_id = f"bw_{uuid.uuid4().hex[:8]}"
 
-    # Conservative limits for public deployment (Railway CPU, no GPU)
-    if req.n_organisms < 1 or req.n_organisms > 10_000:
-        raise HTTPException(400, "n_organisms must be between 1 and 10,000")
-    if req.neurons_per < 10 or req.neurons_per > 200:
-        raise HTTPException(400, "neurons_per must be between 10 and 200")
+    # Conservative limits for cloud deployment (Railway ~512MB RAM, no GPU)
+    # Heavy simulations should use the local runner (scripts/run_local_world.py)
+    max_organisms = 500
+    max_neurons = 100
+    if req.n_organisms < 1 or req.n_organisms > max_organisms:
+        raise HTTPException(400, f"Cloud limit: {max_organisms} organisms max (use local runner for more)")
+    if req.neurons_per < 10 or req.neurons_per > max_neurons:
+        raise HTTPException(400, f"Cloud limit: {max_neurons} neurons max (use local runner for more)")
 
     try:
         bw = BrainWorld(
