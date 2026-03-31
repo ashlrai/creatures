@@ -1223,8 +1223,11 @@ export function UnifiedWorld({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectOrganism]);
 
-  // --- WebSocket connection ---
+  // --- WebSocket connection (cloud mode only) ---
   useEffect(() => {
+    // Skip cloud WS when in local mode — local WS is managed by connectLocal()
+    if (storeConnectionMode === 'local') return;
+
     if (!massiveId) {
       if (wsRef.current) {
         wsRef.current.close();
@@ -1272,7 +1275,7 @@ export function UnifiedWorld({
         wsRef.current = null;
       }
     };
-  }, [massiveId, updateFromWs]);
+  }, [massiveId, updateFromWs, storeConnectionMode]);
 
   // --- Send command via WebSocket ---
   const sendCommand = useCallback((cmd: Record<string, unknown>) => {
@@ -1324,12 +1327,182 @@ export function UnifiedWorld({
     >
       {/* World Creator overlay — shown when no world exists yet */}
       {!massiveId && (
-        <WorldCreator
-          onCreateWorld={(type, nOrg, _enableAI) =>
-            createWorld(type, nOrg)
-          }
-          loading={isCreating}
-        />
+        <>
+          <WorldCreator
+            onCreateWorld={(type, nOrg, _enableAI) =>
+              createWorld(type, nOrg)
+            }
+            loading={isCreating}
+          />
+
+          {/* Local simulation connection panel — overlaid on WorldCreator */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 40,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 25,
+              background: 'rgba(6, 8, 18, 0.92)',
+              backdropFilter: 'blur(16px)',
+              border: '1px solid rgba(80, 130, 200, 0.15)',
+              borderRadius: 14,
+              padding: '14px 20px',
+              fontFamily: '"SF Mono", "Fira Code", monospace',
+              minWidth: 380,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 9,
+                color: 'rgba(140, 170, 200, 0.4)',
+                textTransform: 'uppercase',
+                letterSpacing: 1.5,
+                marginBottom: 10,
+                textAlign: 'center',
+              }}
+            >
+              Or connect to a local simulation
+            </div>
+
+            {/* Mode toggle */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 10, justifyContent: 'center' }}>
+              {(['cloud', 'local'] as const).map((mode) => {
+                const isActive =
+                  (mode === 'local' && localConnStatus !== 'idle') ||
+                  (mode === 'cloud' && localConnStatus === 'idle');
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => {
+                      if (mode === 'cloud') {
+                        setLocalConnStatus('idle');
+                      }
+                    }}
+                    style={{
+                      padding: '4px 14px',
+                      fontSize: 10,
+                      fontWeight: isActive ? 600 : 400,
+                      background: isActive
+                        ? mode === 'local'
+                          ? 'rgba(255, 180, 80, 0.12)'
+                          : 'rgba(0, 212, 255, 0.1)'
+                        : 'rgba(100, 130, 200, 0.04)',
+                      border: `1px solid ${
+                        isActive
+                          ? mode === 'local'
+                            ? 'rgba(255, 180, 80, 0.3)'
+                            : 'rgba(0, 212, 255, 0.2)'
+                          : 'rgba(80, 130, 200, 0.08)'
+                      }`,
+                      borderRadius: 8,
+                      color: isActive
+                        ? mode === 'local'
+                          ? '#ffb450'
+                          : '#00d4ff'
+                        : 'rgba(140, 170, 200, 0.5)',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    {mode}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* URL input + connect */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                type="text"
+                value={localUrlInput}
+                onChange={(e) => setLocalUrlInput(e.target.value)}
+                placeholder="ws://localhost:8765"
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  fontSize: 11,
+                  fontFamily: 'inherit',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(80, 130, 200, 0.15)',
+                  borderRadius: 6,
+                  color: '#dce4ec',
+                  outline: 'none',
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') connectLocal(localUrlInput);
+                }}
+              />
+              <button
+                onClick={() => connectLocal(localUrlInput)}
+                disabled={localConnStatus === 'connecting'}
+                style={{
+                  padding: '6px 16px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  background:
+                    localConnStatus === 'connected'
+                      ? 'rgba(0, 255, 136, 0.12)'
+                      : localConnStatus === 'failed'
+                        ? 'rgba(255, 80, 80, 0.12)'
+                        : 'rgba(255, 180, 80, 0.12)',
+                  border: `1px solid ${
+                    localConnStatus === 'connected'
+                      ? 'rgba(0, 255, 136, 0.3)'
+                      : localConnStatus === 'failed'
+                        ? 'rgba(255, 80, 80, 0.3)'
+                        : 'rgba(255, 180, 80, 0.3)'
+                  }`,
+                  borderRadius: 6,
+                  color:
+                    localConnStatus === 'connected'
+                      ? '#00ff88'
+                      : localConnStatus === 'failed'
+                        ? '#ff5050'
+                        : '#ffb450',
+                  cursor:
+                    localConnStatus === 'connecting' ? 'wait' : 'pointer',
+                  fontFamily: 'inherit',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {localConnStatus === 'connecting'
+                  ? 'Connecting...'
+                  : localConnStatus === 'connected'
+                    ? 'Connected'
+                    : localConnStatus === 'failed'
+                      ? 'Retry'
+                      : 'Connect'}
+              </button>
+            </div>
+
+            {/* Connection status hint */}
+            <div
+              style={{
+                fontSize: 9,
+                color:
+                  localConnStatus === 'connected'
+                    ? 'rgba(0, 255, 136, 0.5)'
+                    : localConnStatus === 'failed'
+                      ? 'rgba(255, 80, 80, 0.5)'
+                      : 'rgba(140, 170, 200, 0.3)',
+                marginTop: 8,
+                textAlign: 'center',
+              }}
+            >
+              {localConnStatus === 'idle' &&
+                'Connect to a simulation running on your machine'}
+              {localConnStatus === 'connecting' &&
+                'Opening WebSocket connection...'}
+              {localConnStatus === 'connected' &&
+                'Streaming from local simulation'}
+              {localConnStatus === 'failed' &&
+                'Connection failed. Is the simulation running?'}
+            </div>
+          </div>
+        </>
       )}
 
       {/* 3D Canvas — always present */}
@@ -1417,11 +1590,17 @@ export function UnifiedWorld({
         {massiveId ? (
           <>
             <span>
-              BRAIN-WORLD LIVE &mdash; {population.toLocaleString()} organisms
+              {storeConnectionMode === 'local' ? 'BRAIN-WORLD LOCAL' : 'BRAIN-WORLD LIVE'}
+              {' '}&mdash; {population.toLocaleString()} organisms
             </span>
             {neuralStats && (
               <span>
                 &mdash; {neuralStats.total_neurons.toLocaleString()} neurons
+              </span>
+            )}
+            {storeConnectionMode === 'local' && (
+              <span style={{ color: 'rgba(255, 180, 80, 0.5)' }}>
+                &mdash; {localWsUrl}
               </span>
             )}
           </>
