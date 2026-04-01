@@ -4,6 +4,31 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: process.env.GITHUB_PAGES ? '/creatures/' : '/',
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split museum hall data into a separate chunk (~27K lines)
+          'museum-data': [
+            './src/data/halls/ancient-world.ts',
+            './src/data/halls/medieval-world.ts',
+            './src/data/halls/renaissance.ts',
+            './src/data/halls/age-of-exploration.ts',
+            './src/data/halls/modern-era.ts',
+            './src/data/halls/twentieth-century.ts',
+            './src/data/halls/scientific-revolution.ts',
+            './src/data/halls/stars-and-cosmos.ts',
+            './src/data/halls/elements-and-matter.ts',
+            './src/data/halls/life-and-evolution.ts',
+            './src/data/halls/index.ts',
+          ],
+          // Split Three.js into its own chunk
+          'three': ['three'],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {
