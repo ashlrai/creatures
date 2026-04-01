@@ -9,6 +9,7 @@ on a single core at interactive frame rates.
 from __future__ import annotations
 
 import logging
+from collections import deque
 from typing import Any
 
 import numpy as np
@@ -122,7 +123,7 @@ class MassiveEcosystem:
         self._total_born = 0
         self._total_died = 0
         self._total_predation = 0
-        self._predation_events: list[dict] = []  # ring buffer, max 100
+        self._predation_events: deque[dict] = deque(maxlen=100)
         self._active_chases: list[tuple[int, int]] = []  # (predator_idx, prey_idx) pairs for visualization
 
     # ------------------------------------------------------------------
@@ -525,6 +526,11 @@ class MassiveEcosystem:
         n_killed = 0
         batch_size = 3000
 
+        # Compute population stats once before the batch loop (not per-batch)
+        max_gen = int(self.generation[self.alive].max()) if self.alive.any() else 0
+        n_prey_now = int((self.alive & (self.species == 0)).sum())
+        n_pred_now = int((self.alive & (self.species == 1)).sum())
+
         for start in range(0, len(predator_idx), batch_size):
             pred_batch = predator_idx[start:start + batch_size]
             current_prey = np.where(self.alive & (self.species == 0))[0]
@@ -541,87 +547,81 @@ class MassiveEcosystem:
             nearest_dist2 = dist2[np.arange(len(pred_batch)), nearest_prey_local]
             nearest_dist = np.sqrt(nearest_dist2 + 1e-12)
 
-            # Kill range scales with predator body_length (bigger predators reach further)
+            # Kill range scales with predator body_length
             pred_body_length = self.morphology[pred_batch, GENE_BODY_LENGTH]
-            kill_range = 0.8 + 0.4 * pred_body_length  # range 1.2 - 2.0
+            kill_range = 0.8 + 0.4 * pred_body_length
 
             in_range = nearest_dist < kill_range
             if not np.any(in_range):
-                # Hunting cost: predators that are actively chasing burn extra energy
                 self.energy[pred_batch] -= 0.3
                 continue
 
-            # Track active chases (predator-prey pairs where predator is close)
-            chase_range = kill_range * 3.0  # show chase lines at 3x kill range
+            # Track active chases (vectorized — no Python loop)
+            chase_range = kill_range * 3.0
             chasing = nearest_dist < chase_range
-            for i in np.where(chasing)[0]:
-                pred_i = pred_batch[i]
-                prey_i = current_prey[nearest_prey_local[i]]
-                self._active_chases.append((int(pred_i), int(prey_i)))
+            chase_idx = np.where(chasing)[0]
+            for ci in chase_idx[:50]:  # cap at 50 per batch
+                self._active_chases.append(
+                    (int(pred_batch[ci]), int(current_prey[nearest_prey_local[ci]]))
+                )
 
-            # --- Size check: predator must be > 0.7x prey body_length ---
+            # Size check: predator must be > 0.7x prey body_length
             prey_body_length = self.morphology[
                 current_prey[nearest_prey_local], GENE_BODY_LENGTH
             ]
             size_ok = pred_body_length >= (prey_body_length * 0.7)
 
-            # --- Ratio-dependent kill probability (Lotka-Volterra inspired) ---
-            # Kill probability scales with prey:predator ratio — when prey are
-            # abundant, hunting is easy; when prey are scarce, hunting is hard.
-            # This naturally prevents extinction cascades.
-            max_gen = int(self.generation[self.alive].max()) if self.alive.any() else 0
-            n_prey_now = int((self.alive & (self.species == 0)).sum())
-            n_pred_now = int((self.alive & (self.species == 1)).sum())
+            # --- Ratio-dependent kill probability (Lotka-Volterra) ---
             prey_pred_ratio = n_prey_now / max(n_pred_now, 1)
-            # Ratio factor: full effect at 5:1, zero at 1:1 or below
             ratio_factor = np.clip((prey_pred_ratio - 1.0) / 4.0, 0.0, 1.0)
-            # Generation ramp: 3% at gen 3, up to 20% at gen 20+
             gen_base = min(0.20, 0.03 + 0.01 * max(0, max_gen - 3))
             base_kill_p = gen_base * ratio_factor
             kill_prob = np.full(len(pred_batch), base_kill_p)
 
-            # --- Speed modulation: faster prey are harder to catch ---
+            # Speed modulation: faster prey are harder to catch
             prey_speed = compute_speed(
                 self.morphology[current_prey[nearest_prey_local]]
             )
             pred_speed = compute_speed(self.morphology[pred_batch])
             speed_ratio = pred_speed / (prey_speed + 1e-8)
-            # If predator is slower than prey, kill chance drops dramatically
-            # speed_ratio < 0.8 → kill_prob * 0.1, speed_ratio > 1.2 → kill_prob * 1.5
             speed_factor = np.clip(speed_ratio * 0.8, 0.05, 1.5)
             kill_prob *= speed_factor
 
-            # --- Dilution effect: prey in groups are harder to kill ---
-            # Safety in numbers — creates selection pressure for flocking/herding.
-            # Each nearby prey dilutes the predator's targeting accuracy.
+            # --- Dilution effect (vectorized) ---
+            # Count nearby conspecifics around each targeted prey.
+            # Uses a sampled subset of prey for O(n_batch * n_sample) instead of O(n_batch * n_prey).
             prey_targets = current_prey[nearest_prey_local]
-            all_prey_x = self.x[current_prey]
-            all_prey_y = self.y[current_prey]
-            for i in range(len(pred_batch)):
-                if not in_range[i]:
-                    continue
-                target_x = self.x[prey_targets[i]]
-                target_y = self.y[prey_targets[i]]
-                # Count prey within 2.0 of the targeted prey
-                pdx = all_prey_x - target_x
-                pdy = all_prey_y - target_y
-                nearby_prey = int(np.sum((pdx * pdx + pdy * pdy) < 4.0)) - 1  # exclude self
-                if nearby_prey >= 2:
-                    # Each nearby prey reduces kill chance by 15% (confusion effect)
-                    dilution = max(0.15, 1.0 - 0.15 * nearby_prey)
-                    kill_prob[i] *= dilution
+            target_x = self.x[prey_targets]
+            target_y = self.y[prey_targets]
+            # Sample prey positions for neighbor counting (cap at 500)
+            prey_sample = current_prey[:min(500, len(current_prey))]
+            sample_x = self.x[prey_sample]
+            sample_y = self.y[prey_sample]
+            # Distance from each target to sampled prey: (n_batch, n_sample)
+            tdx = sample_x[None, :] - target_x[:, None]
+            tdy = sample_y[None, :] - target_y[:, None]
+            target_dist2 = tdx * tdx + tdy * tdy
+            nearby_counts = np.sum(target_dist2 < 4.0, axis=1) - 1  # exclude self
+            if len(current_prey) > len(prey_sample):
+                nearby_counts = (nearby_counts * len(current_prey) / len(prey_sample)).astype(int)
+            dilution = np.where(
+                nearby_counts >= 2,
+                np.maximum(0.15, 1.0 - 0.15 * nearby_counts),
+                1.0,
+            )
+            kill_prob *= np.where(in_range, dilution, 1.0)
 
-            # --- Pack bonus: count nearby predators within 3.0 of each prey ---
-            # More predators near the same prey → higher kill chance (emergent pack hunting)
-            for i in range(len(pred_batch)):
-                if in_range[i]:
-                    prey_pos_x = self.x[prey_targets[i]]
-                    prey_pos_y = self.y[prey_targets[i]]
-                    ddx = self.x[pred_batch] - prey_pos_x
-                    ddy = self.y[pred_batch] - prey_pos_y
-                    nearby_preds = np.sum((ddx * ddx + ddy * ddy) < 9.0)
-                    if nearby_preds >= 2:
-                        kill_prob[i] *= 1.0 + 0.3 * (nearby_preds - 1)  # +30% per extra predator
+            # --- Pack bonus (vectorized) ---
+            # Count predators near each targeted prey
+            pdx = self.x[pred_batch][:, None] - target_x[None, :]
+            pdy = self.y[pred_batch][:, None] - target_y[None, :]
+            pred_near_target = np.sum((pdx * pdx + pdy * pdy) < 9.0, axis=0)  # (n_batch,)
+            pack_bonus = np.where(
+                (pred_near_target >= 2) & in_range,
+                1.0 + 0.3 * (pred_near_target - 1),
+                1.0,
+            )
+            kill_prob *= pack_bonus
 
             # --- Roll for kill ---
             kill_roll = self._rng.random(len(pred_batch)) < kill_prob
@@ -666,9 +666,7 @@ class MassiveEcosystem:
                     "x": float(self.x[v]),
                     "y": float(self.y[v]),
                 }
-                if len(self._predation_events) >= 100:
-                    self._predation_events.pop(0)
-                self._predation_events.append(event)
+                self._predation_events.append(event)  # deque(maxlen=100) auto-evicts
 
             n_killed += len(unique_victims)
 
@@ -897,10 +895,10 @@ class MassiveEcosystem:
                 if n_alive > 0
                 else 0.0,
                 "total_predation_events": self._total_predation,
-                "recent_predation": self._predation_events[-10:],
+                "recent_predation": list(self._predation_events)[-10:],
                 "recent_kills": [
                     {"x": e["x"], "y": e["y"], "step": e["step"]}
-                    for e in self._predation_events[-20:]
+                    for e in list(self._predation_events)[-20:]
                     if "x" in e and self._step_count - e["step"] < 15
                 ],
                 "active_chases": [

@@ -591,16 +591,9 @@ export function KillEffects() {
 
     particlesRef.current = toKeep;
 
-    // Hide unused instances
-    for (let i = idx; i < MAX_KILL_PARTICLES; i++) {
-      _obj.position.set(0, -999, 0);
-      _obj.scale.setScalar(0);
-      _obj.updateMatrix();
-      mesh.setMatrixAt(i, _obj.matrix);
-    }
-
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.count = MAX_KILL_PARTICLES;
+    // Use count to hide unused instances instead of zeroing all slots
+    mesh.count = idx;
+    if (idx > 0) mesh.instanceMatrix.needsUpdate = true;
 
     // Pulse the material color between red and orange
     const t = clock.getElapsedTime();

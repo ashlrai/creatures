@@ -24,6 +24,7 @@ import numpy as np
 from creatures.analysis.trajectory_recorder import TrajectoryRecorder
 from creatures.environment.massive_ecosystem import MassiveEcosystem
 from creatures.environment.worlds import SoilWorld, PondWorld, LabPlateWorld
+from creatures.evolution.morphology import GENE_SENSOR_RANGE
 from creatures.neural.vectorized_engine import NeuronModel, VectorizedEngine
 
 logger = logging.getLogger(__name__)
@@ -449,10 +450,9 @@ class BrainWorld:
         # Predators sense prey direction through their food channel — prey IS food.
         # This gives predator neural networks the information to evolve pursuit behavior.
         if hasattr(eco, 'prey_proximity') and hasattr(eco, 'prey_direction'):
-            from creatures.evolution.morphology import GENE_SENSOR_RANGE as _GSR2
             pred_mask = eco.species[:n_org] == 1  # Drosophila predators
             if np.any(pred_mask & alive_org):
-                sensor_range = eco.morphology[:n_org, _GSR2]
+                sensor_range = eco.morphology[:n_org, GENE_SENSOR_RANGE]
                 prey_prox = eco.prey_proximity[:n_org]
                 prey_nearby = (prey_prox < sensor_range) & pred_mask & alive_org.astype(bool)
 
@@ -566,8 +566,7 @@ class BrainWorld:
         # Predator proximity danger: inject signal proportional to closeness.
         # Uses sensor_range morphology gene to determine detection radius.
         if hasattr(eco, 'predator_proximity'):
-            from creatures.evolution.morphology import GENE_SENSOR_RANGE
-            sensor_range = eco.morphology[:n_org, GENE_SENSOR_RANGE]  # 1.0 - 10.0
+            sensor_range = eco.morphology[:n_org, GENE_SENSOR_RANGE]
             pred_prox = eco.predator_proximity[:n_org]
             nearby = pred_prox < sensor_range
             pred_danger = np.where(nearby, (sensor_range - pred_prox) / (sensor_range + 1e-8), 0.0) * 30.0 * alive_org
@@ -595,8 +594,7 @@ class BrainWorld:
             # sin(angle) > 0 = predator on right, < 0 = on left
             dir_signal = np.sin(pred_dir) * 25.0 * alive_org
             # Only activate when predator is nearby
-            from creatures.evolution.morphology import GENE_SENSOR_RANGE as _GSR
-            sensor_range = eco.morphology[:n_org, _GSR]
+            sensor_range = eco.morphology[:n_org, GENE_SENSOR_RANGE]
             pred_prox = eco.predator_proximity[:n_org]
             dir_signal *= (pred_prox < sensor_range).astype(np.float32)
             I_ext_np[global_dir] = np.repeat(dir_signal, n_danger - mid)
