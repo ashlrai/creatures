@@ -491,7 +491,7 @@ function CameraController({ focusTarget }: {
 }) {
   const { camera } = useThree();
   const targetRef = useRef(new THREE.Vector3(0, 0, 0));
-  const posRef = useRef(new THREE.Vector3(0, 4, 40));
+  const posRef = useRef(new THREE.Vector3(0, 2, 55));
 
   useFrame((_, delta) => {
     const clampedDelta = Math.min(delta, 0.05);
@@ -510,7 +510,7 @@ function CameraController({ focusTarget }: {
     } else {
       // Default overview — pulled back to see everything
       targetRef.current.lerp(new THREE.Vector3(0, 0, 0), clampedDelta * 1.5);
-      posRef.current.lerp(new THREE.Vector3(0, 4, 40), clampedDelta * 1.5);
+      posRef.current.lerp(new THREE.Vector3(0, 2, 55), clampedDelta * 1.5);
     }
 
     camera.position.lerp(posRef.current, clampedDelta * 3);
@@ -569,7 +569,7 @@ function TimelineScene() {
       </mesh>
 
       {/* Fog — pushed further out */}
-      <fog attach="fog" args={['#050510', 50, 110]} />
+      <fog attach="fog" args={['#050510', 60, 140]} />
 
       {/* Orbit controls */}
       <OrbitControls
@@ -643,10 +643,10 @@ export function TimelineRiver() {
     }}>
       <Canvas
         camera={{
-          position: [0, 4, 40],
-          fov: 50,
+          position: [0, 2, 55],
+          fov: 60,
           near: 0.1,
-          far: 250,
+          far: 300,
         }}
         gl={{
           antialias: true,
