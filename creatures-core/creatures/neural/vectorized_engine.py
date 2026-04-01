@@ -412,20 +412,47 @@ class VectorizedEngine:
         excitatory_ratio: float,
         seed: int,
     ) -> None:
-        """Build random block-diagonal synapses using numpy then convert."""
-        # Always build with numpy for consistent RNG, then convert
+        """Build random block-diagonal synapses with feedforward bias.
+
+        Connections are biased toward feedforward flow:
+        sensory → interneuron → motor, mimicking layered nervous systems.
+        This gives evolution a structural head start without prescribing
+        specific behavior — the WEIGHTS still start random.
+        """
         rng = np.random.default_rng(seed)
-        n_syn_per_org = int(
-            neurons_per_organism * neurons_per_organism * connectivity_density
-        )
+        n_per = neurons_per_organism
+        n_sensory = int(n_per * 0.2)
+        n_motor = int(n_per * 0.2)
+
+        n_syn_per_org = int(n_per * n_per * connectivity_density)
         total_syn_budget = n_syn_per_org * n_organisms
 
-        all_pre = rng.integers(
-            0, neurons_per_organism, size=total_syn_budget, dtype=np.int64
+        # Feedforward bias: pre-neurons biased toward earlier layers,
+        # post-neurons biased toward later layers. This creates
+        # sensory→inter→motor flow without hard-wiring specific pathways.
+        # Using a soft triangular distribution rather than strict layering.
+        pre_weights = np.ones(n_per)
+        post_weights = np.ones(n_per)
+        # Sensory neurons more likely to be pre-synaptic (send signals)
+        pre_weights[:n_sensory] *= 2.0
+        # Motor neurons more likely to be post-synaptic (receive signals)
+        post_weights[-n_motor:] *= 2.0
+        # Normalize to probabilities
+        pre_probs = np.tile(pre_weights / pre_weights.sum(), n_organisms)
+        post_probs = np.tile(post_weights / post_weights.sum(), n_organisms)
+
+        # Sample with feedforward bias — vectorized across all organisms
+        pre_p = pre_weights / pre_weights.sum()
+        post_p = post_weights / post_weights.sum()
+        all_pre = rng.choice(n_per, size=total_syn_budget, p=pre_p).astype(np.int64)
+        all_post = rng.choice(n_per, size=total_syn_budget, p=post_p).astype(np.int64)
+
+        org_offsets = np.repeat(
+            np.arange(n_organisms, dtype=np.int64) * n_per,
+            n_syn_per_org,
         )
-        all_post = rng.integers(
-            0, neurons_per_organism, size=total_syn_budget, dtype=np.int64
-        )
+        all_pre += org_offsets
+        all_post += org_offsets
 
         org_offsets = np.repeat(
             np.arange(n_organisms, dtype=np.int64) * neurons_per_organism,
