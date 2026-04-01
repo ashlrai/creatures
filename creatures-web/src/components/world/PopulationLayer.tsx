@@ -12,6 +12,8 @@ const MAX_ORGANISMS = 2048;
 const MAX_TRAIL_ORGANISMS = 20;
 const MAX_TRAIL_LENGTH = 10;
 const MAX_TRAIL_VERTS = MAX_TRAIL_ORGANISMS * (MAX_TRAIL_LENGTH - 1) * 2;
+const MAX_CHASE_LINES = 50;  // max chase pairs to render
+const MAX_CHASE_VERTS = MAX_CHASE_LINES * 2;
 const MAX_FOOD = 256;
 
 const HEATMAP_RESOLUTION = 48;
@@ -104,7 +106,8 @@ export function OrganismInstances({
         continue;
       }
 
-      const baseScale = isCelegans ? 0.3 : 0.25;
+      // Predators are larger and more imposing; prey are smaller, elongated
+      const baseScale = isCelegans ? 0.25 : 0.4;
       const scale = baseScale * (0.4 + e * 0.8);
       const heading =
         Math.atan2(org.y, org.x + 0.001) + Math.sin(t * 2 + i * 1.7) * 0.3;
@@ -148,9 +151,15 @@ export function OrganismInstances({
         g = _color.g;
         b = _color.b;
       } else if (org.color_hue !== undefined) {
-        // Evolved color from morphology — visible species differentiation
-        const hue = org.color_hue / 360;
-        _color.setHSL(hue, 0.6, 0.3 + e * 0.4);
+        // Evolved color from morphology with species tinting
+        // Predators: warm bias (hue rotated toward red/orange), higher saturation
+        // Prey: cool bias (hue rotated toward blue/cyan), softer
+        const hueBase = org.color_hue / 360;
+        const hue = isCelegans
+          ? (hueBase * 0.4 + 0.5) % 1.0   // prey: blue-cyan-green range
+          : (hueBase * 0.3 + 0.0) % 1.0;  // predators: red-orange-yellow range
+        const sat = isCelegans ? 0.5 : 0.75;
+        _color.setHSL(hue, sat, 0.3 + e * 0.4);
         r = _color.r;
         g = _color.g;
         b = _color.b;
@@ -241,7 +250,9 @@ export function OrganismInstances({
   }, []);
 
   const drosophilaGeom = useMemo(() => {
-    const g = new THREE.SphereGeometry(1, 8, 6);
+    // Predators: wider, spikier shape — visually threatening
+    const g = new THREE.SphereGeometry(1.2, 6, 5);
+    g.scale(1.3, 0.9, 1.1);  // wider and flatter — aggressive silhouette
     const attr = new THREE.InstancedBufferAttribute(new Float32Array(MAX_ORGANISMS * 3), 3);
     attr.setUsage(THREE.DynamicDrawUsage);
     g.setAttribute('color', attr);
@@ -265,10 +276,10 @@ export function OrganismInstances({
     () =>
       new THREE.MeshStandardMaterial({
         vertexColors: true,
-        emissive: new THREE.Color(0xffcc66),
-        emissiveIntensity: 0.8,
-        roughness: 0.4,
-        metalness: 0.15,
+        emissive: new THREE.Color(0xff6622),  // aggressive orange-red glow
+        emissiveIntensity: 1.0,
+        roughness: 0.3,
+        metalness: 0.25,
         toneMapped: false,
       }),
     [],
@@ -413,6 +424,195 @@ export function OrganismTrails({ organisms }: { organisms: MassiveOrganism[] }) 
   });
 
   return <lineSegments ref={lineRef} geometry={geom} material={mat} />;
+}
+
+// ---------------------------------------------------------------------------
+// Chase Lines (predator-prey pursuit visualization)
+// ---------------------------------------------------------------------------
+
+export function ChaseLines() {
+  const lineRef = useRef<THREE.LineSegments>(null);
+  const chases = useWorldStore((s) => s.chases);
+
+  const geom = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX_CHASE_VERTS * 3), 3));
+    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(MAX_CHASE_VERTS * 3), 3));
+    g.setDrawRange(0, 0);
+    return g;
+  }, []);
+
+  const mat = useMemo(
+    () =>
+      new THREE.LineBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.7,
+        depthWrite: false,
+        toneMapped: false,
+        linewidth: 1,
+      }),
+    [],
+  );
+
+  useFrame(({ clock }) => {
+    const posAttr = geom.getAttribute('position') as THREE.BufferAttribute;
+    const colAttr = geom.getAttribute('color') as THREE.BufferAttribute;
+    const posArr = posAttr.array as Float32Array;
+    const colArr = colAttr.array as Float32Array;
+    let vertIdx = 0;
+
+    const t = clock.getElapsedTime();
+    const pulse = 0.5 + 0.5 * Math.sin(t * 6);  // pulsing chase lines
+
+    for (const chase of chases) {
+      if (vertIdx >= MAX_CHASE_VERTS) break;
+
+      // Predator end (red/orange)
+      posArr[vertIdx * 3] = chase.px;
+      posArr[vertIdx * 3 + 1] = chase.py;
+      posArr[vertIdx * 3 + 2] = 0.15;
+      colArr[vertIdx * 3] = 1.0;
+      colArr[vertIdx * 3 + 1] = 0.2 * pulse;
+      colArr[vertIdx * 3 + 2] = 0.05;
+      vertIdx++;
+
+      // Prey end (yellow/white — danger)
+      posArr[vertIdx * 3] = chase.vx;
+      posArr[vertIdx * 3 + 1] = chase.vy;
+      posArr[vertIdx * 3 + 2] = 0.15;
+      colArr[vertIdx * 3] = 1.0;
+      colArr[vertIdx * 3 + 1] = 0.8 * pulse;
+      colArr[vertIdx * 3 + 2] = 0.2 * pulse;
+      vertIdx++;
+    }
+
+    // Zero out unused vertices
+    for (let k = vertIdx * 3; k < posArr.length; k++) {
+      posArr[k] = 0;
+      colArr[k] = 0;
+    }
+
+    posAttr.needsUpdate = true;
+    colAttr.needsUpdate = true;
+    geom.setDrawRange(0, vertIdx);
+  });
+
+  return <lineSegments ref={lineRef} geometry={geom} material={mat} />;
+}
+
+// ---------------------------------------------------------------------------
+// Kill Effects (death particle bursts at predation sites)
+// ---------------------------------------------------------------------------
+
+const MAX_KILL_PARTICLES = 200;  // 10 particles per kill × 20 kills
+
+export function KillEffects() {
+  const kills = useWorldStore((s) => s.kills);
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+
+  const geom = useMemo(() => new THREE.SphereGeometry(0.06, 4, 4), []);
+  const mat = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: 0xff2200,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    [],
+  );
+
+  // Each kill event spawns 8 particles with random velocities
+  const particlesRef = useRef<Array<{
+    x: number; y: number; z: number;
+    vx: number; vy: number; vz: number;
+    born: number;
+  }>>([]);
+
+  useFrame(({ clock }) => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+
+    const now = clock.getElapsedTime() * 1000;
+
+    // Spawn particles for new kills
+    for (const kill of kills) {
+      // Only spawn once per kill (check if we already have particles near this position)
+      const age = Date.now() - kill.time;
+      if (age > 200) continue;  // only spawn for kills < 200ms old
+      if (age < 0) continue;
+
+      // Check if we already spawned for this kill
+      const already = particlesRef.current.some(
+        (p) => Math.abs(p.x - kill.x) < 0.1 && Math.abs(p.y - kill.y) < 0.1 && now - p.born < 300,
+      );
+      if (already) continue;
+
+      // Spawn 8 particles radiating outward
+      for (let j = 0; j < 8; j++) {
+        const angle = (j / 8) * Math.PI * 2 + Math.random() * 0.3;
+        const speed = 0.8 + Math.random() * 1.2;
+        particlesRef.current.push({
+          x: kill.x, y: kill.y, z: 0.2,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          vz: 0.5 + Math.random() * 0.5,
+          born: now,
+        });
+      }
+    }
+
+    // Update and render particles
+    let idx = 0;
+    const toKeep: typeof particlesRef.current = [];
+
+    for (const p of particlesRef.current) {
+      const age = (now - p.born) / 1000;  // seconds
+      if (age > 0.8 || idx >= MAX_KILL_PARTICLES) continue;
+
+      // Physics: expand + gravity
+      const x = p.x + p.vx * age;
+      const y = p.y + p.vy * age;
+      const z = Math.max(0, p.z + p.vz * age - 2.0 * age * age);
+
+      // Fade out
+      const fade = 1.0 - age / 0.8;
+      const scale = 0.5 + age * 2.0;
+
+      _obj.position.set(x, y, z);
+      _obj.scale.setScalar(scale * fade);
+      _obj.updateMatrix();
+      mesh.setMatrixAt(idx, _obj.matrix);
+      idx++;
+      toKeep.push(p);
+    }
+
+    particlesRef.current = toKeep;
+
+    // Hide unused instances
+    for (let i = idx; i < MAX_KILL_PARTICLES; i++) {
+      _obj.position.set(0, -999, 0);
+      _obj.scale.setScalar(0);
+      _obj.updateMatrix();
+      mesh.setMatrixAt(i, _obj.matrix);
+    }
+
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.count = MAX_KILL_PARTICLES;
+
+    // Pulse the material color between red and orange
+    const t = clock.getElapsedTime();
+    const r = 1.0;
+    const g = 0.1 + 0.2 * Math.sin(t * 8);
+    (mat as THREE.MeshBasicMaterial).color.setRGB(r, g, 0.0);
+    (mat as THREE.MeshBasicMaterial).opacity = 0.85;
+  });
+
+  return (
+    <instancedMesh ref={meshRef} args={[geom, mat, MAX_KILL_PARTICLES]} frustumCulled={false} />
+  );
 }
 
 // ---------------------------------------------------------------------------

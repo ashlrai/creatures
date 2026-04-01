@@ -41,12 +41,21 @@ export function AITicker() {
     const newNarratives = narratives.slice(prevNarrativesLen.current);
     prevNarrativesLen.current = narratives.length;
 
-    const newItems: TickerItem[] = newNarratives.map((n: any) => ({
-      id: nextId++,
-      text: n.analysis || n.text || n.message || (typeof n === 'string' ? n : JSON.stringify(n)),
-      type: 'narrative' as const,
-      timestamp: Date.now(),
-    }));
+    const newItems: TickerItem[] = newNarratives.map((n: any) => {
+      const text = n.analysis || n.text || n.message || (typeof n === 'string' ? n : JSON.stringify(n));
+      // Map God Agent showrunner types to ticker display types
+      const nType = n.type || '';
+      let displayType: TickerItem['type'] = 'narrative';
+      if (nType === 'intervention') displayType = 'insight';
+      else if (nType.includes('adaptation') || nType === 'arms_race') displayType = 'event';
+      else if (nType.includes('milestone') || nType.includes('collapse')) displayType = 'milestone';
+      return {
+        id: nextId++,
+        text,
+        type: displayType,
+        timestamp: Date.now(),
+      };
+    });
 
     setItems((prev) => [...newItems, ...prev].slice(0, 20));
   }, [narratives]);
@@ -125,7 +134,7 @@ export function AITicker() {
   // Auto-remove stale items (older than 30s)
   useEffect(() => {
     const iv = setInterval(() => {
-      const cutoff = Date.now() - 30000;
+      const cutoff = Date.now() - 60000;
       setItems((prev) => {
         const filtered = prev.filter((item) => item.timestamp > cutoff);
         return filtered.length === prev.length ? prev : filtered;
@@ -188,7 +197,7 @@ export function AITicker() {
             flexShrink: 0,
           }}
         >
-          AI OBSERVER
+          GOD AGENT
         </span>
 
         {/* Latest items */}

@@ -8,6 +8,8 @@ import { SemanticZoomController } from './SemanticZoomController';
 import {
   OrganismInstances,
   OrganismTrails,
+  ChaseLines,
+  KillEffects,
   FoodInstances,
   TerrainArena,
   AmbientParticles,
@@ -113,6 +115,12 @@ function SceneContents() {
 
           {/* Movement trails */}
           <OrganismTrails organisms={organisms} />
+
+          {/* Predator-prey chase lines */}
+          <ChaseLines />
+
+          {/* Kill particle effects */}
+          <KillEffects />
 
           {/* Food */}
           <FoodInstances

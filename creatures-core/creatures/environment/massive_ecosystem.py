@@ -23,6 +23,7 @@ from creatures.evolution.morphology import (
     GENE_BODY_LENGTH,
     GENE_BODY_WIDTH,
     GENE_BODY_HEIGHT,
+    GENE_SENSOR_RANGE,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,12 +68,17 @@ class MassiveEcosystem:
         self.pitch = np.zeros(n_organisms)  # vertical angle
         self.speed = np.full(n_organisms, 0.5)  # base movement speed
         self.predator_proximity = np.full(n_organisms, np.inf)  # distance to nearest predator (for C. elegans)
+        self.predator_direction = np.zeros(n_organisms)  # angle to nearest predator relative to heading
+        self.prey_proximity = np.full(n_organisms, np.inf)  # distance to nearest prey (for predators)
+        self.prey_direction = np.zeros(n_organisms)  # angle to nearest prey relative to heading
 
         # --- Morphology (evolvable body plan) ---
         self.morphology = random_morphology(n_organisms, rng)
 
-        # Assign ~15% as drosophila (predators) — realistic predator-prey ratio
+        # Assign ~15% as drosophila (predators) — typical predator-prey ratio
         drosophila_mask = rng.random(n_organisms) < 0.15
+        # Predators start with higher energy (adapted to survive early game)
+        self.energy[drosophila_mask] = 150.0
         self.species[drosophila_mask] = 1
 
         # --- Food source arrays ---
@@ -89,12 +95,15 @@ class MassiveEcosystem:
         self._next_lineage_id = n_organisms  # counter for new lineage IDs
         self.lifetime_food = np.zeros(n_organisms, dtype=np.float32)  # food eaten in lifetime
 
-        # Reserve 20% overcapacity for reproduction (initially dead)
-        overcapacity = int(n_organisms * 0.2)
+        # Reserve 100% overcapacity for reproduction (initially dead) —
+        # generous headroom ensures continuous generational turnover
+        overcapacity = int(n_organisms * 1.0)
         if overcapacity > 0:
             total_slots = n_organisms + overcapacity
             for attr in ['x', 'y', 'z', 'heading', 'pitch', 'energy', 'alive', 'species', 'age',
-                         'speed', 'predator_proximity', 'generation', 'parent_id', 'lineage_id', 'lifetime_food']:
+                         'speed', 'predator_proximity', 'predator_direction',
+                         'prey_proximity', 'prey_direction',
+                         'generation', 'parent_id', 'lineage_id', 'lifetime_food']:
                 old = getattr(self, attr)
                 new = np.zeros(total_slots, dtype=old.dtype)
                 new[:n_organisms] = old
@@ -114,6 +123,7 @@ class MassiveEcosystem:
         self._total_died = 0
         self._total_predation = 0
         self._predation_events: list[dict] = []  # ring buffer, max 100
+        self._active_chases: list[tuple[int, int]] = []  # (predator_idx, prey_idx) pairs for visualization
 
     # ------------------------------------------------------------------
     # Main simulation step (fully vectorized)
@@ -147,16 +157,16 @@ class MassiveEcosystem:
         # 3. Food consumption — morphology-based eat radius
         n_eaten = self._eat()
 
-        # 3b. Predation activates after generation 15 — both species need time to establish
+        # 3b. Predation activates after generation 3 — arms race starts early
         max_gen = int(self.generation[self.alive].max()) if self.alive.any() else 0
-        n_predation = self._predation() if max_gen >= 15 else 0
+        n_predation = self._predation() if max_gen >= 3 else 0
 
         # 4. Death — energy depletion + aging
         newly_dead = alive & (self.energy <= 0)
-        # Age-based death: probability increases with age (max lifespan ~1000 steps)
-        # Faster turnover = more generations = faster evolution
+        # Age-based death: probability increases with age (max lifespan ~350 steps)
+        # Fast turnover = more generations = faster evolution of arms race
         if getattr(self, '_neural_control', False):
-            age_death_prob = np.clip((self.age - 500) / 500, 0, 0.02)  # 2% chance/step after age 500
+            age_death_prob = np.clip((self.age - 150) / 200, 0, 0.05)  # 5% chance/step after age 150
             age_death = alive & (self._rng.random(len(alive)) < age_death_prob)
             newly_dead = newly_dead | age_death
         n_died = int(np.sum(newly_dead))
@@ -166,9 +176,10 @@ class MassiveEcosystem:
         # 5. Reproduction — prey reproduce faster (lower threshold) to offset predation
         # This mirrors biology: prey species (r-strategists) reproduce faster than predators
         n_born = self._reproduce(
-            prey_threshold=90.0,    # C. elegans: reproduce quickly (r-strategy)
-            pred_threshold=130.0,   # Drosophila: reproduce slower (K-strategy)
-            offspring_cost=35.0,
+            prey_threshold=50.0,    # C. elegans: reproduce very quickly (r-strategy, high fecundity)
+            pred_threshold=100.0,   # Drosophila: must accumulate energy to reproduce (K-strategy)
+            prey_cost=20.0,         # Low cost per offspring — many small offspring
+            pred_cost=35.0,         # Higher cost — fewer, better-provisioned offspring
         )
 
         # 6. Respawn depleted food (keep the ecosystem running)
@@ -412,7 +423,13 @@ class MassiveEcosystem:
                 food_eaten_global, return_index=True
             )
             food_energy_consumed = self.food_energy[unique_food]
-            self.energy[eaters[first_eater]] += food_energy_consumed
+            # Predators get 60% energy from plant food — they can scavenge but
+            # depend on hunting for optimal nutrition
+            actual_eaters = eaters[first_eater]
+            species_efficiency = np.where(
+                self.species[actual_eaters] == 0, 1.0, 0.6
+            )
+            self.energy[actual_eaters] += food_energy_consumed * species_efficiency
             # Track lifetime food consumption
             self.lifetime_food[eaters[first_eater]] += food_energy_consumed
             self.food_alive[unique_food] = False
@@ -424,16 +441,20 @@ class MassiveEcosystem:
     # Predation (vectorized)
     # ------------------------------------------------------------------
 
-    def _predation(self, kill_radius: float = 1.2) -> int:
+    def _predation(self) -> int:
         """Drosophila (species=1) prey on C. elegans (species=0).
 
         Fully vectorized using batched spatial distance matrices.
-        Each predator has a 30% chance per step to kill the closest prey
-        within *kill_radius*. Predator gains 40% of prey energy.
-        Probabilistic predation creates selection pressure without
-        causing instant extinction.
+        Strong predation pressure drives an evolutionary arms race:
+        - Kill probability ~35% per step when in range (strong selector)
+        - Kill range scales with predator body_length
+        - Size-based predation: predator must be > 0.7x prey body_length
+        - Speed-based escape: faster prey have lower kill probability
+        - Hunting cost: failed hunts cost predator energy
+        - Pack bonus: multiple predators near same prey increase kill chance
 
-        Also updates ``self.predator_proximity`` for danger-signal injection.
+        Also updates ``self.predator_proximity`` and ``self.predator_direction``
+        for danger-signal injection into neural networks.
 
         Returns the number of predation events this step.
         """
@@ -446,15 +467,20 @@ class MassiveEcosystem:
         predator_idx = np.where(predator_mask)[0]
         prey_idx = np.where(prey_mask)[0]
 
-        # Reset predator_proximity for all alive C. elegans
+        # Reset proximity/direction for all alive C. elegans
         self.predator_proximity[prey_mask] = np.inf
+        self.predator_direction[prey_mask] = 0.0
+        # Reset prey direction for predators
+        self.prey_direction[predator_mask] = 0.0
+        self.prey_proximity[predator_mask] = np.inf
+
+        # Clear active chases from last step
+        self._active_chases = []
 
         if len(predator_idx) == 0 or len(prey_idx) == 0:
             return 0
 
-        # --- Update predator_proximity for ALL alive C. elegans ---
-        # (needed for danger signal even when no kills happen)
-        # Batch to control memory: O(n_prey_batch * n_predator)
+        # --- Update predator_proximity AND predator_direction for ALL prey ---
         all_predator_idx = np.where(alive & (self.species == 1))[0]
         if len(all_predator_idx) > 0:
             px = self.x[all_predator_idx]
@@ -464,17 +490,43 @@ class MassiveEcosystem:
                 batch = prey_idx[start:start + batch_size]
                 dx = px[None, :] - self.x[batch][:, None]
                 dy = py[None, :] - self.y[batch][:, None]
-                dist = np.sqrt(dx * dx + dy * dy)
-                self.predator_proximity[batch] = np.min(dist, axis=1)
+                dist = np.sqrt(dx * dx + dy * dy + 1e-12)
+                nearest = np.argmin(dist, axis=1)
+                self.predator_proximity[batch] = dist[np.arange(len(batch)), nearest]
+                # Direction: angle from prey to nearest predator relative to prey heading
+                pred_dx = dx[np.arange(len(batch)), nearest]
+                pred_dy = dy[np.arange(len(batch)), nearest]
+                abs_angle = np.arctan2(pred_dy, pred_dx)
+                rel_angle = abs_angle - self.heading[batch]
+                # Normalize to [-pi, pi]
+                rel_angle = (rel_angle + np.pi) % (2 * np.pi) - np.pi
+                self.predator_direction[batch] = rel_angle
+
+        # --- Update prey_proximity AND prey_direction for ALL predators ---
+        if len(prey_idx) > 0:
+            prey_x = self.x[prey_idx]
+            prey_y = self.y[prey_idx]
+            batch_size = 5000
+            for start in range(0, len(predator_idx), batch_size):
+                batch = predator_idx[start:start + batch_size]
+                dx = prey_x[None, :] - self.x[batch][:, None]
+                dy = prey_y[None, :] - self.y[batch][:, None]
+                dist = np.sqrt(dx * dx + dy * dy + 1e-12)
+                nearest = np.argmin(dist, axis=1)
+                self.prey_proximity[batch] = dist[np.arange(len(batch)), nearest]
+                prey_dx = dx[np.arange(len(batch)), nearest]
+                prey_dy = dy[np.arange(len(batch)), nearest]
+                abs_angle = np.arctan2(prey_dy, prey_dx)
+                rel_angle = abs_angle - self.heading[batch]
+                rel_angle = (rel_angle + np.pi) % (2 * np.pi) - np.pi
+                self.prey_direction[batch] = rel_angle
 
         # --- Predation kills (batched) ---
         n_killed = 0
-        r2 = kill_radius * kill_radius
         batch_size = 3000
 
         for start in range(0, len(predator_idx), batch_size):
             pred_batch = predator_idx[start:start + batch_size]
-            # Recompute live prey each batch (some may have been eaten)
             current_prey = np.where(self.alive & (self.species == 0))[0]
             if len(current_prey) == 0:
                 break
@@ -487,44 +539,120 @@ class MassiveEcosystem:
             # Each predator targets its nearest prey
             nearest_prey_local = np.argmin(dist2, axis=1)
             nearest_dist2 = dist2[np.arange(len(pred_batch)), nearest_prey_local]
+            nearest_dist = np.sqrt(nearest_dist2 + 1e-12)
 
-            in_range = nearest_dist2 < r2
+            # Kill range scales with predator body_length (bigger predators reach further)
+            pred_body_length = self.morphology[pred_batch, GENE_BODY_LENGTH]
+            kill_range = 0.8 + 0.4 * pred_body_length  # range 1.2 - 2.0
+
+            in_range = nearest_dist < kill_range
             if not np.any(in_range):
+                # Hunting cost: predators that are actively chasing burn extra energy
+                self.energy[pred_batch] -= 0.3
                 continue
 
-            # Probabilistic predation (30% chance per step) — creates selection
-            # pressure without instant extinction
-            kill_roll = self._rng.random(len(pred_batch)) < 0.05
-            can_kill = in_range & kill_roll
+            # Track active chases (predator-prey pairs where predator is close)
+            chase_range = kill_range * 3.0  # show chase lines at 3x kill range
+            chasing = nearest_dist < chase_range
+            for i in np.where(chasing)[0]:
+                pred_i = pred_batch[i]
+                prey_i = current_prey[nearest_prey_local[i]]
+                self._active_chases.append((int(pred_i), int(prey_i)))
+
+            # --- Size check: predator must be > 0.7x prey body_length ---
+            prey_body_length = self.morphology[
+                current_prey[nearest_prey_local], GENE_BODY_LENGTH
+            ]
+            size_ok = pred_body_length >= (prey_body_length * 0.7)
+
+            # --- Ratio-dependent kill probability (Lotka-Volterra inspired) ---
+            # Kill probability scales with prey:predator ratio — when prey are
+            # abundant, hunting is easy; when prey are scarce, hunting is hard.
+            # This naturally prevents extinction cascades.
+            max_gen = int(self.generation[self.alive].max()) if self.alive.any() else 0
+            n_prey_now = int((self.alive & (self.species == 0)).sum())
+            n_pred_now = int((self.alive & (self.species == 1)).sum())
+            prey_pred_ratio = n_prey_now / max(n_pred_now, 1)
+            # Ratio factor: full effect at 5:1, zero at 1:1 or below
+            ratio_factor = np.clip((prey_pred_ratio - 1.0) / 4.0, 0.0, 1.0)
+            # Generation ramp: 3% at gen 3, up to 20% at gen 20+
+            gen_base = min(0.20, 0.03 + 0.01 * max(0, max_gen - 3))
+            base_kill_p = gen_base * ratio_factor
+            kill_prob = np.full(len(pred_batch), base_kill_p)
+
+            # --- Speed modulation: faster prey are harder to catch ---
+            prey_speed = compute_speed(
+                self.morphology[current_prey[nearest_prey_local]]
+            )
+            pred_speed = compute_speed(self.morphology[pred_batch])
+            speed_ratio = pred_speed / (prey_speed + 1e-8)
+            # If predator is slower than prey, kill chance drops dramatically
+            # speed_ratio < 0.8 → kill_prob * 0.1, speed_ratio > 1.2 → kill_prob * 1.5
+            speed_factor = np.clip(speed_ratio * 0.8, 0.05, 1.5)
+            kill_prob *= speed_factor
+
+            # --- Dilution effect: prey in groups are harder to kill ---
+            # Safety in numbers — creates selection pressure for flocking/herding.
+            # Each nearby prey dilutes the predator's targeting accuracy.
+            prey_targets = current_prey[nearest_prey_local]
+            all_prey_x = self.x[current_prey]
+            all_prey_y = self.y[current_prey]
+            for i in range(len(pred_batch)):
+                if not in_range[i]:
+                    continue
+                target_x = self.x[prey_targets[i]]
+                target_y = self.y[prey_targets[i]]
+                # Count prey within 2.0 of the targeted prey
+                pdx = all_prey_x - target_x
+                pdy = all_prey_y - target_y
+                nearby_prey = int(np.sum((pdx * pdx + pdy * pdy) < 4.0)) - 1  # exclude self
+                if nearby_prey >= 2:
+                    # Each nearby prey reduces kill chance by 15% (confusion effect)
+                    dilution = max(0.15, 1.0 - 0.15 * nearby_prey)
+                    kill_prob[i] *= dilution
+
+            # --- Pack bonus: count nearby predators within 3.0 of each prey ---
+            # More predators near the same prey → higher kill chance (emergent pack hunting)
+            for i in range(len(pred_batch)):
+                if in_range[i]:
+                    prey_pos_x = self.x[prey_targets[i]]
+                    prey_pos_y = self.y[prey_targets[i]]
+                    ddx = self.x[pred_batch] - prey_pos_x
+                    ddy = self.y[pred_batch] - prey_pos_y
+                    nearby_preds = np.sum((ddx * ddx + ddy * ddy) < 9.0)
+                    if nearby_preds >= 2:
+                        kill_prob[i] *= 1.0 + 0.3 * (nearby_preds - 1)  # +30% per extra predator
+
+            # --- Roll for kill ---
+            kill_roll = self._rng.random(len(pred_batch)) < kill_prob
+            can_kill = in_range & kill_roll & size_ok
             if not np.any(can_kill):
+                # Hunting cost for failed hunts (prevents spam attacks)
+                failed = in_range & ~can_kill
+                self.energy[pred_batch[failed]] -= 1.0
                 continue
 
             killers = pred_batch[can_kill]
             victim_local = nearest_prey_local[can_kill]
             victim_global = current_prey[victim_local]
 
-            # Prey escapes if it's faster than the predator (evolved speed advantage)
-            prey_speed = compute_speed(self.morphology[victim_global])
-            pred_speed = compute_speed(self.morphology[killers])
-            # Only kill if predator is at least 80% as fast as prey
-            can_catch = pred_speed >= (prey_speed * 0.8)
-            if not np.any(can_catch):
-                continue
-            killers = killers[can_catch]
-            victim_global = victim_global[can_catch]
-
             # Each prey can only be killed once per batch — first predator wins
             unique_victims, first_killer_idx = np.unique(victim_global, return_index=True)
             first_killers = killers[first_killer_idx]
 
-            # Energy transfer: predator gains 40% of prey energy
-            energy_gained = self.energy[unique_victims] * 0.4
+            # Energy transfer: predator gains 50% of prey energy (rewarding successful hunts)
+            energy_gained = self.energy[unique_victims] * 0.5
             self.energy[first_killers] += energy_gained
+
+            # Hunting cost for failed hunters (in range but didn't get the kill)
+            failed_hunters = np.setdiff1d(pred_batch[in_range], first_killers)
+            if len(failed_hunters) > 0:
+                self.energy[failed_hunters] -= 1.0
 
             # Prey dies
             self.alive[unique_victims] = False
 
-            # Log predation events (ring buffer, max 100)
+            # Log predation events with positions for frontend kill effects
             for k, v, eg in zip(
                 first_killers.tolist(),
                 unique_victims.tolist(),
@@ -535,6 +663,8 @@ class MassiveEcosystem:
                     "predator_idx": k,
                     "prey_idx": v,
                     "energy_gained": eg,
+                    "x": float(self.x[v]),
+                    "y": float(self.y[v]),
                 }
                 if len(self._predation_events) >= 100:
                     self._predation_events.pop(0)
@@ -552,22 +682,27 @@ class MassiveEcosystem:
 
     def _reproduce(
         self,
-        prey_threshold: float = 90.0,
-        pred_threshold: float = 130.0,
-        offspring_cost: float = 35.0,
+        prey_threshold: float = 50.0,
+        pred_threshold: float = 150.0,
+        prey_cost: float = 20.0,
+        pred_cost: float = 40.0,
     ) -> int:
-        """Tournament selection with species-specific thresholds.
+        """Tournament selection with species-specific thresholds and costs.
 
         Prey (C. elegans, species=0) reproduce at lower energy threshold
-        (r-strategy: many offspring, fast reproduction) to offset predation.
+        with lower offspring cost (r-strategy: many small offspring).
         Predators (Drosophila, species=1) reproduce at higher threshold
         (K-strategy: fewer, better-provisioned offspring).
         """
         # Species-specific reproduction thresholds
         thresholds = np.where(self.species == 0, prey_threshold, pred_threshold)
         can_reproduce = self.alive & (self.energy > thresholds)
-        candidates = np.where(can_reproduce)[0]
-        if len(candidates) == 0:
+
+        # Split candidates by species — ensures both species get reproduction slots
+        prey_candidates = np.where(can_reproduce & (self.species == 0))[0]
+        pred_candidates = np.where(can_reproduce & (self.species == 1))[0]
+
+        if len(prey_candidates) == 0 and len(pred_candidates) == 0:
             return 0
 
         dead_slots = np.where(~self.alive)[0]
@@ -576,40 +711,67 @@ class MassiveEcosystem:
 
         rng = self._rng
 
-        # Tournament selection: for each dead slot, find the highest-energy
-        # candidate within a local radius (tournament_radius). This selects
-        # for organisms that are BETTER at gathering energy, not just above threshold.
-        tournament_radius = self.arena_size * 0.15  # 15% of arena
-        parents_list = []
-        slots_list = []
+        # Allocate dead slots between species proportionally to their current
+        # population, with a minimum floor of 20% for the minority species.
+        # This prevents competitive exclusion while maintaining ecological pressure.
+        n_prey_alive = int((self.alive & (self.species == 0)).sum())
+        n_pred_alive = int((self.alive & (self.species == 1)).sum())
+        total_alive = n_prey_alive + n_pred_alive
+        if total_alive > 0:
+            pred_frac = max(0.20, n_pred_alive / total_alive)
+        else:
+            pred_frac = 0.15
+        n_pred_slots = max(1, int(len(dead_slots) * pred_frac))
+        n_prey_slots = len(dead_slots) - n_pred_slots
 
-        for slot in dead_slots:
-            if len(candidates) == 0:
-                break
+        # Tournament selection within each species pool
+        tournament_radius = self.arena_size * 0.15
 
-            # Pick a random candidate as the "center" of the tournament
-            center_idx = rng.integers(0, len(candidates))
-            center = candidates[center_idx]
-            cx, cy = self.x[center], self.y[center]
+        def _select_parents(candidates, slots, max_births):
+            parents_list = []
+            slots_list = []
+            for slot in slots[:max_births]:
+                if len(candidates) == 0:
+                    break
+                center_idx = rng.integers(0, len(candidates))
+                center = candidates[center_idx]
+                cx, cy = self.x[center], self.y[center]
+                dx = self.x[candidates] - cx
+                dy = self.y[candidates] - cy
+                dists = dx * dx + dy * dy
+                in_range = dists < tournament_radius * tournament_radius
+                local = candidates[in_range]
+                if len(local) == 0:
+                    local = np.array([center])
+                winner = local[np.argmax(self.energy[local])]
+                parents_list.append(winner)
+                slots_list.append(slot)
+            return parents_list, slots_list
 
-            # Find all candidates within tournament radius
-            dx = self.x[candidates] - cx
-            dy = self.y[candidates] - cy
-            dists = dx * dx + dy * dy
-            in_range = dists < tournament_radius * tournament_radius
-            local_candidates = candidates[in_range]
+        # Shuffle dead slots and split between species
+        rng.shuffle(dead_slots)
+        prey_slots = dead_slots[:n_prey_slots]
+        pred_slots = dead_slots[n_prey_slots:]
 
-            if len(local_candidates) == 0:
-                local_candidates = np.array([center])
+        parents_list, slots_list = [], []
+        if len(prey_candidates) > 0 and len(prey_slots) > 0:
+            p, s = _select_parents(prey_candidates, prey_slots, n_prey_slots)
+            parents_list.extend(p)
+            slots_list.extend(s)
+        if len(pred_candidates) > 0 and len(pred_slots) > 0:
+            p, s = _select_parents(pred_candidates, pred_slots, n_pred_slots)
+            parents_list.extend(p)
+            slots_list.extend(s)
 
-            # Winner = highest energy in the local neighborhood
-            winner = local_candidates[np.argmax(self.energy[local_candidates])]
-            parents_list.append(winner)
-            slots_list.append(slot)
-
-            # Stop when all dead slots are filled
-            if len(parents_list) >= len(dead_slots):
-                break
+        # If one species had no candidates, give their unused slots to the other
+        used_slots = len(slots_list)
+        remaining_slots = dead_slots[used_slots:]
+        if len(remaining_slots) > 0:
+            all_candidates = np.concatenate([c for c in [prey_candidates, pred_candidates] if len(c) > 0])
+            if len(all_candidates) > 0:
+                p, s = _select_parents(all_candidates, remaining_slots, len(remaining_slots))
+                parents_list.extend(p)
+                slots_list.extend(s)
 
         if not parents_list:
             return 0
@@ -618,8 +780,10 @@ class MassiveEcosystem:
         slots = np.array(slots_list)
         n_births = len(parents)
 
-        # Parent pays energy cost
-        self.energy[parents] -= offspring_cost
+        # Species-specific offspring costs
+        parent_species = self.species[parents]
+        costs = np.where(parent_species == 0, prey_cost, pred_cost)
+        self.energy[parents] -= costs
 
         # Offspring inherits position + small offset
         self.x[slots] = self.x[parents] + rng.normal(0, 0.5, n_births)
@@ -627,7 +791,7 @@ class MassiveEcosystem:
         self.z[slots] = 0.0  # offspring start on ground
         self.heading[slots] = rng.uniform(0, 2 * np.pi, n_births)
         self.pitch[slots] = 0.0
-        self.energy[slots] = offspring_cost * 0.8
+        self.energy[slots] = costs * 0.8
         self.species[slots] = self.species[parents]
         self.age[slots] = 0.0
         self.speed[slots] = self.speed[parents]
@@ -637,7 +801,7 @@ class MassiveEcosystem:
         self.morphology[slots] = self.morphology[parents]
         for i, s in enumerate(slots):
             self.morphology[s] = mutate_morphology(
-                self.morphology[s], sigma=0.1, rng=self._rng
+                self.morphology[s], sigma=0.15, rng=self._rng
             )
 
         # Track generational lineage
@@ -660,6 +824,9 @@ class MassiveEcosystem:
 
     def _respawn_food(self, respawn_fraction: float = 0.15) -> None:
         """Respawn a fraction of eaten food sources each step."""
+        # During drought (set by God Agent), food respawns at 1/3 rate
+        if getattr(self, '_drought_active', False):
+            respawn_fraction *= 0.33
         dead_food = np.where(~self.food_alive)[0]
         if len(dead_food) == 0:
             return
@@ -731,6 +898,18 @@ class MassiveEcosystem:
                 else 0.0,
                 "total_predation_events": self._total_predation,
                 "recent_predation": self._predation_events[-10:],
+                "recent_kills": [
+                    {"x": e["x"], "y": e["y"], "step": e["step"]}
+                    for e in self._predation_events[-20:]
+                    if "x" in e and self._step_count - e["step"] < 15
+                ],
+                "active_chases": [
+                    {"predator": p, "prey": v,
+                     "px": float(self.x[p]), "py": float(self.y[p]),
+                     "vx": float(self.x[v]), "vy": float(self.y[v])}
+                    for p, v in self._active_chases[:50]  # cap at 50 for bandwidth
+                    if self.alive[p] and self.alive[v]
+                ],
             },
         }
 

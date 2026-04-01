@@ -38,6 +38,7 @@ from websockets.http11 import Request, Response
 from websockets.datastructures import Headers
 
 from creatures.environment.brain_world import BrainWorld
+from creatures.god.showrunner import EcosystemShowrunner, ShowrunnerConfig
 
 logger = logging.getLogger("run_local_world")
 
@@ -112,17 +113,29 @@ async def _broadcast(message: dict[str, Any]) -> None:
 async def _simulation_loop(
     bw: BrainWorld,
     speed: float,
+    showrunner: EcosystemShowrunner | None = None,
 ) -> None:
     """Run bw.step() continuously and broadcast every 10 steps."""
     assert _shutdown_event is not None
 
     step_count = 0
     last_report = time.perf_counter()
+    # Accumulate showrunner narratives for next broadcast
+    pending_narratives: list[dict] = []
+    pending_interventions: list[dict] = []
 
     while not _shutdown_event.is_set():
         # --- step the simulation ---
         bw.step(dt=1.0)
         step_count += 1
+
+        # --- God Agent showrunner ---
+        if showrunner:
+            sr_result = showrunner.tick(bw)
+            if sr_result["narratives"]:
+                pending_narratives.extend(sr_result["narratives"])
+            if sr_result["interventions"]:
+                pending_interventions.extend(sr_result["interventions"])
 
         # --- broadcast every 10 steps ---
         if step_count % 10 == 0 and _connected_clients:
@@ -149,6 +162,20 @@ async def _simulation_loop(
                 except Exception:
                     pass
 
+            # Chase data + kill events for predation visualization
+            chase_data: list[dict] = []
+            kill_data: list[dict] = []
+            eco_stats = state_data.get("stats", {})
+            if isinstance(eco_stats, dict):
+                chase_data = eco_stats.get("active_chases", [])
+                kill_data = eco_stats.get("recent_kills", [])
+
+            # Flush showrunner narratives into the broadcast
+            narratives_to_send = pending_narratives.copy()
+            interventions_to_send = pending_interventions.copy()
+            pending_narratives.clear()
+            pending_interventions.clear()
+
             message = {
                 "type": "ecosystem_state",
                 "organisms": state_data.get("organisms", []),
@@ -162,6 +189,10 @@ async def _simulation_loop(
                 "speed": speed,
                 "food": food_data,
                 "chemotaxis": chemotaxis,
+                "chases": chase_data,
+                "kills": kill_data,
+                "narratives": narratives_to_send,
+                "god_interventions": interventions_to_send,
             }
 
             await _broadcast(message)
@@ -176,11 +207,20 @@ async def _simulation_loop(
             pop_stats = bw.get_population_stats()
             alive = pop_stats.get("alive", 0)
             max_gen = pop_stats.get("max_generation", 0)
+            species = pop_stats.get("species_counts", {})
+            prey_count = species.get("c_elegans", 0)
+            pred_count = species.get("drosophila", 0)
+            n_chases = len(eco._active_chases)
             logger.info(
-                "step %6d | pop %5d | gen %3d | %.1f steps/s | %d viewer(s)",
+                "step %6d | pop %5d (prey:%d pred:%d) | gen %3d | "
+                "chases:%d | kills:%d | %.1f steps/s | %d viewer(s)",
                 step_count,
                 alive,
+                prey_count,
+                pred_count,
                 max_gen,
+                n_chases,
+                eco._total_predation,
                 sps,
                 len(_connected_clients),
             )
@@ -227,6 +267,13 @@ async def _main(args: argparse.Namespace) -> None:
         bw.engine._backend,
     )
 
+    # --- Create God Agent showrunner ---
+    showrunner = EcosystemShowrunner(ShowrunnerConfig(
+        analysis_interval=500,      # analyze every 500 steps (~3-5 generations)
+        intervention_cooldown=1500,  # wait 1500 steps between interventions
+    ))
+    logger.info("God Agent showrunner initialized (analysis every 500 steps)")
+
     # --- Start WebSocket server ---
     logger.info("Starting WebSocket server on 0.0.0.0:%d ...", args.port)
 
@@ -244,7 +291,7 @@ async def _main(args: argparse.Namespace) -> None:
         )
 
         # Run simulation until shutdown
-        sim_task = asyncio.create_task(_simulation_loop(bw, args.speed))
+        sim_task = asyncio.create_task(_simulation_loop(bw, args.speed, showrunner))
 
         # Wait for shutdown signal
         await _shutdown_event.wait()
@@ -272,8 +319,8 @@ def _parse_args() -> argparse.Namespace:
         epilog=__doc__,
     )
     parser.add_argument(
-        "--organisms", type=int, default=1000,
-        help="Number of organisms (default: 1000)",
+        "--organisms", type=int, default=500,
+        help="Number of organisms (default: 500 — ~85%% prey, ~15%% predators)",
     )
     parser.add_argument(
         "--neurons", type=int, default=50,

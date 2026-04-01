@@ -445,6 +445,42 @@ class BrainWorld:
             global_chem = (org_idx[:, None] * self.n_per + chem_offsets[None, :]).ravel()
             I_ext_np[global_chem] = np.repeat(chemical_signal, chem_end - chem_start)
 
+        # --- Prey direction signal for predators (Drosophila) ---
+        # Predators sense prey direction through their food channel — prey IS food.
+        # This gives predator neural networks the information to evolve pursuit behavior.
+        if hasattr(eco, 'prey_proximity') and hasattr(eco, 'prey_direction'):
+            from creatures.evolution.morphology import GENE_SENSOR_RANGE as _GSR2
+            pred_mask = eco.species[:n_org] == 1  # Drosophila predators
+            if np.any(pred_mask & alive_org):
+                sensor_range = eco.morphology[:n_org, _GSR2]
+                prey_prox = eco.prey_proximity[:n_org]
+                prey_nearby = (prey_prox < sensor_range) & pred_mask & alive_org.astype(bool)
+
+                # Prey proximity → boost food signal for predators (prey = food)
+                prey_food_signal = np.where(
+                    prey_nearby,
+                    np.clip((sensor_range - prey_prox) / (sensor_range + 1e-8), 0.0, 1.0) * 30.0,
+                    0.0,
+                )
+                food_start, food_end = self.sensory_channels["food"]
+                food_offsets = np.arange(food_start, food_end)
+                global_food = (org_idx[:, None] * self.n_per + food_offsets[None, :]).ravel()
+                # Add prey proximity signal on top of food signal for predators
+                I_ext_np[global_food] += np.repeat(prey_food_signal, food_end - food_start)
+
+                # Prey direction → inject into chemical channel for predators
+                # (chemical channel = gradient/direction signal)
+                prey_dir = eco.prey_direction[:n_org]
+                dir_signal = np.where(
+                    prey_nearby,
+                    np.sin(prey_dir) * 25.0,
+                    0.0,
+                )
+                chem_start, chem_end = self.sensory_channels["chemical"]
+                chem_offsets = np.arange(chem_start, chem_end)
+                global_chem = (org_idx[:, None] * self.n_per + chem_offsets[None, :]).ravel()
+                I_ext_np[global_chem] += np.repeat(dir_signal, chem_end - chem_start)
+
         # --- Chemical channel enhancement from SensoryWorld gradients ---
         # Add chemical gradient direction signal on top of food-alignment signal.
         # Gradient direction from SensoryWorld tells organisms which way to turn
@@ -527,31 +563,56 @@ class BrainWorld:
                         danger_signal[org_i] + toxin_current, 50.0
                     ) * float(alive_org[org_i])
 
-        # Add predator proximity danger: when a predator is within 5.0 units,
-        # inject signal proportional to closeness. This gives prey neural input
-        # about nearby predators — evolution can wire this to escape behavior.
+        # Predator proximity danger: inject signal proportional to closeness.
+        # Uses sensor_range morphology gene to determine detection radius.
         if hasattr(eco, 'predator_proximity'):
+            from creatures.evolution.morphology import GENE_SENSOR_RANGE
+            sensor_range = eco.morphology[:n_org, GENE_SENSOR_RANGE]  # 1.0 - 10.0
             pred_prox = eco.predator_proximity[:n_org]
-            nearby = pred_prox < 5.0
-            pred_danger = np.where(nearby, (5.0 - pred_prox) / 5.0, 0.0) * 30.0 * alive_org
+            nearby = pred_prox < sensor_range
+            pred_danger = np.where(nearby, (sensor_range - pred_prox) / (sensor_range + 1e-8), 0.0) * 30.0 * alive_org
             danger_signal = np.minimum(danger_signal + pred_danger, 50.0)
 
         danger_start, danger_end = self.sensory_channels["danger"]
+        n_danger = danger_end - danger_start
         danger_offsets = np.arange(danger_start, danger_end)
         global_danger = (org_idx[:, None] * self.n_per + danger_offsets[None, :]).ravel()
-        I_ext_np[global_danger] = np.repeat(danger_signal, danger_end - danger_start)
 
-        # --- Neighbor density signal ---
-        # Count how many other organisms are within radius 3 of each organism.
-        # This is the foundation for social behavior — organisms can "sense"
-        # nearby conspecifics, enabling aggregation, avoidance, and mating.
+        # Bilateral danger encoding: first half = proximity, second half = direction
+        # Direction signal: positive = predator on right, negative = on left
+        # This gives neural networks the information to evolve evasion behavior
+        if n_danger >= 2 and hasattr(eco, 'predator_direction'):
+            mid = n_danger // 2
+            # First half: proximity signal
+            prox_offsets = np.arange(danger_start, danger_start + mid)
+            global_prox = (org_idx[:, None] * self.n_per + prox_offsets[None, :]).ravel()
+            I_ext_np[global_prox] = np.repeat(danger_signal, mid)
+            # Second half: directional signal (signed: right = positive current)
+            dir_offsets = np.arange(danger_start + mid, danger_end)
+            global_dir = (org_idx[:, None] * self.n_per + dir_offsets[None, :]).ravel()
+            pred_dir = eco.predator_direction[:n_org]
+            # Convert relative angle to signed left/right signal
+            # sin(angle) > 0 = predator on right, < 0 = on left
+            dir_signal = np.sin(pred_dir) * 25.0 * alive_org
+            # Only activate when predator is nearby
+            from creatures.evolution.morphology import GENE_SENSOR_RANGE as _GSR
+            sensor_range = eco.morphology[:n_org, _GSR]
+            pred_prox = eco.predator_proximity[:n_org]
+            dir_signal *= (pred_prox < sensor_range).astype(np.float32)
+            I_ext_np[global_dir] = np.repeat(dir_signal, n_danger - mid)
+        else:
+            I_ext_np[global_danger] = np.repeat(danger_signal, n_danger)
+
+        # --- Neighbor sensing: density + heading alignment + direction ---
+        # Rich social sensing enables flocking, herding, and pack hunting to
+        # emerge through evolution. Three signals encoded in the neighbor channel:
+        #   - Density: how many neighbors are nearby (scalar)
+        #   - Heading alignment: are neighbors moving the same direction (scalar)
+        #   - Neighbor direction: where are neighbors relative to heading (signed)
         neighbor_radius = 3.0
         nd_start, nd_end = self.sensory_channels["neighbor_density"]
-        nd_offsets = np.arange(nd_start, nd_end)
-        global_nd = (org_idx[:, None] * self.n_per + nd_offsets[None, :]).ravel()
+        n_nd = nd_end - nd_start
 
-        # Efficient neighbor counting: use a random subsample of alive organisms
-        # as "probe" positions to avoid O(n^2) all-pairs distance computation.
         alive_indices = np.where(alive_org)[0]
         if len(alive_indices) > 1:
             max_probes = min(len(alive_indices), 500)
@@ -562,27 +623,70 @@ class BrainWorld:
             else:
                 probe_idx = alive_indices
 
-            # Distance from each organism to each probe organism
             ox = eco.x[:n_org]
             oy = eco.y[:n_org]
             px = eco.x[probe_idx]
             py = eco.y[probe_idx]
             ddx = ox[:, None] - px[None, :]
             ddy = oy[:, None] - py[None, :]
-            probe_dist = np.sqrt(ddx * ddx + ddy * ddy)
+            probe_dist = np.sqrt(ddx * ddx + ddy * ddy + 1e-12)
 
-            # Count neighbors within radius (exclude self — distance ~0)
-            neighbors_in_range = np.sum(
-                (probe_dist < neighbor_radius) & (probe_dist > 1e-6), axis=1
-            ).astype(np.float32)
+            in_range = (probe_dist < neighbor_radius) & (probe_dist > 1e-6)
+            neighbors_in_range = np.sum(in_range, axis=1).astype(np.float32)
 
-            # Scale by sampling ratio if we subsampled
             if len(alive_indices) > max_probes:
                 neighbors_in_range *= float(len(alive_indices)) / float(max_probes)
 
-            # Normalize to neural current: 0 neighbors = 0, 10+ neighbors = 25 pA
+            # --- Signal 1: Neighbor density ---
             nd_signal = np.clip(neighbors_in_range / 10.0, 0.0, 1.0) * 25.0 * alive_org
-            I_ext_np[global_nd] = np.repeat(nd_signal, nd_end - nd_start)
+
+            # --- Signal 2: Heading alignment (Boids-style) ---
+            # Average heading of nearby organisms vs own heading.
+            # High alignment = neighbors moving same direction (schooling).
+            # Low alignment = chaotic movement (dispersed).
+            probe_heading = eco.heading[probe_idx]
+            # Cosine similarity between own heading and each probe's heading
+            own_h = eco.heading[:n_org]
+            h_diff = probe_heading[None, :] - own_h[:, None]
+            alignment_per_probe = np.cos(h_diff)  # (n_org, n_probes)
+            # Mean alignment over neighbors in range (masked)
+            alignment_sum = np.sum(alignment_per_probe * in_range, axis=1)
+            neighbor_count = np.maximum(neighbors_in_range, 1.0)
+            mean_alignment = alignment_sum / neighbor_count
+            # Scale: -1 (opposite) to +1 (aligned) → 0 to 25 pA
+            alignment_signal = (mean_alignment * 0.5 + 0.5) * 25.0 * alive_org
+
+            # --- Signal 3: Neighbor center-of-mass direction ---
+            # Where is the center of nearby neighbors relative to heading?
+            # Positive = neighbors on right, negative = on left.
+            # This enables evolution of cohesion (steer toward group) or
+            # avoidance (steer away from crowd).
+            weighted_dx = np.sum(-ddx * in_range, axis=1)  # sum of vectors TO neighbors
+            weighted_dy = np.sum(-ddy * in_range, axis=1)
+            neighbor_angle = np.arctan2(weighted_dy, weighted_dx)
+            rel_angle = neighbor_angle - own_h
+            rel_angle = (rel_angle + np.pi) % (2 * np.pi) - np.pi
+            direction_signal = np.sin(rel_angle) * 20.0 * alive_org
+            # Only active when there are neighbors
+            direction_signal *= (neighbors_in_range > 0.5).astype(np.float32)
+
+            # Encode all 3 signals into the neighbor_density channel
+            if n_nd >= 3:
+                # Split channel: density | alignment | direction
+                third = n_nd // 3
+                for sig, start_off, count in [
+                    (nd_signal, nd_start, third),
+                    (alignment_signal, nd_start + third, third),
+                    (direction_signal, nd_start + 2 * third, n_nd - 2 * third),
+                ]:
+                    offsets = np.arange(start_off, start_off + count)
+                    global_neurons = (org_idx[:, None] * self.n_per + offsets[None, :]).ravel()
+                    I_ext_np[global_neurons] = np.repeat(sig, count)
+            else:
+                # Fallback: just density if channel too small
+                nd_offsets = np.arange(nd_start, nd_end)
+                global_nd = (org_idx[:, None] * self.n_per + nd_offsets[None, :]).ravel()
+                I_ext_np[global_nd] = np.repeat(nd_signal, n_nd)
 
         # --- Innate reflex coupling ---
         # Directly inject current into motor neurons proportional to sensory activation.

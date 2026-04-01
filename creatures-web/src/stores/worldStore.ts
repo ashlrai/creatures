@@ -19,6 +19,18 @@ export interface FoodPosition {
   y: number;
 }
 
+/** Active predator-prey chase pair from backend */
+export interface ChaseEvent {
+  px: number; py: number;  // predator position
+  vx: number; vy: number;  // prey (victim) position
+}
+
+/** Kill event for death particle effects */
+export interface KillEvent {
+  x: number; y: number;
+  time: number;  // client timestamp for aging
+}
+
 /** Per-organism neural detail from backend */
 export interface OrganismDetail {
   org_idx: number;
@@ -98,6 +110,10 @@ interface WorldState {
   narratives: any[];
   populationStats: any;
   food: FoodPosition[];
+  /** Active predator-prey chases for visualization */
+  chases: ChaseEvent[];
+  /** Recent kill events for death particle effects */
+  kills: KillEvent[];
   step: number;
 
   // --- Chemotaxis tracking ---
@@ -179,6 +195,8 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   narratives: [],
   populationStats: null,
   food: [],
+  chases: [],
+  kills: [],
   step: 0,
 
   // Chemotaxis
@@ -249,9 +267,22 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     if (msg.stats?.neural_stats) updates.neuralStats = msg.stats.neural_stats;
     if (msg.stats?.total_alive !== undefined) updates.population = msg.stats.total_alive;
     if (msg.events) updates.emergentEvents = msg.events;
-    if (msg.narratives) updates.narratives = msg.narratives;
+    if (msg.narratives && msg.narratives.length > 0) {
+      // Accumulate narratives (don't replace — ticker tracks by index)
+      const prev = get().narratives;
+      updates.narratives = [...prev, ...msg.narratives].slice(-50);
+    }
     if (msg.population_stats) updates.populationStats = msg.population_stats;
     if (msg.food) updates.food = msg.food;
+    if (msg.chases) updates.chases = msg.chases;
+    else if (msg.stats?.active_chases) updates.chases = msg.stats.active_chases;
+    if (msg.kills && msg.kills.length > 0) {
+      // Accumulate kills with client timestamps, keep last 30
+      const now = Date.now();
+      const newKills: KillEvent[] = msg.kills.map((k: any) => ({ x: k.x, y: k.y, time: now }));
+      const prev = get().kills.filter((k) => now - k.time < 2000); // remove old (>2s)
+      updates.kills = [...prev, ...newKills].slice(-30);
+    }
     if (msg.step !== undefined) updates.step = msg.step;
     if (msg.chemotaxis?.chemotaxis_index !== undefined) {
       updates.chemotaxisIndex = msg.chemotaxis.chemotaxis_index;
@@ -296,6 +327,8 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       narratives: [],
       populationStats: null,
       food: [],
+      chases: [],
+      kills: [],
       step: 0,
       chemotaxisIndex: 0,
       meanFoodDistance: 0,
