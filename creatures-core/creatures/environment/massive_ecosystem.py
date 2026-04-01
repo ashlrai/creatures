@@ -147,10 +147,9 @@ class MassiveEcosystem:
         # 3. Food consumption — morphology-based eat radius
         n_eaten = self._eat()
 
-        # 3b. Predation — disabled for now to let evolution work on food-seeking first.
-        # Re-enable once base chemotaxis is evolved and prey can survive.
-        # n_predation = self._predation() if max_gen >= 10 else 0
-        n_predation = 0
+        # 3b. Predation activates after generation 15 — both species need time to establish
+        max_gen = int(self.generation[self.alive].max()) if self.alive.any() else 0
+        n_predation = self._predation() if max_gen >= 15 else 0
 
         # 4. Death — energy depletion + aging
         newly_dead = alive & (self.energy <= 0)
@@ -503,6 +502,16 @@ class MassiveEcosystem:
             killers = pred_batch[can_kill]
             victim_local = nearest_prey_local[can_kill]
             victim_global = current_prey[victim_local]
+
+            # Prey escapes if it's faster than the predator (evolved speed advantage)
+            prey_speed = compute_speed(self.morphology[victim_global])
+            pred_speed = compute_speed(self.morphology[killers])
+            # Only kill if predator is at least 80% as fast as prey
+            can_catch = pred_speed >= (prey_speed * 0.8)
+            if not np.any(can_catch):
+                continue
+            killers = killers[can_catch]
+            victim_global = victim_global[can_catch]
 
             # Each prey can only be killed once per batch — first predator wins
             unique_victims, first_killer_idx = np.unique(victim_global, return_index=True)

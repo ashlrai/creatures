@@ -792,11 +792,32 @@ async def _massive_run_loop(bw_id: str) -> None:
                             max_gen = int(eco.generation[eco.alive].max()) if n_alive > 0 else 0
                             n_lineages = len(np.unique(eco.lineage_id[eco.alive])) if n_alive > 0 else 0
 
+                            # Include morphology evolution data for richer narration
+                            morph_info = ""
+                            if hasattr(eco, 'morphology') and n_alive > 0:
+                                alive_m = eco.morphology[eco.alive]
+                                morph_info = (
+                                    f" Mean body_length: {alive_m[:, 0].mean():.1f}, "
+                                    f"limb_count: {alive_m[:, 4].mean():.1f}, "
+                                    f"speed_mult: {alive_m[:, 8].mean():.2f}."
+                                )
+
+                            # Chemotaxis data
+                            ci_info = ""
+                            if hasattr(bw, 'get_chemotaxis_index'):
+                                try:
+                                    ci = bw.get_chemotaxis_index()
+                                    rel = ci.get('relative_chemotaxis', 0)
+                                    if abs(rel) > 0.05:
+                                        ci_info = f" Food-seeking efficiency: {rel:+.0%} vs random walk."
+                                except Exception:
+                                    pass
+
                             quick_prompt = (
-                                f"In ONE sentence (max 30 words), describe the most notable thing happening "
-                                f"in this ecosystem. Population: {n_alive}, generation: {max_gen}, "
-                                f"lineages: {n_lineages}, births: {eco._total_born}, deaths: {eco._total_died}, "
-                                f"food: {int(eco.food_alive.sum())}."
+                                f"In ONE sentence (max 40 words), describe the most notable evolutionary "
+                                f"event in this 3D ecosystem. Population: {n_alive}, generation: {max_gen}, "
+                                f"lineages: {n_lineages}, births: {eco._total_born}, deaths: {eco._total_died}."
+                                f"{morph_info}{ci_info}"
                             )
                             quick_response = await god._call_llm(quick_prompt)
                             pending_narratives.append({
@@ -819,6 +840,17 @@ async def _massive_run_loop(bw_id: str) -> None:
                     recent_events = pending_events[-5:] if pending_events else []
                     event_descriptions = [str(e.get('description', e.get('behavior_type', ''))) for e in recent_events]
 
+                    # Include morphology stats for the God Agent
+                    morph_stats = {}
+                    if hasattr(eco, 'morphology') and n_alive > 0:
+                        alive_m = eco.morphology[eco.alive]
+                        morph_stats = {
+                            "mean_body_length": float(alive_m[:, 0].mean()),
+                            "mean_limb_count": float(alive_m[:, 4].mean()),
+                            "mean_speed_mult": float(alive_m[:, 8].mean()),
+                            "body_length_std": float(alive_m[:, 0].std()),
+                        }
+
                     god.observe(
                         generation_stats={
                             "step": step_count,
@@ -828,6 +860,7 @@ async def _massive_run_loop(bw_id: str) -> None:
                             "max_generation": pop_stats.get("max_generation", 0),
                             "n_lineages": pop_stats.get("n_lineages", 0),
                             "mean_age": pop_stats.get("mean_age", 0),
+                            **morph_stats,
                         },
                         population_summary={
                             "total_alive": pop_stats.get("alive", n_alive),

@@ -147,7 +147,15 @@ export function OrganismInstances({
         r = _color.r;
         g = _color.g;
         b = _color.b;
+      } else if (org.color_hue !== undefined) {
+        // Evolved color from morphology — visible species differentiation
+        const hue = org.color_hue / 360;
+        _color.setHSL(hue, 0.6, 0.3 + e * 0.4);
+        r = _color.r;
+        g = _color.g;
+        b = _color.b;
       } else {
+        // Fallback to species-based colors
         const dyingR = 0.7, dyingG = 0.08, dyingB = 0.05;
         const thriveR = 1.4, thriveG = 1.3, thriveB = 0.9;
         const baseR = isCelegans ? 0.15 : 0.9;
