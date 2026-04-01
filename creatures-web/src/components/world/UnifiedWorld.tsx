@@ -354,16 +354,21 @@ function HudOverlay() {
                 color: 'rgba(140,170,200,0.4)',
                 textTransform: 'uppercase',
                 letterSpacing: 1,
-                marginBottom: 4,
+                marginBottom: 2,
               }}
             >
-              Evolution
+              Gen
             </div>
-            <div>
-              Generation:{' '}
-              <span style={{ color: '#ffcc88' }}>
-                {populationStats.max_generation}
-              </span>
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 700,
+                color: '#00d4ff',
+                lineHeight: 1.1,
+                marginBottom: 6,
+              }}
+            >
+              {populationStats.max_generation}
             </div>
             <div>
               Lineages:{' '}

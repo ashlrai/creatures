@@ -527,6 +527,15 @@ class BrainWorld:
                         danger_signal[org_i] + toxin_current, 50.0
                     ) * float(alive_org[org_i])
 
+        # Add predator proximity danger: when a predator is within 5.0 units,
+        # inject signal proportional to closeness. This gives prey neural input
+        # about nearby predators — evolution can wire this to escape behavior.
+        if hasattr(eco, 'predator_proximity'):
+            pred_prox = eco.predator_proximity[:n_org]
+            nearby = pred_prox < 5.0
+            pred_danger = np.where(nearby, (5.0 - pred_prox) / 5.0, 0.0) * 30.0 * alive_org
+            danger_signal = np.minimum(danger_signal + pred_danger, 50.0)
+
         danger_start, danger_end = self.sensory_channels["danger"]
         danger_offsets = np.arange(danger_start, danger_end)
         global_danger = (org_idx[:, None] * self.n_per + danger_offsets[None, :]).ravel()
