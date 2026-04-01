@@ -16,6 +16,7 @@ import {
   SpeciesTerritories,
 } from './PopulationLayer';
 import { ColonyLayer } from './ColonyLayer';
+import { ProceduralOrganismInstances } from './ProceduralOrganism';
 import { OrganismFocus } from './OrganismFocus';
 import { ContextSidebar } from './ContextSidebar';
 import { WorldCreator } from '../ui/WorldCreator';
@@ -129,10 +130,16 @@ function SceneContents() {
             </>
           )}
 
-          {/* Colony Layer — visible at mid zoom */}
+          {/* Colony Layer — simplified meshes at mid zoom */}
           <ColonyLayer
             organisms={organisms}
-            visible={zoomBand === 'colony' || zoomBand === 'organism'}
+            visible={zoomBand === 'colony'}
+          />
+
+          {/* Procedural Organisms — unique 3D bodies at organism zoom */}
+          <ProceduralOrganismInstances
+            organisms={organisms.slice(0, 20)}
+            visible={zoomBand === 'organism'}
           />
 
           {/* Organism Focus — visible when zoomed into a specific organism */}
