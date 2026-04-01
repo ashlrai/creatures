@@ -10,7 +10,7 @@ export interface ShareableState {
   modifications: Array<{ type: string; neuronIds: string[] }>;
   parameters: { tau_m?: number; tau_syn?: number; weight_scale?: number };
   drugState: { compound?: string; dose?: number } | null;
-  appMode: 'sim' | 'evo' | 'eco';
+  appMode: 'sim' | 'evo' | 'eco' | 'museum';
   researchMode: boolean;
 }
 

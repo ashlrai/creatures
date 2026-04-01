@@ -67,6 +67,7 @@ import { SharedView, isShareRoute } from './components/ui/SharedView';
 import { WorldCreator } from './components/ui/WorldCreator';
 import { CoCreatorPanel } from './components/ui/CoCreatorPanel';
 import { DeepEvolutionPanel } from './components/ui/DeepEvolutionPanel';
+import { Museum } from './components/museum/Museum';
 import {
   NeuralActivitySkeleton,
   InteractionSkeleton,
@@ -227,7 +228,13 @@ export default function App() {
   // Shared view detection -- if the URL hash matches a share route, show SharedView
   const [showSharedView, setShowSharedView] = useState(() => isShareRoute(window.location.hash));
 
-  const [appMode, setAppMode] = useState<'sim' | 'evo' | 'eco'>('sim');
+  const [appMode, setAppMode] = useState<'sim' | 'evo' | 'eco' | 'museum'>(() => {
+    const hash = window.location.hash.replace(/^#\/?/, '');
+    if (hash.startsWith('app/museum') || hash === 'museum') return 'museum';
+    if (hash.startsWith('app/eco') || hash === 'eco') return 'eco';
+    if (hash.startsWith('app/evo') || hash === 'evo') return 'evo';
+    return 'museum'; // default to museum
+  });
   const [lesionInput, setLesionInput] = useState('');
   const [stimInput, setStimInput] = useState('');
   const [notification, setNotification] = useState<string | null>(null);
@@ -450,10 +457,13 @@ export default function App() {
     compare: showConnectomeComparison,
   }), [appMode, currentOrganism, showConnectomeComparison]);
 
-  // Manually set hash for eco mode
+  // Manually set hash for eco/museum mode
   useEffect(() => {
     if (appMode === 'eco' && window.location.hash !== '#/app/eco') {
       window.location.hash = '#/app/eco';
+    }
+    if (appMode === 'museum' && window.location.hash !== '#/app/museum') {
+      window.location.hash = '#/app/museum';
     }
   }, [appMode]);
 
@@ -541,12 +551,25 @@ export default function App() {
       if (path === 'app/eco' || path === 'eco') {
         setAppMode('eco');
       }
+      if (path === 'app/museum' || path === 'museum') {
+        setAppMode('museum');
+      }
     };
     window.addEventListener('hashchange', handler);
     return () => window.removeEventListener('hashchange', handler);
   }, []);
 
   useHashRouter(hashState, handleHashChangeWithOrganism, handleShareState);
+
+  // Listen for mode-switch events dispatched from Museum (which hides the normal header)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const mode = (e as CustomEvent).detail?.mode;
+      if (mode) setAppMode(mode);
+    };
+    window.addEventListener('neurevo-mode', handler);
+    return () => window.removeEventListener('neurevo-mode', handler);
+  }, []);
 
   // --- Massive brain-world WebSocket connection ---
   useEffect(() => {
@@ -763,8 +786,8 @@ export default function App() {
         />
       )}
 
-      {/* Neuron hover tooltip + detail panel — rendered outside Canvas, hidden in eco mode */}
-      {appMode !== 'eco' && (
+      {/* Neuron hover tooltip + detail panel — rendered outside Canvas, hidden in eco/museum mode */}
+      {appMode !== 'eco' && appMode !== 'museum' && (
         <>
           <NeuronTooltip />
           <NeuronDetailPanel />
@@ -775,7 +798,7 @@ export default function App() {
       )}
 
       {/* Welcome overlay — shown on first visit */}
-      {showWelcome && (
+      {showWelcome && appMode !== 'museum' && (
         <div className="welcome-overlay">
           <div className="welcome-card">
             <div className="welcome-title">Neurevo</div>
@@ -819,8 +842,8 @@ export default function App() {
         />
       )}
 
-      {/* Header */}
-      <header className="app-header">
+      {/* Header — hidden in museum mode (Museum has its own) */}
+      <header className="app-header" style={appMode === 'museum' ? { display: 'none' } : undefined}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.3px',
             background: 'linear-gradient(135deg, #e0eaf0, #88ccff)',
@@ -845,6 +868,13 @@ export default function App() {
               onClick={() => setAppMode('eco')}
             >
               World
+            </button>
+            <button
+              className={`mode-switch-btn${appMode === 'museum' ? ' active' : ''}`}
+              onClick={() => setAppMode('museum')}
+              style={appMode === 'museum' ? { background: 'rgba(255, 180, 50, 0.2)', borderColor: 'rgba(255, 180, 50, 0.4)' } : undefined}
+            >
+              Museum
             </button>
           </div>
           {/* Organism selector — only relevant in sim/evo modes */}
@@ -887,8 +917,8 @@ export default function App() {
 
       {/* Main content */}
       <div className="app-content">
-        {/* Left sidebar — hidden in eco mode (UnifiedWorld has its own) */}
-        {appMode !== 'eco' && (
+        {/* Left sidebar — hidden in eco/museum mode */}
+        {appMode !== 'eco' && appMode !== 'museum' && (
         <div className={`sidebar${leftOpen ? '' : ' collapsed'}`} style={leftOpen ? { width: leftWidth } : undefined}>
           {leftOpen && <div className="sidebar-resize-handle sidebar-resize-handle-left" onMouseDown={startResizeLeft} />}
           {leftOpen && (false ? (
@@ -1265,7 +1295,9 @@ export default function App() {
               onDrug={handleDrug}
             />
           )}
-          {appMode === 'eco' ? (
+          {appMode === 'museum' ? (
+            <Museum />
+          ) : appMode === 'eco' ? (
             <UnifiedWorld notify={notify} />
           ) : appMode === 'evo' ? (
             <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -1289,8 +1321,8 @@ export default function App() {
           )}
         </div>
 
-        {/* Right sidebar — hidden in eco mode (UnifiedWorld has its own) */}
-        {appMode !== 'eco' && (
+        {/* Right sidebar — hidden in eco/museum mode */}
+        {appMode !== 'eco' && appMode !== 'museum' && (
         <div className={`sidebar sidebar-right${rightOpen ? '' : ' collapsed'}`} style={rightOpen ? { width: rightWidth } : undefined}>
           {rightOpen && <div className="sidebar-resize-handle sidebar-resize-handle-right" onMouseDown={startResizeRight} />}
           {rightOpen && (false ? (
@@ -1392,7 +1424,7 @@ export default function App() {
       </div>
 
       {/* Persistent interaction hint — disappears on first interaction, hidden in eco mode */}
-      {showHint && !hasInteracted && appMode !== 'eco' && (
+      {showHint && !hasInteracted && appMode !== 'eco' && appMode !== 'museum' && (
         <div className="interaction-hint-persistent" onClick={markInteracted}>
           Touch the {organismLabel} &bull; Lesion neurons &bull; Test drugs &bull; Switch to Evolution mode
         </div>
@@ -1452,8 +1484,8 @@ export default function App() {
         </div>
       )}
 
-      {/* Bottom bar: waveform or generation timeline — hidden in eco mode (UnifiedWorld has its own) */}
-      {appMode !== 'eco' && (
+      {/* Bottom bar: waveform or generation timeline — hidden in eco/museum mode */}
+      {appMode !== 'eco' && appMode !== 'museum' && (
         <div className="bottom-bar">
           {appMode === 'evo' ? (
             <GenerationTimeline />

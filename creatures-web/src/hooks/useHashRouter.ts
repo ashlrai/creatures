@@ -80,6 +80,11 @@ export function useHashRouter(
     const hash = window.location.hash;
     if (tryHandleShareRoute(hash, onShareState)) return;
 
+    // Don't override eco/museum mode from hash
+    const path = hash.replace(/^#\/?/, '');
+    if (path.startsWith('app/eco') || path === 'eco') return;
+    if (path.startsWith('app/museum') || path === 'museum') return;
+
     const initial = parseHash(hash);
     if (initial) {
       onHashChange(initial);
@@ -92,6 +97,11 @@ export function useHashRouter(
   useEffect(() => {
     // Don't overwrite a share state URL while it's being applied
     if (isShareStateRoute(window.location.hash)) return;
+
+    // Don't overwrite eco/museum hashes — those modes manage their own hashes
+    const currentHash = window.location.hash.replace(/^#\/?/, '');
+    if (currentHash.startsWith('app/eco') || currentHash === 'eco') return;
+    if (currentHash.startsWith('app/museum') || currentHash === 'museum') return;
 
     const newHash = buildHash(currentState);
     if (window.location.hash !== newHash) {
