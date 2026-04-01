@@ -1,5 +1,6 @@
 // ============================================================================
 // EraView — shows a specific era with events, people, artifacts, concepts
+// Features a dramatic hero banner with era-specific theming
 // ============================================================================
 
 import { useState, useMemo } from 'react';
@@ -12,52 +13,144 @@ import {
   getConceptsForEra,
 } from '../../data/halls/index';
 import { DOMAINS } from '../../data/knowledge-graph';
+import { getEraTheme } from '../../data/era-images';
 import type { HistoricalEvent, HistoricalPerson, Artifact, Concept, Significance } from '../../data/knowledge-graph';
 
 // ── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = {
-  container: {
-    padding: '0 40px 80px',
+  outerWrap: {
     maxWidth: 1200,
     margin: '0 auto',
   },
-  header: {
-    padding: '48px 0 36px',
-    borderBottom: '1px solid rgba(255,255,255,0.06)',
-    marginBottom: 32,
+  // Hero banner — full width, dramatic gradient
+  heroBanner: {
+    position: 'relative' as const,
+    overflow: 'hidden',
+    borderRadius: '0 0 24px 24px',
+    marginBottom: 40,
   },
-  backBtn: {
+  heroGradient: {
+    padding: '72px 48px 56px',
+    position: 'relative' as const,
+    zIndex: 1,
+  },
+  heroPattern: {
+    position: 'absolute' as const,
+    inset: 0,
+    zIndex: 0,
+    pointerEvents: 'none' as const,
+  },
+  heroSymbol: {
+    position: 'absolute' as const,
+    right: 48,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    fontSize: 180,
+    opacity: 0.06,
+    lineHeight: 1,
+    pointerEvents: 'none' as const,
+    zIndex: 0,
+    userSelect: 'none' as const,
+  },
+  heroBackBtn: {
     display: 'inline-flex',
     alignItems: 'center',
     gap: 6,
-    padding: '6px 12px',
-    borderRadius: 6,
-    border: '1px solid rgba(255,255,255,0.08)',
-    background: 'rgba(255,255,255,0.03)',
-    color: 'rgba(255,255,255,0.5)',
+    padding: '7px 14px',
+    borderRadius: 8,
+    border: '1px solid rgba(255,255,255,0.15)',
+    background: 'rgba(0,0,0,0.25)',
+    backdropFilter: 'blur(8px)',
+    color: 'rgba(255,255,255,0.7)',
     fontSize: 12,
-    cursor: 'pointer',
-    marginBottom: 20,
-    fontFamily: 'inherit',
-    transition: 'all 0.15s',
-  },
-  eraName: {
-    fontSize: 36,
-    fontWeight: 700,
-    letterSpacing: '-0.03em',
-    marginBottom: 6,
-  },
-  eraYears: {
-    fontSize: 15,
     fontWeight: 500,
-    marginBottom: 12,
+    cursor: 'pointer',
+    marginBottom: 28,
+    fontFamily: 'inherit',
+    transition: 'all 0.2s',
+    position: 'relative' as const,
+    zIndex: 2,
   },
-  eraDesc: {
+  heroName: {
+    fontSize: 48,
+    fontWeight: 800,
+    letterSpacing: '-0.04em',
+    lineHeight: 1.05,
+    marginBottom: 12,
+    position: 'relative' as const,
+    zIndex: 2,
+    fontFamily: '"Georgia", "Times New Roman", serif',
+  },
+  heroYears: {
+    fontSize: 16,
+    fontWeight: 600,
+    letterSpacing: '0.02em',
+    marginBottom: 6,
+    position: 'relative' as const,
+    zIndex: 2,
+  },
+  heroTagline: {
+    fontSize: 18,
+    fontWeight: 400,
+    fontStyle: 'italic' as const,
+    opacity: 0.7,
+    marginBottom: 16,
+    position: 'relative' as const,
+    zIndex: 2,
+    fontFamily: '"Georgia", "Times New Roman", serif',
+  },
+  heroDesc: {
     fontSize: 14,
-    lineHeight: 1.7,
-    color: 'rgba(255,255,255,0.5)',
-    maxWidth: 700,
+    lineHeight: 1.75,
+    maxWidth: 640,
+    position: 'relative' as const,
+    zIndex: 2,
+    opacity: 0.75,
+  },
+  // Bottom fade from hero to dark bg
+  heroFade: {
+    position: 'absolute' as const,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 80,
+    background: 'linear-gradient(to bottom, transparent, #0a0a0f)',
+    zIndex: 1,
+    pointerEvents: 'none' as const,
+  },
+  // Content area
+  content: {
+    padding: '0 40px 80px',
+  },
+  // Stat strip
+  statStrip: {
+    display: 'flex',
+    gap: 24,
+    marginBottom: 32,
+    padding: '16px 20px',
+    borderRadius: 12,
+    border: '1px solid rgba(255,255,255,0.06)',
+    background: 'rgba(255,255,255,0.02)',
+  },
+  statItem: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center' as const,
+    gap: 4,
+    flex: 1,
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: 700,
+    letterSpacing: '-0.02em',
+  },
+  statLabel: {
+    fontSize: 11,
+    fontWeight: 500,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.06em',
+    color: 'rgba(255,255,255,0.35)',
   },
   tabs: {
     display: 'flex',
@@ -102,6 +195,15 @@ const styles = {
     padding: '20px 22px',
     cursor: 'pointer',
     transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+    position: 'relative' as const,
+    overflow: 'hidden' as const,
+  },
+  cardAccentBar: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 3,
   },
   eventTitle: {
     fontSize: 15,
@@ -141,6 +243,20 @@ const styles = {
     padding: '20px 22px',
     cursor: 'pointer',
     transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+    position: 'relative' as const,
+    overflow: 'hidden' as const,
+  },
+  personInitial: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 20,
+    fontWeight: 700,
+    fontFamily: '"Georgia", "Times New Roman", serif',
+    flexShrink: 0,
   },
   personName: {
     fontSize: 15,
@@ -197,6 +313,8 @@ const styles = {
     padding: '20px 22px',
     cursor: 'pointer',
     transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+    position: 'relative' as const,
+    overflow: 'hidden' as const,
   },
 };
 
@@ -213,12 +331,12 @@ function getDomainById(id: string) {
 
 function formatYears(years: [number, number]) {
   const fmt = (y: number) => (y < 0 ? `${Math.abs(y)} BCE` : `${y}`);
-  return `${fmt(years[0])} - ${fmt(years[1])}`;
+  return `${fmt(years[0])} \u2014 ${fmt(years[1])}`;
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────
 
-function EventCard({ event, accentColor }: { event: HistoricalEvent; accentColor: string }) {
+function EventCard({ event, accentColor, accentGradient }: { event: HistoricalEvent; accentColor: string; accentGradient: string }) {
   const { navigate } = useMuseumStore();
   return (
     <div
@@ -239,6 +357,7 @@ function EventCard({ event, accentColor }: { event: HistoricalEvent; accentColor
         el.style.boxShadow = 'none';
       }}
     >
+      <div style={{ ...styles.cardAccentBar, background: accentGradient }} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <span
           style={{
@@ -277,10 +396,10 @@ function EventCard({ event, accentColor }: { event: HistoricalEvent; accentColor
   );
 }
 
-function PersonCard({ person, accentColor }: { person: HistoricalPerson; accentColor: string }) {
+function PersonCard({ person, accentColor, accentGradient }: { person: HistoricalPerson; accentColor: string; accentGradient: string }) {
   const { navigate } = useMuseumStore();
   const lifespan = person.diedYear
-    ? `${person.born} - ${person.died}`
+    ? `${person.born} \u2013 ${person.died}`
     : `b. ${person.born}`;
 
   return (
@@ -302,13 +421,28 @@ function PersonCard({ person, accentColor }: { person: HistoricalPerson; accentC
         el.style.boxShadow = 'none';
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <div style={styles.personName}>{person.name}</div>
-        {person.isPlayable && (
-          <span style={styles.playableBadge}>Chat Available</span>
-        )}
+      <div style={{ ...styles.cardAccentBar, background: accentGradient }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 10 }}>
+        <div
+          style={{
+            ...styles.personInitial,
+            background: `${accentColor}18`,
+            color: accentColor,
+            border: `1px solid ${accentColor}30`,
+          }}
+        >
+          {person.name.charAt(0)}
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={styles.personName}>{person.name}</div>
+            {person.isPlayable && (
+              <span style={styles.playableBadge}>Chat Available</span>
+            )}
+          </div>
+          <div style={styles.personDates}>{lifespan} \u00B7 {person.nationality}</div>
+        </div>
       </div>
-      <div style={styles.personDates}>{lifespan} · {person.nationality}</div>
       <div style={styles.personRoles}>
         {person.roles.map((role, i) => (
           <span key={i} style={styles.rolePill}>{role}</span>
@@ -321,7 +455,7 @@ function PersonCard({ person, accentColor }: { person: HistoricalPerson; accentC
   );
 }
 
-function ArtifactCard({ artifact, accentColor }: { artifact: Artifact; accentColor: string }) {
+function ArtifactCard({ artifact, accentColor, accentGradient }: { artifact: Artifact; accentColor: string; accentGradient: string }) {
   const { navigate } = useMuseumStore();
   return (
     <div
@@ -342,6 +476,7 @@ function ArtifactCard({ artifact, accentColor }: { artifact: Artifact; accentCol
         el.style.boxShadow = 'none';
       }}
     >
+      <div style={{ ...styles.cardAccentBar, background: accentGradient }} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.06em', color: accentColor, opacity: 0.7 }}>
           {artifact.type.replace('-', ' ')}
@@ -359,7 +494,7 @@ function ArtifactCard({ artifact, accentColor }: { artifact: Artifact; accentCol
   );
 }
 
-function ConceptCard({ concept, accentColor }: { concept: Concept; accentColor: string }) {
+function ConceptCard({ concept, accentColor, accentGradient }: { concept: Concept; accentColor: string; accentGradient: string }) {
   return (
     <div
       style={styles.conceptCard}
@@ -378,6 +513,7 @@ function ConceptCard({ concept, accentColor }: { concept: Concept; accentColor: 
         el.style.boxShadow = 'none';
       }}
     >
+      <div style={{ ...styles.cardAccentBar, background: accentGradient }} />
       <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: '#e8e6e3' }}>{concept.name}</div>
       <div style={{ fontSize: 12, lineHeight: 1.6, color: 'rgba(255,255,255,0.45)' }}>{concept.description}</div>
       <div style={{ marginTop: 10 }}>
@@ -426,6 +562,7 @@ export function EraView() {
     );
   }
 
+  const theme = getEraTheme(era.id);
   const accentColor = era.color;
 
   const tabs: { key: TabKey; label: string; count: number }[] = [
@@ -436,58 +573,95 @@ export function EraView() {
   ];
 
   return (
-    <div style={styles.container}>
-      {/* Header */}
-      <div style={styles.header}>
-        <button
-          style={styles.backBtn}
-          onClick={goBack}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)';
-            (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.8)';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)';
-            (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)';
-          }}
-        >
-          &larr; Back
-        </button>
-        <div style={{ ...styles.eraName, color: '#e8e6e3' }}>{era.name}</div>
-        <div style={{ ...styles.eraYears, color: accentColor }}>{formatYears(era.years)} &middot; {era.region}</div>
-        <div style={styles.eraDesc}>{era.description}</div>
-      </div>
+    <div style={styles.outerWrap}>
+      {/* ── Hero Banner ── */}
+      <div style={styles.heroBanner}>
+        <div style={{ ...styles.heroGradient, background: theme.gradient }}>
+          {/* Decorative pattern overlay */}
+          {theme.pattern && (
+            <div style={{ ...styles.heroPattern, background: theme.pattern }} />
+          )}
+          {/* Large decorative symbol */}
+          <div style={{ ...styles.heroSymbol, color: theme.palette.text }}>
+            {theme.symbol}
+          </div>
 
-      {/* Tabs */}
-      <div style={styles.tabs}>
-        {tabs.map(t => (
           <button
-            key={t.key}
-            style={{
-              ...styles.tab,
-              ...(activeTab === t.key ? styles.tabActive : {}),
-              borderBottomColor: activeTab === t.key ? accentColor : 'transparent',
-            }}
-            onClick={() => setActiveTab(t.key)}
+            style={styles.heroBackBtn}
+            onClick={goBack}
             onMouseEnter={(e) => {
-              if (activeTab !== t.key) (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.7)';
+              (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.45)';
+              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.3)';
+              (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.95)';
             }}
             onMouseLeave={(e) => {
-              if (activeTab !== t.key) (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.4)';
+              (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.25)';
+              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)';
+              (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.7)';
             }}
           >
-            {t.label}
-            <span style={styles.tabCount}>{t.count}</span>
+            &larr; Back to Museum
           </button>
-        ))}
+
+          <div style={{ ...styles.heroName, color: theme.palette.text }}>
+            {era.name}
+          </div>
+          <div style={{ ...styles.heroYears, color: theme.palette.accent }}>
+            {formatYears(era.years)} &middot; {era.region}
+          </div>
+          <div style={{ ...styles.heroTagline, color: theme.palette.text }}>
+            {theme.tagline}
+          </div>
+          <div style={{ ...styles.heroDesc, color: theme.palette.text }}>
+            {era.description}
+          </div>
+        </div>
+        <div style={styles.heroFade} />
       </div>
 
-      {/* Grid */}
-      <div style={styles.grid}>
-        {activeTab === 'events' && events.map(e => <EventCard key={e.id} event={e} accentColor={accentColor} />)}
-        {activeTab === 'people' && people.map(p => <PersonCard key={p.id} person={p} accentColor={accentColor} />)}
-        {activeTab === 'artifacts' && artifacts.map(a => <ArtifactCard key={a.id} artifact={a} accentColor={accentColor} />)}
-        {activeTab === 'concepts' && concepts.map(c => <ConceptCard key={c.id} concept={c} accentColor={accentColor} />)}
+      {/* ── Content ── */}
+      <div style={styles.content}>
+        {/* Stat strip */}
+        <div style={styles.statStrip}>
+          {tabs.map(t => (
+            <div key={t.key} style={styles.statItem}>
+              <div style={{ ...styles.statNumber, color: accentColor }}>{t.count}</div>
+              <div style={styles.statLabel}>{t.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Tabs */}
+        <div style={styles.tabs}>
+          {tabs.map(t => (
+            <button
+              key={t.key}
+              style={{
+                ...styles.tab,
+                ...(activeTab === t.key ? styles.tabActive : {}),
+                borderBottomColor: activeTab === t.key ? accentColor : 'transparent',
+              }}
+              onClick={() => setActiveTab(t.key)}
+              onMouseEnter={(e) => {
+                if (activeTab !== t.key) (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.7)';
+              }}
+              onMouseLeave={(e) => {
+                if (activeTab !== t.key) (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.4)';
+              }}
+            >
+              {t.label}
+              <span style={styles.tabCount}>{t.count}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Grid */}
+        <div style={styles.grid}>
+          {activeTab === 'events' && events.map(e => <EventCard key={e.id} event={e} accentColor={accentColor} accentGradient={theme.accentGradient} />)}
+          {activeTab === 'people' && people.map(p => <PersonCard key={p.id} person={p} accentColor={accentColor} accentGradient={theme.accentGradient} />)}
+          {activeTab === 'artifacts' && artifacts.map(a => <ArtifactCard key={a.id} artifact={a} accentColor={accentColor} accentGradient={theme.accentGradient} />)}
+          {activeTab === 'concepts' && concepts.map(c => <ConceptCard key={c.id} concept={c} accentColor={accentColor} accentGradient={theme.accentGradient} />)}
+        </div>
       </div>
     </div>
   );
