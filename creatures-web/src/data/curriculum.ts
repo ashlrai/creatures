@@ -1,4 +1,5 @@
 import type { Epoch, Quest } from './knowledge-graph';
+import { MASTERY_LEVELS } from './knowledge-graph';
 
 // ============================================================================
 // The Guided Experiential Curriculum
@@ -1257,7 +1258,7 @@ export function getAvailableEpochs(completedEpochIds: Set<string>): Epoch[] {
 }
 
 export function calculateLevel(totalXp: number): { level: number; title: string; nextLevelXp: number; progress: number } {
-  const { MASTERY_LEVELS } = require('./knowledge-graph');
+  // MASTERY_LEVELS imported at top of file
   let currentLevel = MASTERY_LEVELS[0];
   for (const ml of MASTERY_LEVELS) {
     if (totalXp >= ml.xpRequired) currentLevel = ml;
