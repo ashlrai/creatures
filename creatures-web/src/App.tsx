@@ -977,7 +977,7 @@ export default function App() {
                     </button>
                     {massiveId && (
                       <div style={{ fontSize: 10, color: 'var(--text-label)', marginTop: 4 }}>
-                        ID: {massiveId.slice(0, 12)}...
+                        ID: {massiveId!.slice(0, 12)}...
                       </div>
                     )}
                   </div>
@@ -1047,7 +1047,7 @@ export default function App() {
                     </button>
                     {ecosystemId && (
                       <div style={{ fontSize: 10, color: 'var(--text-label)', marginBottom: 4 }}>
-                        ID: {ecosystemId.slice(0, 8)}...
+                        ID: {ecosystemId!.slice(0, 8)}...
                       </div>
                     )}
                   </div>
@@ -1332,7 +1332,7 @@ export default function App() {
                 {ecoScale === 'massive' ? (
                   <>
                     <p style={{ margin: '0 0 8px' }}>Massive-scale brain-world with <span style={{ color: 'var(--accent-cyan)' }}>spiking neural networks</span> driving every organism.</p>
-                    <p style={{ margin: '0 0 8px' }}>Each organism has <span style={{ color: 'var(--accent-magenta)' }}>{massiveNeuralStats?.neurons_per_organism ?? '...'} neurons</span> connected by <span style={{ color: 'var(--accent-amber)' }}>{massiveNeuralStats ? massiveNeuralStats.total_synapses.toLocaleString() : '...'} synapses</span>.</p>
+                    <p style={{ margin: '0 0 8px' }}>Each organism has <span style={{ color: 'var(--accent-magenta)' }}>{massiveNeuralStats?.neurons_per_organism ?? '...'} neurons</span> connected by <span style={{ color: 'var(--accent-amber)' }}>{massiveNeuralStats?.total_synapses.toLocaleString() ?? '...'} synapses</span>.</p>
                     <p style={{ margin: '0 0 8px' }}>World: <span style={{ color: 'var(--accent-green)' }}>{massiveWorldType.replace(/_/g, ' ')}</span></p>
                     {massiveEmergent.length > 0 && (
                       <p style={{ margin: '0 0 8px', color: 'var(--accent-magenta)' }}>

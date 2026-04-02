@@ -4,7 +4,7 @@ import type { CharacterProfile, CharacterLifeStage } from '../data/knowledge-gra
 
 // ============================================================================
 // Character AI — builds system prompts and calls LLM for living characters
-// Priority: Ollama (local, free) → xAI Grok (cloud, paid)
+// Priority: Ollama (local, free) → xAI Grok (client key) → Vercel proxy (cloud)
 // ============================================================================
 
 // Ollama runs locally on port 11434 by default (OpenAI-compatible API)
@@ -13,6 +13,9 @@ const OLLAMA_MODEL = ((import.meta as any).env?.VITE_OLLAMA_MODEL as string) || 
 
 const XAI_URL = 'https://api.x.ai/v1/chat/completions';
 const XAI_MODEL = 'grok-4-1-fast-reasoning';
+
+// Vercel Edge Function proxy — uses server-side API key, available in production
+const VERCEL_PROXY_URL = '/api/chat';
 
 function getXaiKey(): string {
   return ((import.meta as any).env?.VITE_XAI_API_KEY as string) ?? '';
@@ -34,14 +37,30 @@ async function detectOllama(): Promise<boolean> {
   }
 }
 
+async function detectVercelProxy(): Promise<boolean> {
+  try {
+    const res = await fetch(VERCEL_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'ping' }], max_tokens: 1 }),
+      signal: AbortSignal.timeout(5000),
+    });
+    // 200 = proxy works, 500 with "not configured" = proxy exists but no key
+    return res.ok || res.status !== 404;
+  } catch {
+    return false;
+  }
+}
+
 let _ollamaAvailable: boolean | null = null;
+let _proxyAvailable: boolean | null = null;
 
 async function getEndpoint(): Promise<LLMEndpoint> {
   // Check Ollama availability (cache result)
   if (_ollamaAvailable === null) {
     _ollamaAvailable = await detectOllama();
     if (_ollamaAvailable) console.log('[CharacterAPI] Ollama detected — using local LLM');
-    else console.log('[CharacterAPI] Ollama not running, checking xAI...');
+    else console.log('[CharacterAPI] Ollama not running, checking alternatives...');
   }
 
   if (_ollamaAvailable) {
@@ -60,6 +79,21 @@ async function getEndpoint(): Promise<LLMEndpoint> {
       model: XAI_MODEL,
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${xaiKey}` },
       label: `xAI (${XAI_MODEL})`,
+    };
+  }
+
+  // Try Vercel proxy (production — server-side API key)
+  if (_proxyAvailable === null) {
+    _proxyAvailable = await detectVercelProxy();
+    if (_proxyAvailable) console.log('[CharacterAPI] Vercel proxy available — using cloud LLM');
+  }
+
+  if (_proxyAvailable) {
+    return {
+      url: VERCEL_PROXY_URL,
+      model: 'claude-haiku-4-5',
+      headers: { 'Content-Type': 'application/json' },
+      label: 'Cloud (Claude Haiku)',
     };
   }
 
@@ -289,6 +323,7 @@ export async function* streamCharacterResponse(
 // Reset endpoint cache (useful if user starts Ollama mid-session)
 export function resetEndpointCache() {
   _ollamaAvailable = null;
+  _proxyAvailable = null;
 }
 
 // ── Profile Lookup ────────────────────────────────────────────────────────

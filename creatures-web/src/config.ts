@@ -1,15 +1,13 @@
 /** Centralized API configuration — single source of truth */
-const RAILWAY_API = 'https://creatures-production.up.railway.app';
 
-const isProduction = typeof window !== 'undefined' && window.location.hostname === 'neurevo.dev';
+// API_BASE: local dev server or user-provided URL (e.g., local M5 Max engine).
+// In production (Vercel), there is no backend — sim modes fall back to demo mode.
+export const API_BASE = (import.meta.env.VITE_API_URL as string) || '';
 
-// In production, ALWAYS use RAILWAY_API. VITE_API_URL only for local dev override.
-export const API_BASE = isProduction ? RAILWAY_API : (import.meta.env.VITE_API_URL || '');
-
-export const WS_HOST = isProduction
-  ? 'creatures-production.up.railway.app'
-  : (typeof window !== 'undefined' ? window.location.host : 'localhost:5173');
+// WebSocket host: derived from API_BASE when set, otherwise same-origin (for local dev).
+const apiHost = API_BASE ? new URL(API_BASE).host : (typeof window !== 'undefined' ? window.location.host : 'localhost:8420');
+export const WS_HOST = apiHost;
 
 export const WS_BASE = typeof window !== 'undefined'
   ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${WS_HOST}`
-  : 'ws://localhost:5173';
+  : 'ws://localhost:8420';
