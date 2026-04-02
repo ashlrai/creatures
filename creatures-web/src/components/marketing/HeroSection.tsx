@@ -8,19 +8,19 @@ export function HeroSection() {
   return (
     <section className="hp-hero">
       <div className="hp-hero__content">
-        <div className="hp-hero__eyebrow">Connectome-Driven Simulation</div>
+        <div className="hp-hero__eyebrow">An Interactive Journey Through Time</div>
         <h1 className="hp-hero__headline">
-          Simulate Real
+          Night at
           <br />
-          Biological Brains
+          the Museum
         </h1>
         <p className="hp-hero__sub">
-          Virtual organisms powered by published neural wiring data. Spiking networks,
-          synaptic plasticity, and evolutionary algorithms — running live in your browser.
+          Walk through 13.8 billion years of history — from the Big Bang to the digital age.
+          AI-powered characters, living dioramas, and hands-on experiments, all running in your browser.
         </p>
         <div className="hp-hero__actions">
-          <a href="#/app/sim/c_elegans" className="hp-hero__btn-primary">
-            Launch Platform
+          <a href="#/app/museum" className="hp-hero__btn-primary">
+            Enter the Museum
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>

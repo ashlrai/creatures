@@ -4,8 +4,9 @@
 // ============================================================================
 
 import React, { useState, useRef, useEffect, Suspense } from 'react';
-import { useMuseumStore } from '../../stores/museumStore';
+import { useMuseumStore, MuseumView } from '../../stores/museumStore';
 import { MASTERY_LEVELS } from '../../data/knowledge-graph';
+import { ERA_MAP, EVENT_MAP, PERSON_MAP, ARTIFACT_MAP, CONCEPT_MAP } from '../../data/halls/index';
 import { TimelineLanding } from './TimelineLanding';
 import { TimelineRiver } from './TimelineRiver';
 import { EraView } from './EraView';
@@ -23,6 +24,20 @@ import { BattleView } from './BattleView';
 import { PathsView } from './PathsView';
 import { TodayInHistory } from './TodayInHistory';
 import { PageTransition } from './PageTransition';
+
+// ── Resolve entity ID to human-readable name ──────────────────────────────
+
+function resolveEntityName(view: MuseumView, id: string | null): string | null {
+  if (!id) return null;
+  switch (view) {
+    case 'era':      return ERA_MAP.get(id)?.name ?? null;
+    case 'event':    return EVENT_MAP.get(id)?.title ?? null;
+    case 'person':   return PERSON_MAP.get(id)?.name ?? null;
+    case 'artifact': return ARTIFACT_MAP.get(id)?.name ?? null;
+    case 'concept':  return CONCEPT_MAP.get(id)?.name ?? null;
+    default:         return null;
+  }
+}
 
 // ── Nav items for secondary bar ────────────────────────────────────────────
 
@@ -43,21 +58,46 @@ function TimelineLoadingFallback() {
     <div style={{
       width: '100%', height: '100%',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      background: '#0a0a0f', gap: 16,
+      background: '#050510',
+      gap: 24,
     }}>
+      {/* Title */}
       <div style={{
-        width: 40, height: 40, borderRadius: '50%',
-        border: '2px solid rgba(124,77,255,0.15)',
-        borderTopColor: '#7c4dff',
-        animation: 'museum-spinner 0.8s linear infinite',
-      }} />
-      <div style={{
-        fontSize: 13, color: 'rgba(255,255,255,0.3)',
-        fontFamily: "'Inter', sans-serif", letterSpacing: '0.05em',
+        fontSize: 15, fontWeight: 600,
+        letterSpacing: '0.25em',
+        color: 'rgba(167,139,250,0.7)',
+        fontFamily: "'Inter', sans-serif",
+        textTransform: 'uppercase' as const,
       }}>
-        Initializing timeline...
+        The River of Time
       </div>
-      <style>{`@keyframes museum-spinner { to { transform: rotate(360deg); } }`}</style>
+
+      {/* Pulsing dot cluster */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        {[0, 1, 2].map(i => (
+          <div key={i} style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: 'rgba(167,139,250,0.5)',
+            animation: `museum-pulse 1.4s ease-in-out ${i * 0.2}s infinite`,
+          }} />
+        ))}
+      </div>
+
+      {/* Subtle subtitle */}
+      <div style={{
+        fontSize: 12, color: 'rgba(255,255,255,0.2)',
+        fontFamily: "'Inter', sans-serif", letterSpacing: '0.04em',
+        fontWeight: 400,
+      }}>
+        Preparing 3D environment
+      </div>
+
+      <style>{`
+        @keyframes museum-pulse {
+          0%, 100% { opacity: 0.3; transform: scale(0.8); }
+          50% { opacity: 1; transform: scale(1.2); }
+        }
+      `}</style>
     </div>
   );
 }
@@ -311,7 +351,7 @@ export function Museum() {
                       : 'rgba(255,255,255,0.35)';
                 }}
               >
-                {crumb.label}
+                {resolveEntityName(crumb.view, crumb.id) ?? crumb.label}
               </button>
             </React.Fragment>
           ))}
