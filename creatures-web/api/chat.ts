@@ -7,6 +7,8 @@
  * Required env var: ANTHROPIC_API_KEY (set in Vercel dashboard)
  */
 
+declare const process: { env: Record<string, string | undefined> };
+
 export const config = { runtime: 'edge' };
 
 interface ChatMessage {
