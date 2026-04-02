@@ -132,7 +132,7 @@ export function EraNode({ era, position, onNavigate, onFocus }: EraNodeProps) {
     <group ref={groupRef} position={position}>
       {/* Outer glow sphere */}
       <mesh ref={glowRef}>
-        <sphereGeometry args={[1.2, 32, 16]} />
+        <sphereGeometry args={[1.5, 32, 16]} />
         <meshBasicMaterial
           color={era.color}
           transparent
@@ -141,15 +141,20 @@ export function EraNode({ era, position, onNavigate, onFocus }: EraNodeProps) {
         />
       </mesh>
 
-      {/* Core sphere */}
+      {/* Invisible hitbox — much larger than visual sphere for easy clicking */}
       <mesh
-        ref={coreRef}
         onPointerOver={handlePointerOver}
         onPointerOut={handlePointerOut}
         onPointerDown={handlePointerDown}
         onClick={handleClick}
       >
-        <sphereGeometry args={[0.55, 32, 16]} />
+        <sphereGeometry args={[2.0, 16, 8]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+
+      {/* Core sphere (visual only) */}
+      <mesh ref={coreRef}>
+        <sphereGeometry args={[0.7, 32, 16]} />
         <meshStandardMaterial
           color={era.color}
           emissive={era.color}
@@ -175,7 +180,7 @@ export function EraNode({ era, position, onNavigate, onFocus }: EraNodeProps) {
       />
 
       {/* Energy ring */}
-      <EnergyRing color={era.color} radius={0.9} />
+      <EnergyRing color={era.color} radius={1.1} />
 
       {/* Era name — always visible */}
       <Text
