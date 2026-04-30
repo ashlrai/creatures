@@ -38,3 +38,7 @@ package-lock.json
 Thumbs.db
 venv/
 .vercel
+
+# Local-only
+.claude/
+neurevo_data/
