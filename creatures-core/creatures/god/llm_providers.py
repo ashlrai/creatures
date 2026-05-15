@@ -24,7 +24,7 @@ class LLMConfig:
     provider: str = "auto"  # "auto", "ollama", "anthropic", "xai", "openai"
     api_key: str | None = None
     api_base: str = "https://api.x.ai/v1"
-    model: str = "grok-4-1-fast-reasoning"
+    model: str = "grok-4.3"
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:70b"
     temperature: float = 0.7

@@ -12,7 +12,7 @@ const OLLAMA_URL = ((import.meta as any).env?.VITE_OLLAMA_URL as string) || 'htt
 const OLLAMA_MODEL = ((import.meta as any).env?.VITE_OLLAMA_MODEL as string) || 'llama3.1:70b';
 
 const XAI_URL = 'https://api.x.ai/v1/chat/completions';
-const XAI_MODEL = 'grok-4-1-fast-reasoning';
+const XAI_MODEL = 'grok-4.3';
 
 // Vercel Edge Function proxy — uses server-side API key, available in production
 const VERCEL_PROXY_URL = '/api/chat';
